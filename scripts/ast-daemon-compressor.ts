@@ -1,0 +1,150 @@
+/**
+ * SynapseJS - Native AST Daemon & Codebase Compressor
+ * 
+ * Extracts exact structural topology and signatures from slices and core modules.
+ * Suppresses implementation bodies to produce a compressed skeleton map (.codebase/repo-map.d.ts)
+ * that fits well within a 3,000-token budget for LLM context injection.
+ */
+
+import * as ts from 'typescript';
+import * as fs from 'fs';
+import * as path from 'path';
+
+interface SliceMetadata {
+  slicePath: string;
+  exportedTypes: string[];
+  exportedFunctions: string[];
+  hasUI: boolean;
+  hasPBT: boolean;
+}
+
+export function compressRepositoryAST(baseDir: string, outputFile: string, graphFile?: string): {
+  manifestTokensEstimate: number;
+  totalSlices: number;
+} {
+  const tsConfigPath = path.join(baseDir, 'tsconfig.json');
+  const configFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile);
+  const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, baseDir);
+
+  const sourceFiles = parsed.fileNames.filter(
+    (f) => (f.includes('/slices/') || f.includes('/core/')) && !f.endsWith('.d.ts')
+  );
+
+  const program = ts.createProgram(sourceFiles, parsed.options);
+  const typeChecker = program.getTypeChecker();
+
+  let manifest = `// [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]\n`;
+  manifest += `// STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.\n`;
+  manifest += `// GENERATED AT: ${new Date().toISOString()}\n\n`;
+
+  const architectureGraph: SliceMetadata[] = [];
+
+  for (const src of program.getSourceFiles()) {
+    if (src.isDeclarationFile || !sourceFiles.includes(src.fileName)) {
+      continue;
+    }
+
+    const relPath = path.relative(baseDir, src.fileName);
+    manifest += `// ============================================================================\n`;
+    manifest += `// MODULE: ${relPath}\n`;
+    manifest += `// ============================================================================\n`;
+
+    const sliceMeta: SliceMetadata = {
+      slicePath: relPath,
+      exportedTypes: [],
+      exportedFunctions: [],
+      hasUI: false,
+      hasPBT: false
+    };
+
+    ts.forEachChild(src, (node) => {
+      const modifiers = ts.canHaveModifiers(node) ? ts.getModifiers(node) : undefined;
+      const isExported = modifiers?.some((m: ts.Modifier) => m.kind === ts.SyntaxKind.ExportKeyword);
+
+      // 1. Exported Type Aliases & Interfaces (e.g. TypeBox static types, Result types)
+      if (isExported && (ts.isTypeAliasDeclaration(node) || ts.isInterfaceDeclaration(node))) {
+        manifest += `${node.getText(src)}\n\n`;
+        sliceMeta.exportedTypes.push(node.name.text);
+      }
+
+      // 2. Exported Schemas (TypeBox Type.Object definitions)
+      if (isExported && ts.isVariableStatement(node)) {
+        for (const decl of node.declarationList.declarations) {
+          const varName = decl.name.getText(src);
+          if (varName.endsWith('Schema')) {
+            manifest += `export declare const ${varName}: any;\n`;
+            sliceMeta.exportedTypes.push(varName);
+          }
+          if (varName === 'sliceTests') {
+            sliceMeta.hasPBT = true;
+          }
+        }
+      }
+
+      // 3. Exported Functions (Skeletonized: signature only, body stripped)
+      if (isExported && ts.isFunctionDeclaration(node) && node.name) {
+        const fnName = node.name.text;
+        const params = node.parameters
+          .map((p) => {
+            const pName = p.name.getText(src);
+            const pType = p.type ? p.type.getText(src) : 'unknown';
+            return `${pName}: ${pType}`;
+          })
+          .join(', ');
+
+        let retType = 'void';
+        if (node.type) {
+          retType = node.type.getText(src);
+        } else {
+          const signature = typeChecker.getSignatureFromDeclaration(node);
+          if (signature) {
+            retType = typeChecker.typeToString(typeChecker.getReturnTypeOfSignature(signature));
+          }
+        }
+
+        manifest += `export declare function ${fnName}(${params}): ${retType};\n`;
+        sliceMeta.exportedFunctions.push(fnName);
+
+        if (fnName.endsWith('Trigger') || fnName.endsWith('View') || fnName.endsWith('Component')) {
+          sliceMeta.hasUI = true;
+        }
+      }
+    });
+
+    manifest += `\n`;
+    architectureGraph.push(sliceMeta);
+  }
+
+  // Ensure output directory exists
+  const outDir = path.dirname(outputFile);
+  if (!fs.existsSync(outDir)) {
+    fs.mkdirSync(outDir, { recursive: true });
+  }
+
+  fs.writeFileSync(outputFile, manifest, 'utf-8');
+
+  if (graphFile) {
+    fs.writeFileSync(graphFile, JSON.stringify(architectureGraph, null, 2), 'utf-8');
+  }
+
+  // Heuristic token estimation: ~4 chars per token
+  const tokenEstimate = Math.round(manifest.length / 4);
+
+  return {
+    manifestTokensEstimate: tokenEstimate,
+    totalSlices: architectureGraph.length
+  };
+}
+
+if (import.meta.main) {
+  const root = process.cwd();
+  const repoMapPath = path.join(root, '.codebase/repo-map.d.ts');
+  const graphPath = path.join(root, '.codebase/architecture-graph.json');
+
+  console.log('⚡ [AST Daemon] Extraindo esqueleto e comprimindo repositório...');
+  const stats = compressRepositoryAST(root, repoMapPath, graphPath);
+  console.log(`✅ [AST Daemon PASS] Manifesto gerado com sucesso!`);
+  console.log(`   - Arquivo: .codebase/repo-map.d.ts`);
+  console.log(`   - Fatias e módulos processados: ${stats.totalSlices}`);
+  console.log(`   - Estimativa de tokens: ~${stats.manifestTokensEstimate} tokens (limite: 3.000 tokens)`);
+}

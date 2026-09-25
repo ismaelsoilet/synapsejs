@@ -1,0 +1,57 @@
+[
+  {
+    "slicePath": "src/core/database-client.ts",
+    "exportedTypes": [
+      "QueryResult",
+      "DatabaseClient"
+    ],
+    "exportedFunctions": [],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/core/machine-types.ts",
+    "exportedTypes": [
+      "Ok",
+      "Err",
+      "Result",
+      "Option"
+    ],
+    "exportedFunctions": [
+      "Ok",
+      "Err",
+      "isOk",
+      "isErr",
+      "unwrap",
+      "unwrapOr",
+      "map",
+      "mapErr",
+      "Some",
+      "None"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/core/index.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/slices/billing/generate-invoice.slice.tsx",
+    "exportedTypes": [
+      "InvoiceInputSchema",
+      "InvoiceInput",
+      "InvoiceOutput",
+      "InvoiceTriggerProps"
+    ],
+    "exportedFunctions": [
+      "createInvoiceAction",
+      "InvoiceTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  }
+]

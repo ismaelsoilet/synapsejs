@@ -1,0 +1,29 @@
+{
+  "name": "synapsejs",
+  "version": "0.1.0",
+  "description": "Fullstack AI-Native & Machine-Centric Framework with Locality of Behavior, AST-Daemon and Deterministic Closed Loops",
+  "main": "src/core/index.ts",
+  "type": "module",
+  "bin": {
+    "synapse": "./bin/synapse.ts"
+  },
+  "scripts": {
+    "check": "bun run scripts/agent-diagnostic-json.ts",
+    "skeleton": "bun run scripts/ast-daemon-compressor.ts",
+    "test:slice": "bun run src/slices/billing/generate-invoice.slice.tsx",
+    "build:split": "bun run src/compiler/slice-splitter.ts",
+    "cli": "bun run bin/synapse.ts"
+  },
+  "dependencies": {
+    "@sinclair/typebox": "^0.34.40",
+    "fast-check": "^3.23.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/react": "^19.0.10",
+    "@types/react-dom": "^19.0.4",
+    "typescript": "^5.8.2"
+  }
+}
