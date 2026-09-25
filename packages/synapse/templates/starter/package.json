@@ -16,7 +16,7 @@
     "split": "synapse split"
   },
   "dependencies": {
-    "synapsejs": "^0.3.0",
+    "synapsejs": "^0.4.0",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "react": "^19.0.0",

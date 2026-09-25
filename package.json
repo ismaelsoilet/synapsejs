@@ -1,8 +1,8 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "private": true,
-  "description": "SynapseJS Monorepo: The Machine-Centric AI-Native Fullstack Engine",
+  "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",
   "author": "Ismael Soilet <ismael.soilet@hotmail.com>",
   "repository": {
