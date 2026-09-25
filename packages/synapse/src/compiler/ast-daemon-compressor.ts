@@ -54,7 +54,7 @@ export function compressRepositoryAST(baseDir: string, outputFile: string, graph
 
   let manifest = `// [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]\n`;
   manifest += `// STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.\n`;
-  manifest += `// GENERATED AT: ${new Date().toISOString()}\n\n`;
+  manifest += `// Regenerate with 'synapse skeleton' — output is deterministic and committed.\n\n`;
 
   const architectureGraph: SliceMetadata[] = [];
 

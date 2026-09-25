@@ -1,6 +1,6 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
-// GENERATED AT: 2026-09-25T22:47:12.706Z
+// Regenerate with 'synapse skeleton' — output is deterministic and committed.
 
 // ============================================================================
 // MODULE: src/slices/billing/generate-invoice.slice.tsx

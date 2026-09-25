@@ -28,8 +28,14 @@ jobs:
       - name: TypeScript Typecheck (whole monorepo)
         run: bun run check
 
-      - name: Verify AST Skeleton Compression
+      - name: Starter Template Typechecks As A Consumer
+        run: bun run check:template
+
+      - name: Regenerate AST Skeleton Map
         run: bun run skeleton
+
+      - name: Committed Repo Map Must Match The Generator
+        run: git diff --exit-code -- examples/enterprise-crm/.codebase .codebase
 
       - name: Split Slices And Enforce Both Gates
         run: bun run split
