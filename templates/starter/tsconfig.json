@@ -12,23 +12,22 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "synapsejs": ["./packages/synapse/src/index.ts"],
-      "@/*": ["packages/synapse/src/*"]
+      "synapsejs": ["../../packages/synapse/src/index.ts"]
     },
+    "typeRoots": [
+      "../../node_modules/@types"
+    ],
     "types": [
       "bun",
       "node"
     ]
   },
   "include": [
-    "packages/synapse/src/**/*",
-    "packages/synapse/bin/**/*",
-    "examples/enterprise-crm/src/**/*",
-    "examples/enterprise-crm/scripts/**/*",
-    "templates/starter/src/**/*"
+    "src/**/*"
   ],
   "exclude": [
     "node_modules",
-    ".codebase"
+    ".codebase",
+    ".synapse"
   ]
 }

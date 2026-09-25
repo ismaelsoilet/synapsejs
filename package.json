@@ -1,26 +1,32 @@
 {
-  "name": "synapsejs",
+  "name": "synapsejs-monorepo",
   "version": "0.3.0",
-  "description": "Fullstack AI-Native & Machine-Centric OS with LoB, AST-Daemon, Zero-Wiring Bun Router, Multi-DB and Native MCP",
-  "main": "src/core/index.ts",
+  "private": true,
+  "description": "SynapseJS Monorepo: The Machine-Centric AI-Native Fullstack Engine",
   "type": "module",
-  "bin": {
-    "synapse": "./bin/synapse.ts"
-  },
+  "workspaces": [
+    "packages/*",
+    "examples/*",
+    "templates/*"
+  ],
   "scripts": {
-    "dev": "bun run bin/synapse.ts dev",
-    "check": "bun run bin/synapse.ts check",
-    "check:fast": "bun run bin/synapse.ts check --fast",
-    "migrate": "bun run bin/synapse.ts migrate",
-    "mcp": "bun run bin/synapse.ts mcp",
-    "skeleton": "bun run bin/synapse.ts skeleton",
-    "test": "bun run bin/synapse.ts test",
-    "test:e2e": "bun run scripts/e2e-server-test.ts",
-    "split": "bun run bin/synapse.ts split",
-    "new-slice": "bun run bin/synapse.ts new-slice",
-    "cli": "bun run bin/synapse.ts"
+    "dev": "bun --cwd examples/enterprise-crm dev",
+    "check": "bun run packages/synapse/bin/synapse.ts check",
+    "check:fast": "bun run packages/synapse/bin/synapse.ts check --fast",
+    "migrate": "bun --cwd examples/enterprise-crm migrate",
+    "mcp": "bun run packages/synapse/bin/synapse.ts mcp",
+    "skeleton": "bun --cwd examples/enterprise-crm skeleton",
+    "test": "bun --cwd examples/enterprise-crm test",
+    "test:e2e": "bun --cwd examples/enterprise-crm test:e2e",
+    "split": "bun --cwd examples/enterprise-crm split",
+    "new-slice": "bun --cwd examples/enterprise-crm new-slice",
+    "build": "bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton",
+    "test:all": "bun --cwd examples/enterprise-crm test && bun --cwd templates/starter test && bun --cwd examples/enterprise-crm test:e2e",
+    "new": "bun run packages/synapse/bin/synapse.ts new",
+    "cli": "bun run packages/synapse/bin/synapse.ts"
   },
   "dependencies": {
+    "synapsejs": "workspace:*",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "postgres": "^3.4.9",
@@ -29,6 +35,7 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^26.6.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "typescript": "^5.8.2"

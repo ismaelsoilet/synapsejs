@@ -10,6 +10,62 @@
         "postgres": "^3.4.9",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
+        "synapsejs": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/node": "^26.6.2",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
+    "examples/enterprise-crm": {
+      "name": "enterprise-crm-example",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "synapsejs": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
+    "packages/synapse": {
+      "name": "synapsejs",
+      "version": "0.3.0",
+      "bin": {
+        "synapse": "./bin/synapse.ts",
+      },
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "postgres": "^3.4.9",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
+    "templates/starter": {
+      "name": "starter-app",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "synapsejs": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "latest",
@@ -34,6 +90,8 @@
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
+    "enterprise-crm-example": ["enterprise-crm-example@workspace:examples/enterprise-crm"],
+
     "fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
 
     "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
@@ -45,6 +103,10 @@
     "react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
 
     "scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
+
+    "starter-app": ["starter-app@workspace:templates/starter"],
+
+    "synapsejs": ["synapsejs@workspace:packages/synapse"],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 

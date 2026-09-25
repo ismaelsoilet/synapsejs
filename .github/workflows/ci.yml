@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: TypeScript Typecheck
+        run: bun run check
+
+      - name: Validate Fast Incremental Diagnostics
+        run: bun run check:fast
+
+      - name: Verify AST Skeleton Compression
+        run: bun run skeleton
+
+      - name: Run Isomorphic Slice Splitter
+        run: bun run split
+
+      - name: Run Property-Based Testing (PBT) Oracles & E2E Integration
+        run: bun run test:all

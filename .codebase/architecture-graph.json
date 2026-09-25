@@ -1,6 +1,6 @@
 [
   {
-    "slicePath": "src/core/database-client.ts",
+    "slicePath": "packages/synapse/src/core/database-client.ts",
     "exportedTypes": [
       "QueryResult",
       "DatabaseClient"
@@ -10,7 +10,7 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/sqlite-client.ts",
+    "slicePath": "packages/synapse/src/core/sqlite-client.ts",
     "exportedTypes": [],
     "exportedFunctions": [
       "getSqliteDatabase"
@@ -19,14 +19,14 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/postgres-client.ts",
+    "slicePath": "packages/synapse/src/core/postgres-client.ts",
     "exportedTypes": [],
     "exportedFunctions": [],
     "hasUI": false,
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/database-factory.ts",
+    "slicePath": "packages/synapse/src/core/database-factory.ts",
     "exportedTypes": [],
     "exportedFunctions": [
       "getDatabase",
@@ -36,7 +36,7 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/machine-types.ts",
+    "slicePath": "packages/synapse/src/core/machine-types.ts",
     "exportedTypes": [
       "Ok",
       "Err",
@@ -59,7 +59,7 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/session-context.ts",
+    "slicePath": "packages/synapse/src/core/session-context.ts",
     "exportedTypes": [
       "SessionContext",
       "AuthCheckResult"
@@ -75,14 +75,14 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/index.ts",
+    "slicePath": "packages/synapse/src/core/index.ts",
     "exportedTypes": [],
     "exportedFunctions": [],
     "hasUI": false,
     "hasPBT": false
   },
   {
-    "slicePath": "src/slices/billing/generate-invoice.slice.tsx",
+    "slicePath": "examples/enterprise-crm/src/slices/billing/generate-invoice.slice.tsx",
     "exportedTypes": [
       "InvoiceInputSchema",
       "InvoiceInput",
@@ -98,7 +98,7 @@
     "hasPBT": true
   },
   {
-    "slicePath": "src/slices/customers/create-customer.slice.tsx",
+    "slicePath": "examples/enterprise-crm/src/slices/customers/create-customer.slice.tsx",
     "exportedTypes": [
       "CustomerInputSchema",
       "CustomerInput",
@@ -114,7 +114,7 @@
     "hasPBT": true
   },
   {
-    "slicePath": "src/slices/products/create-product.slice.tsx",
+    "slicePath": "examples/enterprise-crm/src/slices/products/create-product.slice.tsx",
     "exportedTypes": [
       "CreateProductInputSchema",
       "CreateProductInput",
@@ -125,6 +125,22 @@
     "exportedFunctions": [
       "createProductAction",
       "CreateProductTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "templates/starter/src/slices/welcome/hello-world.slice.tsx",
+    "exportedTypes": [
+      "HelloWorldInputSchema",
+      "HelloWorldInput",
+      "sliceSchema",
+      "HelloWorldOutput",
+      "HelloWorldViewProps"
+    ],
+    "exportedFunctions": [
+      "helloWorldAction",
+      "HelloWorldView"
     ],
     "hasUI": true,
     "hasPBT": true

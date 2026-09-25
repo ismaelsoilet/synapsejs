@@ -1,9 +1,9 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
-// GENERATED AT: 2026-09-25T20:34:55.869Z
+// GENERATED AT: 2026-09-25T21:42:40.777Z
 
 // ============================================================================
-// MODULE: src/core/database-client.ts
+// MODULE: packages/synapse/src/core/database-client.ts
 // ============================================================================
 export interface QueryResult<T = unknown> {
   rows: T[];
@@ -29,22 +29,22 @@ export interface DatabaseClient {
 
 
 // ============================================================================
-// MODULE: src/core/sqlite-client.ts
+// MODULE: packages/synapse/src/core/sqlite-client.ts
 // ============================================================================
 export declare function getSqliteDatabase(dbPath: string): SqliteDatabaseClient;
 
 // ============================================================================
-// MODULE: src/core/postgres-client.ts
+// MODULE: packages/synapse/src/core/postgres-client.ts
 // ============================================================================
 
 // ============================================================================
-// MODULE: src/core/database-factory.ts
+// MODULE: packages/synapse/src/core/database-factory.ts
 // ============================================================================
 export declare function getDatabase(connectionUri: string): DatabaseClient;
 export declare function resetDatabaseInstance(): void;
 
 // ============================================================================
-// MODULE: src/core/machine-types.ts
+// MODULE: packages/synapse/src/core/machine-types.ts
 // ============================================================================
 export type Ok<T> = {
   readonly ok: true;
@@ -74,7 +74,7 @@ export declare function Some(value: T): Option<T>;
 export declare function None(): Option<T>;
 
 // ============================================================================
-// MODULE: src/core/session-context.ts
+// MODULE: packages/synapse/src/core/session-context.ts
 // ============================================================================
 export interface SessionContext {
   readonly userId?: string;
@@ -100,11 +100,11 @@ export type AuthCheckResult = Result<SessionContext, 'UNAUTHORIZED' | 'FORBIDDEN
 export declare function requireAuth(session: SessionContext, requiredRoles: string[]): AuthCheckResult;
 
 // ============================================================================
-// MODULE: src/core/index.ts
+// MODULE: packages/synapse/src/core/index.ts
 // ============================================================================
 
 // ============================================================================
-// MODULE: src/slices/billing/generate-invoice.slice.tsx
+// MODULE: examples/enterprise-crm/src/slices/billing/generate-invoice.slice.tsx
 // ============================================================================
 export declare const InvoiceInputSchema: any;
 export type InvoiceInput = Static<typeof InvoiceInputSchema>;
@@ -124,7 +124,7 @@ export interface InvoiceTriggerProps {
 export declare function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerProps): Element;
 
 // ============================================================================
-// MODULE: src/slices/customers/create-customer.slice.tsx
+// MODULE: examples/enterprise-crm/src/slices/customers/create-customer.slice.tsx
 // ============================================================================
 export declare const CustomerInputSchema: any;
 export type CustomerInput = Static<typeof CustomerInputSchema>;
@@ -143,7 +143,7 @@ export interface CustomerTriggerProps {
 export declare function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps): Element;
 
 // ============================================================================
-// MODULE: src/slices/products/create-product.slice.tsx
+// MODULE: examples/enterprise-crm/src/slices/products/create-product.slice.tsx
 // ============================================================================
 export declare const CreateProductInputSchema: any;
 export type CreateProductInput = Static<typeof CreateProductInputSchema>;
@@ -160,4 +160,24 @@ export interface CreateProductTriggerProps {
 }
 
 export declare function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerProps): Element;
+
+// ============================================================================
+// MODULE: templates/starter/src/slices/welcome/hello-world.slice.tsx
+// ============================================================================
+export declare const HelloWorldInputSchema: any;
+export type HelloWorldInput = Static<typeof HelloWorldInputSchema>;
+
+export declare const sliceSchema: any;
+export type HelloWorldOutput = Result<
+  { greetingId: string; greeting: string; createdAt: string },
+  'INVALID_SCHEMA' | 'PERSISTENCE_FAILED'
+>;
+
+export declare function helloWorldAction(payload: unknown, db: DatabaseClient, session: SessionContext): Promise<HelloWorldOutput>;
+export interface HelloWorldViewProps {
+  defaultName?: string;
+  onSubmitAction?: (payload: unknown) => Promise<HelloWorldOutput>;
+}
+
+export declare function HelloWorldView({ defaultName = 'Desenvolvedor', onSubmitAction }: HelloWorldViewProps): Element;
 

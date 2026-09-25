@@ -29,46 +29,44 @@ Para **Modelos de Linguagem de Grande Porte (LLMs)** e agentes autônomos, esses
 
 ---
 
-## 📂 Topologia do Repositório (v0.3.0)
+## 📂 Topologia do Repositório (v0.3.0 Monorepo)
 
 ```text
 /home/ismaelsoilet/synapsejs/
-├── .codebase/
-│   ├── repo-map.d.ts                   # Skeleton map comprimido (< 3.000 tokens)
-│   └── architecture-graph.json         # Grafo de fatias e metadados estruturados
-├── src/
-│   ├── core/
-│   │   ├── machine-types.ts            # Result<T, E>, Ok, Err, Option<T>, TypeBox formats
-│   │   ├── session-context.ts          # SessionContext, AnonymousSession, requireAuth, hasRole
-│   │   ├── database-client.ts          # Interface agnóstica DatabaseClient & MockDatabaseClient
-│   │   ├── sqlite-client.ts            # Cliente bun:sqlite com WAL e transações atômicas
-│   │   ├── postgres-client.ts          # Cliente pooled PostgreSQL via postgres.js
-│   │   ├── database-factory.ts         # Seletor universal de banco (SQLite / Postgres)
-│   │   └── index.ts                    # Re-exportações canônicas do kernel
-│   ├── slices/                         # Fatias Verticais Atômicas (N = 1)
-│   │   ├── billing/
-│   │   │   └── generate-invoice.slice.tsx
-│   │   ├── customers/
-│   │   │   └── create-customer.slice.tsx
-│   │   └── products/
-│   │       └── create-product.slice.tsx
-│   ├── compiler/
-│   │   ├── slice-splitter.ts           # Separador AST Client/Server
-│   │   ├── scaffolder.ts               # Gerador de novas fatias com contrato completo
-│   │   ├── migration-runner.ts         # Extrator de DDL via AST e migrador idempotente
-│   │   └── fast-diagnostics.ts         # Compilador incremental com cache tsbuildinfo
-│   ├── runtime/
-│   │   └── server.ts                   # Servidor Bun.serve, Zero-Wiring Router e SSR Shell
-│   └── mcp/
-│       └── server.ts                   # Model Context Protocol Server (JSON-RPC stdio)
-├── scripts/
-│   ├── ast-daemon-compressor.ts        # Gerador do repo-map e architecture-graph
-│   ├── agent-diagnostic-json.ts        # Diagnósticos padrão em JSON
-│   └── e2e-server-test.ts              # Suíte de integração ao vivo (10 testes)
-├── bin/
-│   └── synapse.ts                      # CLI v0.3.0 unificada (dev, check, migrate, mcp...)
-├── package.json
+├── packages/
+│   └── synapse/                        # Pacote oficial publicado (synapsejs)
+│       ├── bin/synapse.ts              # Agent-CLI nativo v0.3.0
+│       ├── src/
+│       │   ├── core/                   # Kernel: Result<T,E>, SessionContext, Multi-DB
+│       │   ├── compiler/               # Fast-Diagnostics, AST Splitter, Scaffolder, Migrator
+│       │   ├── runtime/                # Bun.serve, Zero-Wiring Router, SSR HTML Shell
+│       │   ├── mcp/                    # Servidor nativo Model Context Protocol (stdio)
+│       │   └── index.ts                # Entrypoint canônico do SDK
+│       ├── templates/starter/          # Template oficial embutido para 'synapse new'
+│       ├── package.json
+│       └── README.md
+├── templates/
+│   └── starter/                        # Template independente para novos projetos
+│       ├── src/slices/welcome/
+│       │   └── hello-world.slice.tsx   # Fatia inaugural de boas-vindas
+│       └── package.json
+├── examples/
+│   └── enterprise-crm/                 # Suíte de referência de produção
+│       ├── .codebase/
+│       │   ├── repo-map.d.ts           # Skeleton map (< 3.000 tokens)
+│       │   └── architecture-graph.json # Grafo de fatias
+│       ├── src/slices/                 # Fatias Verticais Atômicas (N = 1)
+│       │   ├── billing/generate-invoice.slice.tsx
+│       │   ├── customers/create-customer.slice.tsx
+│       │   └── products/create-product.slice.tsx
+│       ├── scripts/
+│       │   └── e2e-server-test.ts      # 10 testes de integração E2E ao vivo
+│       └── package.json
+├── bin/synapse.ts                      # CLI proxy na raiz
+├── .github/workflows/ci.yml            # CI automatizado no GitHub Actions
+├── package.json                        # Workspaces monorepo
 ├── tsconfig.json
+├── LICENSE
 └── README.md
 ```
 
@@ -83,8 +81,14 @@ import React, { useState } from 'react';
 import { Type, Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
-import type { DatabaseClient } from '@/core/database-client';
-import { Result, Ok, Err, type SessionContext, requireAuth } from '@/core/index';
+import { 
+  type DatabaseClient, 
+  Result, 
+  Ok, 
+  Err, 
+  type SessionContext, 
+  requireAuth 
+} from 'synapsejs';
 
 // 1. CONTRATO DE ENTRADA JIT
 export const InvoiceInputSchema = Type.Object({
