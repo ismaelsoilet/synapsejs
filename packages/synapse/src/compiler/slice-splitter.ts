@@ -36,7 +36,7 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
   let serverParts: string[] = [
     `// [SYNAPSE-JS SERVER TARGET] AUTO-SPLIT FROM ${relPath}`,
     `// CONTAINS DB LOGIC, PERSISTENCE AND SCHEMA CONTRACTS`,
-    `import { Type, type Static, Value, Ok, Err, Result, type DatabaseClient } from 'synapsejs';`,
+    `import { Type, type Static, Value, Ok, Err, Result, type DatabaseClient, type SessionContext, requireAuth, hasRole } from 'synapsejs';`,
     ``
   ];
 

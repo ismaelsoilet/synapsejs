@@ -3,6 +3,12 @@
   "version": "0.3.0",
   "private": true,
   "description": "SynapseJS Monorepo: The Machine-Centric AI-Native Fullstack Engine",
+  "license": "MIT",
+  "author": "Ismael Soilet <ismael.soilet@hotmail.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ismaelsoilet/synapsejs.git"
+  },
   "type": "module",
   "workspaces": [
     "packages/*",

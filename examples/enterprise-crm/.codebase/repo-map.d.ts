@@ -1,6 +1,6 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
-// GENERATED AT: 2026-09-25T21:44:50.098Z
+// GENERATED AT: 2026-09-25T22:00:32.333Z
 
 // ============================================================================
 // MODULE: src/slices/billing/generate-invoice.slice.tsx

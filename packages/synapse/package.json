@@ -28,6 +28,21 @@
     "README.md",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ismaelsoilet/synapsejs.git",
+    "directory": "packages/synapse"
+  },
+  "homepage": "https://github.com/ismaelsoilet/synapsejs#readme",
+  "bugs": {
+    "url": "https://github.com/ismaelsoilet/synapsejs/issues"
+  },
+  "scripts": {
+    "check": "bun run bin/synapse.ts check",
+    "check:fast": "bun run bin/synapse.ts check --fast",
+    "mcp": "bun run bin/synapse.ts mcp",
+    "info": "bun run bin/synapse.ts info"
+  },
   "publishConfig": {
     "access": "public"
   },

@@ -23,6 +23,7 @@ export function toCamelCase(str: string): string {
 export function generateSliceTemplate(domain: string, sliceName: string): string {
   const pascal = toPascalCase(sliceName);
   const camel = toCamelCase(sliceName);
+  const tableName = domain.replace(/[^a-zA-Z0-9_]/g, '_');
   const inputSchemaName = `${pascal}InputSchema`;
   const inputTypeName = `${pascal}Input`;
   const outputTypeName = `${pascal}Output`;
@@ -54,7 +55,7 @@ export type ${inputTypeName} = Static<typeof ${inputSchemaName}>;
 
 // DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
 export const sliceSchema = \`
-  CREATE TABLE IF NOT EXISTS \${'${domain}'} (
+  CREATE TABLE IF NOT EXISTS ${tableName} (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
@@ -86,7 +87,7 @@ export async function ${actionName}(
 
   // Checagem de Duplicidade
   const existing = await db.query<{ id: string }>(
-    \`SELECT id FROM \${'${domain}'} WHERE email = $1\`,
+    \`SELECT id FROM ${tableName} WHERE email = $1\`,
     [input.email]
   );
   if (existing.length > 0) {
@@ -97,7 +98,7 @@ export async function ${actionName}(
   const now = new Date().toISOString();
 
   await db.query(
-    \`INSERT INTO \${'${domain}'} (id, name, email) VALUES ($1, $2, $3)\`,
+    \`INSERT INTO ${tableName} (id, name, email) VALUES ($1, $2, $3)\`,
     [generatedId, input.name, input.email]
   );
 

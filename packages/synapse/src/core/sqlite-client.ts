@@ -84,28 +84,6 @@ export function getSqliteDatabase(dbPath?: string): SqliteDatabaseClient {
   if (!defaultInstance) {
     const targetPath = dbPath || path.join(process.cwd(), '.synapse/synapse.sqlite');
     defaultInstance = new SqliteDatabaseClient(targetPath);
-
-    // Initialize default tables for core canonical slices
-    defaultInstance.initSchema(`
-      CREATE TABLE IF NOT EXISTS customers (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        email TEXT NOT NULL UNIQUE,
-        tax_id TEXT NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-      );
-
-      CREATE TABLE IF NOT EXISTS invoices (
-        id TEXT PRIMARY KEY,
-        customer_id TEXT NOT NULL,
-        base_cents INTEGER NOT NULL,
-        tax_rate REAL NOT NULL,
-        total_cents INTEGER NOT NULL,
-        idempotency_key TEXT UNIQUE NOT NULL,
-        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (customer_id) REFERENCES customers(id)
-      );
-    `);
   }
   return defaultInstance;
 }

@@ -202,7 +202,7 @@ async function main() {
       let allPassed = true;
 
       for (const slicePath of sliceFiles) {
-        const proc = Bun.spawn(['bun', 'run', slicePath], {
+        const proc = Bun.spawn([process.execPath, 'run', slicePath], {
           cwd: root,
           stdout: 'pipe',
           stderr: 'pipe'
@@ -243,8 +243,8 @@ async function main() {
     case 'new':
     case 'create':
     case 'init': {
-      const projectName = process.argv[3];
-      if (!projectName) {
+      const rawTarget = process.argv[3];
+      if (!rawTarget) {
         process.stderr.write(
           JSON.stringify({
             status: 'ERROR',
@@ -254,12 +254,14 @@ async function main() {
         process.exit(1);
       }
 
-      const targetDir = path.resolve(root, projectName);
+      const targetDir = path.resolve(root, rawTarget);
+      const cleanProjectName = path.basename(targetDir).toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+
       if (fs.existsSync(targetDir)) {
         process.stderr.write(
           JSON.stringify({
             status: 'ERROR',
-            message: `O diretório '${projectName}' já existe em ${targetDir}.`
+            message: `O diretório '${rawTarget}' já existe em ${targetDir}.`
           }) + '\n'
         );
         process.exit(1);
@@ -267,9 +269,9 @@ async function main() {
 
       // Localiza o template oficial
       const candidates = [
-        path.resolve(__dirname, '../../../templates/starter'),
-        path.resolve(__dirname, '../../templates/starter'),
         path.resolve(__dirname, '../templates/starter'),
+        path.resolve(__dirname, '../../templates/starter'),
+        path.resolve(__dirname, '../../../templates/starter'),
         path.resolve(__dirname, './templates/starter'),
         path.resolve(root, 'templates/starter')
       ];
@@ -299,7 +301,8 @@ async function main() {
           } else {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
-              content = content.replace('"starter-app"', `"${projectName}"`);
+              content = content.replace('"starter-app"', `"${cleanProjectName}"`);
+              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^0.3.0"');
             }
             fs.writeFileSync(d, content, 'utf-8');
           }
@@ -313,9 +316,9 @@ async function main() {
           {
             status: 'PASS',
             operation: 'CREATE_PROJECT',
-            projectName,
+            projectName: cleanProjectName,
             targetDir,
-            message: `Projeto SynapseJS '${projectName}' criado com sucesso!`
+            message: `Projeto SynapseJS '${cleanProjectName}' criado com sucesso!`
           },
           null,
           2

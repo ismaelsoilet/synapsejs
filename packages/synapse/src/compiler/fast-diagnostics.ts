@@ -57,10 +57,16 @@ export function getFastDiagnostics(projectRoot: string = process.cwd(), targetFi
         ...program.getSemanticDiagnostics(sourceFile)
       ];
     } else {
-      diagnostics = program.getSemanticDiagnostics();
+      diagnostics = [
+        ...program.getSyntacticDiagnostics(),
+        ...program.getSemanticDiagnostics()
+      ];
     }
   } else {
-    diagnostics = program.getSemanticDiagnostics();
+    diagnostics = [
+      ...program.getSyntacticDiagnostics(),
+      ...program.getSemanticDiagnostics()
+    ];
   }
 
   const durationMs = Math.round(performance.now() - startTime);

@@ -161,13 +161,16 @@ export class SynapseMcpServer {
             const files = findSliceFiles(slicesDir);
             const results = [];
             for (const f of files) {
-              const proc = Bun.spawn(['bun', 'run', f], { cwd: this.root, stdout: 'pipe', stderr: 'pipe' });
-              const out = await new Response(proc.stdout).text();
-              const code = await proc.exited;
+              const proc = Bun.spawn([process.execPath, 'run', f], { cwd: this.root, stdout: 'pipe', stderr: 'pipe' });
+              const [stdout, stderr, code] = await Promise.all([
+                new Response(proc.stdout).text(),
+                new Response(proc.stderr).text(),
+                proc.exited
+              ]);
               results.push({
                 slice: path.basename(f, '.slice.tsx'),
                 passed: code === 0,
-                output: out.trim()
+                output: (stdout + (stderr ? '\n' + stderr : '')).trim()
               });
             }
             contentText = JSON.stringify({ status: results.every((r) => r.passed) ? 'PASS' : 'FAIL', results }, null, 2);

@@ -39,6 +39,17 @@ function extractSliceSchema(sourceFile: ts.SourceFile): string | null {
         if (varName === 'sliceSchema' && decl.initializer) {
           if (ts.isStringLiteral(decl.initializer) || ts.isNoSubstitutionTemplateLiteral(decl.initializer)) {
             ddl = decl.initializer.text.trim();
+          } else if (ts.isTemplateExpression(decl.initializer)) {
+            let fullText = decl.initializer.head.text;
+            for (const span of decl.initializer.templateSpans) {
+              if (ts.isStringLiteral(span.expression) || ts.isNoSubstitutionTemplateLiteral(span.expression)) {
+                fullText += span.expression.text;
+              } else {
+                fullText += span.expression.getText(sourceFile).replace(/^['"`]|['"`]$/g, '');
+              }
+              fullText += span.literal.text;
+            }
+            ddl = fullText.trim();
           }
         }
       }

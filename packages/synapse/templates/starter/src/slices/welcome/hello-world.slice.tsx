@@ -154,5 +154,13 @@ export const sliceTests = {
 };
 
 if (import.meta.main) {
-  sliceTests.run().then(() => console.log('✅ [PBT PASS] Hello World oráculo aprovado!'));
+  sliceTests.run()
+    .then(() => {
+      console.log('✅ [PBT PASS] Hello World oráculo aprovado!');
+      process.exit(0);
+    })
+    .catch((err) => {
+      console.error('❌ [PBT FAIL] Falha no oráculo Hello World:', err);
+      process.exit(1);
+    });
 }
