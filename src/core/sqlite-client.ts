@@ -38,8 +38,8 @@ export class SqliteDatabaseClient implements DatabaseClient {
   }
 
   async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
-    // Normalise Postgres $1, $2, $3 parameter notation to SQLite ? notation
-    const sqliteSql = sql.replace(/\$\d+/g, '?');
+    // Normalise Postgres $1, $2, $3 parameter notation to SQLite ?1, ?2, ?3 notation
+    const sqliteSql = sql.replace(/\$(\d+)/g, '?$1');
     
     // Check if query is a mutation with RETURNING or just a SELECT
     const trimmed = sqliteSql.trim().toUpperCase();
@@ -59,11 +59,15 @@ export class SqliteDatabaseClient implements DatabaseClient {
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
-    // SQLite transaction via Bun native transaction wrapper
-    const tx = this.db.transaction(async () => {
-      return await operation(this);
-    });
-    return (await tx()) as T;
+    this.db.run('BEGIN TRANSACTION;');
+    try {
+      const result = await operation(this);
+      this.db.run('COMMIT;');
+      return result;
+    } catch (err) {
+      this.db.run('ROLLBACK;');
+      throw err;
+    }
   }
 
   close(): void {
@@ -76,7 +80,7 @@ export class SqliteDatabaseClient implements DatabaseClient {
  */
 let defaultInstance: SqliteDatabaseClient | null = null;
 
-export function getDatabase(dbPath?: string): SqliteDatabaseClient {
+export function getSqliteDatabase(dbPath?: string): SqliteDatabaseClient {
   if (!defaultInstance) {
     const targetPath = dbPath || path.join(process.cwd(), '.synapse/synapse.sqlite');
     defaultInstance = new SqliteDatabaseClient(targetPath);

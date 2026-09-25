@@ -1,7 +1,7 @@
 {
   "name": "synapsejs",
-  "version": "0.2.0",
-  "description": "Fullstack AI-Native & Machine-Centric Framework with Locality of Behavior, AST-Daemon, Zero-Wiring Bun Router and Embedded SQLite",
+  "version": "0.3.0",
+  "description": "Fullstack AI-Native & Machine-Centric OS with LoB, AST-Daemon, Zero-Wiring Bun Router, Multi-DB and Native MCP",
   "main": "src/core/index.ts",
   "type": "module",
   "bin": {
@@ -10,6 +10,9 @@
   "scripts": {
     "dev": "bun run bin/synapse.ts dev",
     "check": "bun run bin/synapse.ts check",
+    "check:fast": "bun run bin/synapse.ts check --fast",
+    "migrate": "bun run bin/synapse.ts migrate",
+    "mcp": "bun run bin/synapse.ts mcp",
     "skeleton": "bun run bin/synapse.ts skeleton",
     "test": "bun run bin/synapse.ts test",
     "test:e2e": "bun run scripts/e2e-server-test.ts",
@@ -20,6 +23,7 @@
   "dependencies": {
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
+    "postgres": "^3.4.9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },

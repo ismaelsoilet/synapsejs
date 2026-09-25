@@ -15,6 +15,17 @@ export const CustomerInputSchema = Type.Object({
 });
 export type CustomerInput = Static<typeof CustomerInputSchema>;
 
+// DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
+export const sliceSchema = `
+  CREATE TABLE IF NOT EXISTS customers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    tax_id TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`;
+
 // ============================================================================
 // 2. MODELAGEM ESTRITA DO DOMÍNIO (Result<T, E>)
 // ============================================================================

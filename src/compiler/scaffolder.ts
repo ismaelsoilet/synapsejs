@@ -34,7 +34,7 @@ import { Type, Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
 import type { DatabaseClient } from '@/core/database-client';
-import { Result, Ok, Err, MockDatabaseClient } from '@/core/index';
+import { Result, Ok, Err, MockDatabaseClient, type SessionContext } from '@/core/index';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA JIT (TypeBox)
@@ -45,6 +45,16 @@ export const ${inputSchemaName} = Type.Object({
   metadata: Type.Optional(Type.String())
 });
 export type ${inputTypeName} = Static<typeof ${inputSchemaName}>;
+
+// DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
+export const sliceSchema = \`
+  CREATE TABLE IF NOT EXISTS \${'${domain}'} (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+\`;
 
 // ============================================================================
 // 2. MODELAGEM ESTRITA DO DOMÍNIO (Result<T, E>)
@@ -59,7 +69,8 @@ export type ${outputTypeName} = Result<
 // ============================================================================
 export async function ${actionName}(
   payload: unknown,
-  db: DatabaseClient
+  db: DatabaseClient,
+  session?: SessionContext
 ): Promise<${outputTypeName}> {
   // Parsing JIT em memória
   if (!Value.Check(${inputSchemaName}, payload)) {

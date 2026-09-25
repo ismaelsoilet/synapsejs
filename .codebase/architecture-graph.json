@@ -10,6 +10,32 @@
     "hasPBT": false
   },
   {
+    "slicePath": "src/core/sqlite-client.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "getSqliteDatabase"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/core/postgres-client.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/core/database-factory.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "getDatabase",
+      "resetDatabaseInstance"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
     "slicePath": "src/core/machine-types.ts",
     "exportedTypes": [
       "Ok",
@@ -33,10 +59,17 @@
     "hasPBT": false
   },
   {
-    "slicePath": "src/core/sqlite-client.ts",
-    "exportedTypes": [],
+    "slicePath": "src/core/session-context.ts",
+    "exportedTypes": [
+      "SessionContext",
+      "AuthCheckResult"
+    ],
     "exportedFunctions": [
-      "getDatabase"
+      "AnonymousSession",
+      "createSession",
+      "hasRole",
+      "hasAnyRole",
+      "requireAuth"
     ],
     "hasUI": false,
     "hasPBT": false
@@ -53,6 +86,7 @@
     "exportedTypes": [
       "InvoiceInputSchema",
       "InvoiceInput",
+      "sliceSchema",
       "InvoiceOutput",
       "InvoiceTriggerProps"
     ],
@@ -68,6 +102,7 @@
     "exportedTypes": [
       "CustomerInputSchema",
       "CustomerInput",
+      "sliceSchema",
       "CustomerOutput",
       "CustomerTriggerProps"
     ],
@@ -83,6 +118,7 @@
     "exportedTypes": [
       "CreateProductInputSchema",
       "CreateProductInput",
+      "sliceSchema",
       "CreateProductOutput",
       "CreateProductTriggerProps"
     ],

@@ -1,12 +1,14 @@
 #!/usr/bin/env bun
 /**
- * SynapseJS - Machine-Centric Agent CLI
+ * SynapseJS - Machine-Centric Agent CLI v0.3.0
  * 
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  * 
  * Subcommands:
- *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router
- *   synapse check      - Run typechecker and emit structured JSON diagnostics
+ *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router & Auto-Migrations
+ *   synapse check      - Run typechecker (supports --fast for incremental <200ms cache)
+ *   synapse migrate    - Run declarative slice schema migrations on active DB
+ *   synapse mcp        - Start native Model Context Protocol (MCP) server over stdio
  *   synapse skeleton   - Update AST skeleton map (.codebase/repo-map.d.ts)
  *   synapse split      - Perform isomorphic AST splitting of slices
  *   synapse test       - Run all property-based testing (PBT) oracles
@@ -17,10 +19,13 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { runMachineVerifications } from '../scripts/agent-diagnostic-json';
+import { getFastDiagnostics } from '../src/compiler/fast-diagnostics';
 import { compressRepositoryAST } from '../scripts/ast-daemon-compressor';
 import { splitSlice } from '../src/compiler/slice-splitter';
 import { scaffoldSlice } from '../src/compiler/scaffolder';
+import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { SynapseServer } from '../src/runtime/server';
+import { SynapseMcpServer } from '../src/mcp/server';
 
 const command = process.argv[2] || 'check';
 const root = process.cwd();
@@ -31,15 +36,34 @@ async function main() {
       const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
       const server = new SynapseServer(root, port);
       await server.discoverSlices();
-      server.start();
+      await server.start();
       break;
     }
 
     case 'check': {
-      const targetFile = process.argv[3];
-      const report = runMachineVerifications(root, targetFile);
+      const arg1 = process.argv[3];
+      const isFast = arg1 === '--fast' || process.argv.includes('--fast');
+      const targetFile = isFast ? process.argv[4] : arg1;
+
+      const report = isFast
+        ? getFastDiagnostics(root, targetFile)
+        : runMachineVerifications(root, targetFile);
+
       process.stdout.write(JSON.stringify(report, null, 2) + '\n');
       process.exit(report.status === 'PASS' ? 0 : 1);
+      break;
+    }
+
+    case 'migrate': {
+      const report = await runSliceMigrations(root);
+      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      process.exit(report.status === 'PASS' ? 0 : 1);
+      break;
+    }
+
+    case 'mcp': {
+      const mcpServer = new SynapseMcpServer(root);
+      mcpServer.start();
       break;
     }
 
@@ -218,22 +242,24 @@ async function main() {
         JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '0.2.0',
-            paradigm: 'Fullstack AI-Native Machine-Centric',
+            version: '0.3.0',
+            paradigm: 'Fullstack AI-Native Machine-Centric OS',
             runtime: 'Bun (WebKit/JavaScriptCore) + Bun.serve',
-            database: 'SQLite via bun:sqlite (embedded)',
-            compiler: 'TypeScript Compiler API + AST Daemon',
+            database: 'Multi-Engine (Embedded SQLite + PostgreSQL)',
+            compiler: 'TypeScript Compiler API + AST Daemon + Incremental Cache',
+            protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
             principles: [
               'Locality of Behavior (LoB)',
               'Vertical Slices (N = 1)',
-              'Zero-Wiring Routing via AST',
+              'Zero-Wiring Routing & Auto-Migrations via AST',
+              'Explicit SessionContext & RBAC',
               'Result<T, E> Zero-Throw Control Flow',
               'TypeBox JIT Schemas',
               'Fast-Check Property Based Testing',
               'AST Skeletonizer (<3000 tokens)',
-              'Machine-Readable JSON Diagnostics'
+              'Machine-Readable JSON Diagnostics (<200ms)'
             ],
-            commands: ['dev', 'check', 'skeleton', 'split', 'test', 'new-slice', 'info']
+            commands: ['dev', 'check', 'migrate', 'mcp', 'skeleton', 'split', 'test', 'new-slice', 'info']
           },
           null,
           2
@@ -245,7 +271,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: dev, check, skeleton, split, test, new-slice, info\n`
+        `Unknown command: ${command}\nAvailable: dev, check, migrate, mcp, skeleton, split, test, new-slice, info\n`
       );
       process.exit(1);
     }

@@ -1,5 +1,5 @@
 /**
- * SynapseJS - Live E2E HTTP & Database Integration Test
+ * SynapseJS v0.3.0 - Live E2E HTTP, SSR, RPC, Auth & Database Integration Test Suite
  */
 
 import { SynapseServer } from '../src/runtime/server';
@@ -11,7 +11,7 @@ async function runE2ETests() {
   console.log('🚀 [E2E] Inicializando SynapseServer na porta', TEST_PORT);
   const serverInstance = new SynapseServer(process.cwd(), TEST_PORT);
   await serverInstance.discoverSlices();
-  const server = serverInstance.start();
+  const server = await serverInstance.start();
 
   try {
     // 1. Health check
@@ -19,37 +19,61 @@ async function runE2ETests() {
     const healthRes = await fetch(`${BASE_URL}/_synapse/api/health`);
     const healthData = await healthRes.json();
     console.log('   Health response:', healthData);
-    if (healthData.status !== 'OK' || healthData.slicesLoaded < 2) {
-      throw new Error('Falha no health check');
+    if (healthData.status !== 'OK' || healthData.slicesLoaded < 3) {
+      throw new Error(`Falha no health check: esperado >=3 fatias, obteve ${healthData.slicesLoaded}`);
     }
 
-    // 2. Hub Dashboard
-    console.log('🧪 [2] Testando GET / (Dashboard Hub)...');
+    // 2. Repo-map endpoint
+    console.log('🧪 [2] Testando GET /_synapse/api/repo-map...');
+    const repoMapRes = await fetch(`${BASE_URL}/_synapse/api/repo-map`);
+    if (repoMapRes.status === 200) {
+      const repoMapText = await repoMapRes.text();
+      console.log(`   Repo-map OK (${repoMapText.length} bytes)`);
+    } else {
+      console.log('   Repo-map status:', repoMapRes.status, '(não gerado ainda ou ausente)');
+    }
+
+    // 3. Hub Dashboard
+    console.log('🧪 [3] Testando GET / (Dashboard Hub)...');
     const hubRes = await fetch(`${BASE_URL}/`);
     const hubHtml = await hubRes.text();
     if (!hubHtml.includes('Hub de Fatias Verticais')) {
-      throw new Error('Falha ao renderizar Dashboard');
+      throw new Error('Falha ao renderizar Dashboard Hub');
     }
-    console.log('   Dashboard OK (status 200)');
+    console.log('   Dashboard Hub OK (status 200)');
 
-    // 3. UI Route for create-customer
-    console.log('🧪 [3] Testando GET /customers/create-customer (SSR HTML)...');
+    // 4. SSR UI Routes
+    console.log('🧪 [4] Testando SSR UI de Fatias...');
     const customerUiRes = await fetch(`${BASE_URL}/customers/create-customer`);
     const customerUiHtml = await customerUiRes.text();
     if (!customerUiHtml.includes('Cadastro de Cliente')) {
       throw new Error('Falha no SSR de create-customer');
     }
-    console.log('   SSR UI OK (status 200)');
+    console.log('   SSR create-customer OK (status 200)');
 
-    // 4. RPC Action: Create Customer
-    console.log('🧪 [4] Testando POST /_synapse/rpc/create-customer...');
-    const email = `test-${Date.now()}@dominio.com`;
+    const productUiRes = await fetch(`${BASE_URL}/products/create-product`);
+    const productUiHtml = await productUiRes.text();
+    if (!productUiHtml.includes('create-product')) {
+      throw new Error('Falha no SSR de create-product');
+    }
+    console.log('   SSR create-product OK (status 200)');
+
+    const invoiceUiRes = await fetch(`${BASE_URL}/billing/generate-invoice`);
+    const invoiceUiHtml = await invoiceUiRes.text();
+    if (!invoiceUiHtml.includes('generate-invoice')) {
+      throw new Error('Falha no SSR de generate-invoice');
+    }
+    console.log('   SSR generate-invoice OK (status 200)');
+
+    // 5. RPC Action: Create Customer
+    console.log('🧪 [5] Testando POST /_synapse/rpc/create-customer...');
+    const email = `e2e-cust-${Date.now()}@dominio.com`;
     const taxId = `tax-${Date.now()}`;
     const createCustomerRes = await fetch(`${BASE_URL}/_synapse/rpc/create-customer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Cliente E2E Automatizado',
+        name: 'Cliente E2E v0.3.0',
         email,
         taxId
       })
@@ -61,8 +85,8 @@ async function runE2ETests() {
     }
     const customerId = customerResult.value.customerId;
 
-    // 5. RPC Action: Duplicate Email check
-    console.log('🧪 [5] Testando POST /_synapse/rpc/create-customer (Duplicidade)...');
+    // 6. RPC Action: Duplicate Email check
+    console.log('🧪 [6] Testando POST /_synapse/rpc/create-customer (Duplicidade)...');
     const dupCustomerRes = await fetch(`${BASE_URL}/_synapse/rpc/create-customer`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -73,39 +97,61 @@ async function runE2ETests() {
       })
     });
     const dupResult = await dupCustomerRes.json();
-    console.log('   Duplicate check result:', dupResult);
+    console.log('   Duplicate customer check result:', dupResult);
     if (dupResult.ok || dupResult.error !== 'DUPLICATE_EMAIL') {
       throw new Error('Falha ao rejeitar e-mail duplicado');
     }
 
-    // 6. RPC Action: Generate Invoice for this customer
-    console.log('🧪 [6] Testando POST /_synapse/rpc/generate-invoice...');
-    const idempToken = `idemp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-    const invoiceRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
+    // 7. RPC Action: Create Product
+    console.log('🧪 [7] Testando POST /_synapse/rpc/create-product...');
+    const productEmail = `prod-${Date.now()}@loja.com`;
+    const createProductRes = await fetch(`${BASE_URL}/_synapse/rpc/create-product`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        name: 'Plano Enterprise AI',
+        email: productEmail
+      })
+    });
+    const productResult = await createProductRes.json();
+    console.log('   Create product result:', productResult);
+    if (!productResult.ok || !productResult.value.id) {
+      throw new Error('Falha ao criar produto via RPC');
+    }
+
+    // 8. RPC Action: Generate Invoice with Session Context & Auth Headers
+    console.log('🧪 [8] Testando POST /_synapse/rpc/generate-invoice (com Auth Headers)...');
+    const idempToken = `idemp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const invoiceRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer syn_live_secret_jwt_token_42',
+        'x-user-id': 'usr_admin_e2e_01',
+        'x-user-roles': 'admin,billing'
+      },
+      body: JSON.stringify({
         customerId,
-        amountCents: 20000,
-        taxRate: 0.15,
+        amountCents: 50000,
+        taxRate: 0.10,
         idempotencyToken: idempToken
       })
     });
     const invoiceResult = await invoiceRes.json();
     console.log('   Invoice result:', invoiceResult);
-    if (!invoiceResult.ok || invoiceResult.value.totalWithTax !== 23000) {
-      throw new Error('Falha ao emitir fatura');
+    if (!invoiceResult.ok || invoiceResult.value.totalWithTax !== 55000) {
+      throw new Error(`Falha ao emitir fatura: esperado 55000, obteve ${JSON.stringify(invoiceResult)}`);
     }
 
-    // 7. RPC Action: Duplicate Idempotency on Invoice
-    console.log('🧪 [7] Testando POST /_synapse/rpc/generate-invoice (Idempotência)...');
+    // 9. RPC Action: Duplicate Idempotency on Invoice
+    console.log('🧪 [9] Testando POST /_synapse/rpc/generate-invoice (Idempotência)...');
     const dupInvoiceRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         customerId,
-        amountCents: 20000,
-        taxRate: 0.15,
+        amountCents: 50000,
+        taxRate: 0.10,
         idempotencyToken: idempToken
       })
     });
@@ -115,10 +161,28 @@ async function runE2ETests() {
       throw new Error('Falha ao rejeitar token de idempotência duplicado');
     }
 
-    console.log('\n🎉 [E2E SUCCESS] Todos os testes de integração HTTP, SSR, RPC e SQLite passaram com perfeição!');
+    // 10. RPC Action: Non-existent Customer validation
+    console.log('🧪 [10] Testando POST /_synapse/rpc/generate-invoice (Cliente Inexistente)...');
+    const missingCustRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        customerId: 'cust-inexistente-99999',
+        amountCents: 10000,
+        taxRate: 0.10,
+        idempotencyToken: `token-${Date.now()}`
+      })
+    });
+    const missingCustData = await missingCustRes.json();
+    console.log('   Missing customer result:', missingCustData);
+    if (missingCustData.ok || missingCustData.error !== 'CUSTOMER_NOT_FOUND') {
+      throw new Error('Falha ao rejeitar cliente inexistente');
+    }
+
+    console.log('\n🎉 [E2E SUCCESS] Todos os 10 testes de integração (SSR, RPC, Auth Headers, Idempotência e Multi-Slices) foram APROVADOS com 100% de sucesso!');
   } finally {
     server.stop();
-    console.log('🛑 [E2E] Servidor encerrado.');
+    console.log('🛑 [E2E] Servidor Bun encerrado.');
   }
 }
 
@@ -128,3 +192,4 @@ runE2ETests()
     console.error('❌ [E2E FAILED]:', err);
     process.exit(1);
   });
+

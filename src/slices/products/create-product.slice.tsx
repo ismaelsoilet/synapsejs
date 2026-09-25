@@ -15,6 +15,16 @@ export const CreateProductInputSchema = Type.Object({
 });
 export type CreateProductInput = Static<typeof CreateProductInputSchema>;
 
+// DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
+export const sliceSchema = `
+  CREATE TABLE IF NOT EXISTS products (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`;
+
 // ============================================================================
 // 2. MODELAGEM ESTRITA DO DOMÍNIO (Result<T, E>)
 // ============================================================================

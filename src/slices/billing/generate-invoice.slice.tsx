@@ -3,7 +3,7 @@ import { Type, Static } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
 import type { DatabaseClient } from '@/core/database-client';
-import { Result, Ok, Err, MockDatabaseClient } from '@/core/index';
+import { Result, Ok, Err, MockDatabaseClient, type SessionContext } from '@/core/index';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (Mapeamento Runtime -> Tipos Estáticos JIT)
@@ -15,6 +15,20 @@ export const InvoiceInputSchema = Type.Object({
   idempotencyToken: Type.String({ minLength: 12 })
 });
 export type InvoiceInput = Static<typeof InvoiceInputSchema>;
+
+// DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
+export const sliceSchema = `
+  CREATE TABLE IF NOT EXISTS invoices (
+    id TEXT PRIMARY KEY,
+    customer_id TEXT NOT NULL,
+    base_cents INTEGER NOT NULL,
+    tax_rate REAL NOT NULL,
+    total_cents INTEGER NOT NULL,
+    idempotency_key TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (customer_id) REFERENCES customers(id)
+  );
+`;
 
 // ============================================================================
 // 2. MODELAGEM ESTRITA DO DOMÍNIO (Erradicação do 'Throw Error')
@@ -29,7 +43,8 @@ export type InvoiceOutput = Result<
 // ============================================================================
 export async function createInvoiceAction(
   payload: unknown,
-  db: DatabaseClient
+  db: DatabaseClient,
+  session?: SessionContext
 ): Promise<InvoiceOutput> {
   // Parsing JIT ultrarrápido via TypeBox Value.Check
   if (!Value.Check(InvoiceInputSchema, payload)) {

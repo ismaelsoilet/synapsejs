@@ -12,7 +12,8 @@ import * as path from 'path';
 import * as fs from 'fs';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { getDatabase, type DatabaseClient } from '../core/index';
+import { getDatabase, type DatabaseClient, AnonymousSession, createSession, type SessionContext } from '../core/index';
+import { runSliceMigrations } from '../compiler/migration-runner';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -20,7 +21,7 @@ export interface DiscoveredSlice {
   routePath: string;
   rpcPath: string;
   filePath: string;
-  actionFn?: (payload: unknown, db: DatabaseClient) => Promise<any>;
+  actionFn?: (payload: unknown, db: DatabaseClient, session?: SessionContext) => Promise<any>;
   componentFn?: React.ComponentType<any>;
 }
 
@@ -314,7 +315,10 @@ export class SynapseServer {
   /**
    * Starts the Bun.serve HTTP server
    */
-  start() {
+  async start() {
+    // 0. Auto-run declarative slice migrations on startup
+    await runSliceMigrations(this.baseDir, this.db);
+
     const server = Bun.serve({
       port: this.port,
       fetch: async (req: Request) => {
@@ -344,6 +348,7 @@ export class SynapseServer {
           return Response.json({
             status: 'OK',
             framework: 'SynapseJS',
+            version: '0.3.0',
             uptime: process.uptime(),
             slicesLoaded: this.slices.size,
             slices: Array.from(this.slices.values()).map((s) => ({
@@ -373,7 +378,23 @@ export class SynapseServer {
 
           try {
             const body = await req.json();
-            const result = await slice.actionFn(body, this.db);
+
+            // Extract Auth Headers into SessionContext
+            const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
+            const userIdHeader = req.headers.get('x-user-id');
+            const rolesHeader = req.headers.get('x-user-roles');
+
+            let session = AnonymousSession();
+            if (authHeader?.startsWith('Bearer ') || userIdHeader) {
+              const token = authHeader?.replace('Bearer ', '');
+              session = createSession({
+                userId: userIdHeader || 'user-' + (token?.slice(0, 8) || 'authenticated'),
+                roles: rolesHeader ? rolesHeader.split(',').map((r) => r.trim()) : ['user'],
+                token
+              });
+            }
+
+            const result = await slice.actionFn(body, this.db, session);
             return Response.json(result, {
               status: result.ok ? 200 : 400
             });

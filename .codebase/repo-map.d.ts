@@ -1,6 +1,6 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
-// GENERATED AT: 2026-09-25T20:14:11.256Z
+// GENERATED AT: 2026-09-25T20:34:55.869Z
 
 // ============================================================================
 // MODULE: src/core/database-client.ts
@@ -27,6 +27,21 @@ export interface DatabaseClient {
   transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T>;
 }
 
+
+// ============================================================================
+// MODULE: src/core/sqlite-client.ts
+// ============================================================================
+export declare function getSqliteDatabase(dbPath: string): SqliteDatabaseClient;
+
+// ============================================================================
+// MODULE: src/core/postgres-client.ts
+// ============================================================================
+
+// ============================================================================
+// MODULE: src/core/database-factory.ts
+// ============================================================================
+export declare function getDatabase(connectionUri: string): DatabaseClient;
+export declare function resetDatabaseInstance(): void;
 
 // ============================================================================
 // MODULE: src/core/machine-types.ts
@@ -59,9 +74,30 @@ export declare function Some(value: T): Option<T>;
 export declare function None(): Option<T>;
 
 // ============================================================================
-// MODULE: src/core/sqlite-client.ts
+// MODULE: src/core/session-context.ts
 // ============================================================================
-export declare function getDatabase(dbPath: string): SqliteDatabaseClient;
+export interface SessionContext {
+  readonly userId?: string;
+  readonly email?: string;
+  readonly roles: string[];
+  readonly isAuthenticated: boolean;
+  readonly token?: string;
+  readonly metadata?: Record<string, unknown>;
+}
+
+export declare function AnonymousSession(): SessionContext;
+export declare function createSession(data: {
+  userId: string;
+  email?: string;
+  roles?: string[];
+  token?: string;
+  metadata?: Record<string, unknown>;
+}): SessionContext;
+export declare function hasRole(session: SessionContext, role: string): boolean;
+export declare function hasAnyRole(session: SessionContext, roles: string[]): boolean;
+export type AuthCheckResult = Result<SessionContext, 'UNAUTHORIZED' | 'FORBIDDEN'>;
+
+export declare function requireAuth(session: SessionContext, requiredRoles: string[]): AuthCheckResult;
 
 // ============================================================================
 // MODULE: src/core/index.ts
@@ -73,12 +109,13 @@ export declare function getDatabase(dbPath: string): SqliteDatabaseClient;
 export declare const InvoiceInputSchema: any;
 export type InvoiceInput = Static<typeof InvoiceInputSchema>;
 
+export declare const sliceSchema: any;
 export type InvoiceOutput = Result<
   { invoiceId: string; totalWithTax: number; status: 'GENERATED' },
   'INVALID_SCHEMA' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND'
 >;
 
-export declare function createInvoiceAction(payload: unknown, db: DatabaseClient): Promise<InvoiceOutput>;
+export declare function createInvoiceAction(payload: unknown, db: DatabaseClient, session: SessionContext): Promise<InvoiceOutput>;
 export interface InvoiceTriggerProps {
   customerId: string;
   onSubmitAction?: (payload: unknown) => Promise<InvoiceOutput>;
@@ -92,6 +129,7 @@ export declare function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTr
 export declare const CustomerInputSchema: any;
 export type CustomerInput = Static<typeof CustomerInputSchema>;
 
+export declare const sliceSchema: any;
 export type CustomerOutput = Result<
   { customerId: string; name: string; email: string; taxId: string; status: 'ACTIVE' },
   'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
@@ -110,6 +148,7 @@ export declare function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps
 export declare const CreateProductInputSchema: any;
 export type CreateProductInput = Static<typeof CreateProductInputSchema>;
 
+export declare const sliceSchema: any;
 export type CreateProductOutput = Result<
   { id: string; name: string; email: string; createdAt: string },
   'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
