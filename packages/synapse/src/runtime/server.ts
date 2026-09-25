@@ -14,6 +14,7 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { getDatabase, type DatabaseClient, AnonymousSession, createSession, type SessionContext } from '../core/index';
 import { runSliceMigrations } from '../compiler/migration-runner';
+import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -29,6 +30,7 @@ export class SynapseServer {
   private slices: Map<string, DiscoveredSlice> = new Map();
   private baseDir: string;
   private db: DatabaseClient;
+  private discoveryError: { code: string; message: string; candidates: string[] } | null = null;
   public port: number;
 
   constructor(baseDir: string = process.cwd(), port: number = 3000) {
@@ -41,22 +43,22 @@ export class SynapseServer {
    * Discovers and registers all slices from src/slices
    */
   async discoverSlices(): Promise<number> {
-    const slicesDir = path.join(this.baseDir, 'src/slices');
-    if (!fs.existsSync(slicesDir)) return 0;
+    const resolution = resolveSlicesDir(this.baseDir);
 
-    const findSliceFiles = (dir: string): string[] => {
-      let results: string[] = [];
-      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-        const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory()) {
-          results.push(...findSliceFiles(fullPath));
-        } else if (entry.name.endsWith('.slice.tsx')) {
-          results.push(fullPath);
-        }
-      }
-      return results;
-    };
+    if (!resolution.ok) {
+      this.discoveryError = {
+        code: resolution.error.code,
+        message: resolution.error.message,
+        candidates: resolution.error.candidates
+      };
+      console.error(`[SynapseServer] ${resolution.error.code}: ${resolution.error.message}`);
+      console.error(`[SynapseServer] Candidatos examinados: ${resolution.error.candidates.join(', ')}`);
+      this.slices.clear();
+      return 0;
+    }
 
+    this.discoveryError = null;
+    const slicesDir = resolution.value.slicesDir;
     const files = findSliceFiles(slicesDir);
     this.slices.clear();
 
@@ -190,9 +192,22 @@ export class SynapseServer {
           }
 
           try {
+            // Credenciais do browser são repassadas por cookie para as Server Actions
+            // que exigem SessionContext (ex.: definir synapse_token e synapse_roles).
+            const readCookie = (name) => {
+              const entry = document.cookie.split('; ').find((c) => c.startsWith(name + '='));
+              return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null;
+            };
+
+            const rpcHeaders = { 'Content-Type': 'application/json' };
+            const token = readCookie('synapse_token');
+            const roles = readCookie('synapse_roles');
+            if (token) rpcHeaders['Authorization'] = 'Bearer ' + token;
+            if (roles) rpcHeaders['x-user-roles'] = roles;
+
             const res = await fetch('/_synapse/rpc/${sliceName}', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: rpcHeaders,
               body: JSON.stringify(payload)
             });
             const data = await res.json();
@@ -351,6 +366,7 @@ export class SynapseServer {
             version: '0.3.0',
             uptime: process.uptime(),
             slicesLoaded: this.slices.size,
+            slicesResolutionError: this.discoveryError,
             slices: Array.from(this.slices.values()).map((s) => ({
               domain: s.domain,
               name: s.name,

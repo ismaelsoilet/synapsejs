@@ -7,6 +7,8 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
+import { Ok, Err, type Result } from '../core/machine-types';
+import { resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
 
 export function toPascalCase(str: string): string {
   return str
@@ -68,17 +70,23 @@ export const sliceSchema = \`
 // ============================================================================
 export type ${outputTypeName} = Result<
   { id: string; name: string; email: string; createdAt: string },
-  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
 >;
 
 // ============================================================================
 // 3. EXECUÇÃO DE SERVIDOR PURA (Server Action)
+// O banco é opcional para que o mesmo ponto de chamada valha no servidor
+// (que injeta a conexão) e no cliente (onde a chamada vira stub RPC).
 // ============================================================================
 export async function ${actionName}(
   payload: unknown,
-  db: DatabaseClient,
+  db?: DatabaseClient,
   session?: SessionContext
 ): Promise<${outputTypeName}> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
   // Parsing JIT em memória
   if (!Value.Check(${inputSchemaName}, payload)) {
     return Err('INVALID_SCHEMA');
@@ -241,27 +249,85 @@ if (import.meta.main) {
 `;
 }
 
-export function scaffoldSlice(domain: string, sliceName: string, baseDir: string = process.cwd()): string {
-  const targetDir = path.join(baseDir, 'src/slices', domain);
+export type ScaffoldErrorCode = SlicesDirErrorCode | 'SLICE_EXISTS' | 'WRITE_FAILED';
+
+export interface ScaffoldError {
+  code: ScaffoldErrorCode;
+  message: string;
+  candidates: string[];
+}
+
+/**
+ * Resolves where a new slice should be written.
+ *
+ * A write target may legitimately not exist yet, so absence falls back to
+ * `<baseDir>/src/slices`. Ambiguity is always fatal — guessing the wrong app
+ * would scatter slices across the workspace.
+ */
+function resolveScaffoldTarget(baseDir: string): Result<string, ScaffoldError> {
+  const resolution = resolveSlicesDir(baseDir);
+
+  if (resolution.ok) {
+    return Ok(resolution.value.slicesDir);
+  }
+
+  if (resolution.error.code === 'AMBIGUOUS_SLICES_DIR') {
+    return Err({
+      code: resolution.error.code,
+      message: resolution.error.message,
+      candidates: resolution.error.candidates
+    });
+  }
+
+  return Ok(path.join(path.resolve(baseDir), 'src', 'slices'));
+}
+
+export function scaffoldSlice(
+  domain: string,
+  sliceName: string,
+  baseDir: string = process.cwd()
+): Result<string, ScaffoldError> {
+  const target = resolveScaffoldTarget(baseDir);
+
+  if (!target.ok) {
+    return target;
+  }
+
+  const targetDir = path.join(target.value, domain);
   const targetFile = path.join(targetDir, `${sliceName}.slice.tsx`);
 
   if (fs.existsSync(targetFile)) {
-    throw new Error(`A fatia '${targetFile}' já existe.`);
+    return Err({
+      code: 'SLICE_EXISTS',
+      message: `A fatia '${targetFile}' já existe.`,
+      candidates: [targetFile]
+    });
   }
 
-  if (!fs.existsSync(targetDir)) {
+  try {
     fs.mkdirSync(targetDir, { recursive: true });
+    fs.writeFileSync(targetFile, generateSliceTemplate(domain, sliceName), 'utf-8');
+  } catch (err) {
+    return Err({
+      code: 'WRITE_FAILED',
+      message: err instanceof Error ? err.message : String(err),
+      candidates: [targetFile]
+    });
   }
 
-  const content = generateSliceTemplate(domain, sliceName);
-  fs.writeFileSync(targetFile, content, 'utf-8');
-
-  return targetFile;
+  return Ok(targetFile);
 }
 
 if (import.meta.main) {
   const domain = process.argv[2] || 'core';
   const name = process.argv[3] || 'example-feature';
   const created = scaffoldSlice(domain, name);
-  console.log(`✅ [Scaffolder] Nova fatia gerada com sucesso: ${created}`);
+
+  if (created.ok) {
+    process.stdout.write(`✅ [Scaffolder] Nova fatia gerada com sucesso: ${created.value}\n`);
+    process.exit(0);
+  }
+
+  process.stderr.write(`❌ [Scaffolder] ${created.error.code}: ${created.error.message}\n`);
+  process.exit(1);
 }

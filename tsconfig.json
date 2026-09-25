@@ -9,6 +9,7 @@
     "noEmit": true,
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
+    "allowImportingTsExtensions": true,
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
@@ -23,12 +24,15 @@
   "include": [
     "packages/synapse/src/**/*",
     "packages/synapse/bin/**/*",
+    "packages/synapse/test/**/*",
     "examples/enterprise-crm/src/**/*",
     "examples/enterprise-crm/scripts/**/*",
-    "templates/starter/src/**/*"
+    "packages/synapse/templates/starter/src/**/*"
   ],
   "exclude": [
     "node_modules",
-    ".codebase"
+    ".codebase",
+    "**/.synapse/**",
+    "packages/synapse/test/fixtures/**"
   ]
 }

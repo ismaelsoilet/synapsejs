@@ -9,9 +9,9 @@ import * as readline from 'readline';
 import * as path from 'path';
 import * as fs from 'fs';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
-import { compressRepositoryAST } from '../compiler/ast-daemon-compressor';
 import { scaffoldSlice } from '../compiler/scaffolder';
 import { runSliceMigrations } from '../compiler/migration-runner';
+import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -138,27 +138,70 @@ export class SynapseMcpServer {
         try {
           if (toolName === 'synapse_get_repo_map') {
             const repoMapPath = path.join(this.root, '.codebase/repo-map.d.ts');
-            const graphPath = path.join(this.root, '.codebase/architecture-graph.json');
-            const stats = compressRepositoryAST(this.root, repoMapPath, graphPath);
+
+            if (!fs.existsSync(repoMapPath)) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          code: 'REPO_MAP_MISSING',
+                          message: `repo-map.d.ts não encontrado. Gere com 'synapse skeleton'.`,
+                          repoMapPath
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
             const content = fs.readFileSync(repoMapPath, 'utf-8');
-            contentText = JSON.stringify({ stats, repoMap: content }, null, 2);
+            contentText = JSON.stringify(
+              { status: 'PASS', repoMapPath: path.relative(this.root, repoMapPath), repoMap: content },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_check') {
             const report = runMachineVerifications(this.root, args.targetFile);
             contentText = JSON.stringify(report, null, 2);
           } else if (toolName === 'synapse_run_pbt') {
-            const slicesDir = path.join(this.root, 'src/slices');
-            const findSliceFiles = (dir: string): string[] => {
-              let results: string[] = [];
-              if (!fs.existsSync(dir)) return [];
-              for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-                const full = path.join(dir, entry.name);
-                if (entry.isDirectory()) results.push(...findSliceFiles(full));
-                else if (entry.name.endsWith('.slice.tsx')) results.push(full);
-              }
-              return results;
-            };
+            const resolution = resolveSlicesDir(this.root);
 
-            const files = findSliceFiles(slicesDir);
+            if (!resolution.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          code: resolution.error.code,
+                          message: resolution.error.message,
+                          candidates: resolution.error.candidates
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
+            const files = findSliceFiles(resolution.value.slicesDir);
             const results = [];
             for (const f of files) {
               const proc = Bun.spawn([process.execPath, 'run', f], { cwd: this.root, stdout: 'pipe', stderr: 'pipe' });
@@ -173,10 +216,52 @@ export class SynapseMcpServer {
                 output: (stdout + (stderr ? '\n' + stderr : '')).trim()
               });
             }
-            contentText = JSON.stringify({ status: results.every((r) => r.passed) ? 'PASS' : 'FAIL', results }, null, 2);
+
+            const allPassed = results.length > 0 && results.every((r) => r.passed);
+            contentText = JSON.stringify(
+              {
+                status: allPassed ? 'PASS' : 'FAIL',
+                totalSlices: results.length,
+                passedSlices: results.filter((r) => r.passed).length,
+                slicesDir: path.relative(this.root, resolution.value.slicesDir),
+                results
+              },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_scaffold_slice') {
             const created = scaffoldSlice(args.domain, args.name, this.root);
-            contentText = JSON.stringify({ status: 'PASS', createdPath: path.relative(this.root, created) }, null, 2);
+
+            if (!created.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          code: created.error.code,
+                          message: created.error.message,
+                          candidates: created.error.candidates
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
+            contentText = JSON.stringify(
+              { status: 'PASS', createdPath: path.relative(this.root, created.value) },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_migrate') {
             const report = await runSliceMigrations(this.root);
             contentText = JSON.stringify(report, null, 2);

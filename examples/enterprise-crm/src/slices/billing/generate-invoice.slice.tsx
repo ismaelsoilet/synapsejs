@@ -8,6 +8,8 @@ import {
   Ok, 
   Err, 
   MockDatabaseClient, 
+  createSession,
+  requireAuth,
   type SessionContext 
 } from 'synapsejs';
 
@@ -41,7 +43,7 @@ export const sliceSchema = `
 // ============================================================================
 export type InvoiceOutput = Result<
   { invoiceId: string; totalWithTax: number; status: 'GENERATED' },
-  'INVALID_SCHEMA' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND'
+  'INVALID_SCHEMA' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND'
 >;
 
 // ============================================================================
@@ -52,6 +54,12 @@ export async function createInvoiceAction(
   db: DatabaseClient,
   session?: SessionContext
 ): Promise<InvoiceOutput> {
+  // Autorização explícita: só quem tem o papel 'billing' emite fatura
+  const auth = requireAuth(session, ['billing']);
+  if (!auth.ok) {
+    return Err(auth.error);
+  }
+
   // Parsing JIT ultrarrápido via TypeBox Value.Check
   if (!Value.Check(InvoiceInputSchema, payload)) {
     return Err('INVALID_SCHEMA');
@@ -183,6 +191,8 @@ export function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerPro
 export const sliceTests = {
   description: 'Verificação PBT de invariantes lógicos para geração de faturação',
   run: async () => {
+    const session = createSession({ userId: 'pbt-oracle', roles: ['billing'] });
+
     // 1. Invariante: Valores inválidos ou negativos SEMPRE retornam INVALID_SCHEMA
     fc.assert(
       fc.asyncProperty(
@@ -197,7 +207,8 @@ export const sliceTests = {
               taxRate: invalidTax,
               idempotencyToken: 'key-123456789123'
             },
-            mockDb
+            mockDb,
+            session
           );
 
           return result.ok === false && result.error === 'INVALID_SCHEMA';
@@ -224,7 +235,8 @@ export const sliceTests = {
               taxRate,
               idempotencyToken: 'idemp-valid-key-123'
             },
-            mockDb
+            mockDb,
+            session
           );
 
           if (!result.ok) return false;
@@ -252,11 +264,43 @@ export const sliceTests = {
         taxRate: 0.15,
         idempotencyToken: 'idemp-valid-key-999'
       },
-      mockDbMissing
+      mockDbMissing,
+      session
     );
 
     if (missingResult.ok || missingResult.error !== 'CUSTOMER_NOT_FOUND') {
       throw new Error(`Invariante violada: esperava CUSTOMER_NOT_FOUND, obteve ${JSON.stringify(missingResult)}`);
+    }
+
+    // 4. Invariante: Sem sessão autorizada SEMPRE retorna UNAUTHORIZED
+    const anonymousResult = await createInvoiceAction(
+      {
+        customerId: 'cust-uuid-1234567890',
+        amountCents: 5000,
+        taxRate: 0.15,
+        idempotencyToken: 'idemp-valid-key-000'
+      },
+      new MockDatabaseClient()
+    );
+
+    if (anonymousResult.ok || anonymousResult.error !== 'UNAUTHORIZED') {
+      throw new Error(`Invariante violada: esperava UNAUTHORIZED sem sessão, obteve ${JSON.stringify(anonymousResult)}`);
+    }
+
+    // 5. Invariante: Sessão sem o papel exigido SEMPRE retorna FORBIDDEN
+    const forbiddenResult = await createInvoiceAction(
+      {
+        customerId: 'cust-uuid-1234567890',
+        amountCents: 5000,
+        taxRate: 0.15,
+        idempotencyToken: 'idemp-valid-key-001'
+      },
+      new MockDatabaseClient(),
+      createSession({ userId: 'pbt-readonly', roles: ['viewer'] })
+    );
+
+    if (forbiddenResult.ok || forbiddenResult.error !== 'FORBIDDEN') {
+      throw new Error(`Invariante violada: esperava FORBIDDEN, obteve ${JSON.stringify(forbiddenResult)}`);
     }
 
     return true;

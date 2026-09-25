@@ -39,9 +39,12 @@
   },
   "scripts": {
     "check": "bun run bin/synapse.ts check",
-    "check:fast": "bun run bin/synapse.ts check --fast",
     "mcp": "bun run bin/synapse.ts mcp",
-    "info": "bun run bin/synapse.ts info"
+    "info": "bun run bin/synapse.ts info",
+    "test": "bun test test"
+  },
+  "engines": {
+    "bun": ">=1.2.0"
   },
   "publishConfig": {
     "access": "public"

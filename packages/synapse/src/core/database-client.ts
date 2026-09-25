@@ -37,6 +37,9 @@ export class MockDatabaseClient implements DatabaseClient {
     handler: (params: unknown[]) => unknown[];
   }> = [];
 
+  /** Every statement the client was asked to execute, in order. */
+  readonly calls: Array<{ sql: string; params: unknown[] }> = [];
+
   constructor(initialData?: Record<string, Array<Record<string, unknown>>>) {
     if (initialData) {
       for (const [table, rows] of Object.entries(initialData)) {
@@ -51,6 +54,8 @@ export class MockDatabaseClient implements DatabaseClient {
   }
 
   async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
+    this.calls.push({ sql, params });
+
     for (const { match, handler } of this.queryHandlers) {
       const isMatch = typeof match === 'string' ? sql.includes(match) : match.test(sql);
       if (isMatch) {

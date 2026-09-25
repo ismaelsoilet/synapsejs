@@ -11,6 +11,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import type { DatabaseClient } from '../core/database-client';
 import { getDatabase } from '../core/index';
+import { findSliceFiles, resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
 
 export interface MigrationResult {
   slice: string;
@@ -25,6 +26,9 @@ export interface MigrationReport {
   appliedCount: number;
   skippedCount: number;
   migrations: MigrationResult[];
+  code?: SlicesDirErrorCode;
+  message?: string;
+  candidates?: string[];
 }
 
 function extractSliceSchema(sourceFile: ts.SourceFile): string | null {
@@ -63,7 +67,6 @@ export async function runSliceMigrations(
   customDb?: DatabaseClient
 ): Promise<MigrationReport> {
   const db = customDb || getDatabase();
-  const slicesDir = path.join(baseDir, 'src/slices');
 
   // Ensure migrations tracking table exists
   await db.query(`
@@ -74,27 +77,21 @@ export async function runSliceMigrations(
     );
   `);
 
-  if (!fs.existsSync(slicesDir)) {
+  const resolution = resolveSlicesDir(baseDir);
+  if (!resolution.ok) {
     return {
-      status: 'PASS',
+      status: 'FAIL',
       totalDiscovered: 0,
       appliedCount: 0,
       skippedCount: 0,
-      migrations: []
+      migrations: [],
+      code: resolution.error.code,
+      message: resolution.error.message,
+      candidates: resolution.error.candidates
     };
   }
 
-  const findSliceFiles = (dir: string): string[] => {
-    let results: string[] = [];
-    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) results.push(...findSliceFiles(full));
-      else if (entry.name.endsWith('.slice.tsx')) results.push(full);
-    }
-    return results;
-  };
-
-  const sliceFiles = findSliceFiles(slicesDir);
+  const sliceFiles = findSliceFiles(resolution.value.slicesDir);
   const migrations: MigrationResult[] = [];
   let appliedCount = 0;
   let skippedCount = 0;

@@ -1,117 +1,154 @@
 # SynapseJS ⚡
 
-> **The Machine-Centric AI-Native Fullstack Engine for Autonomous AI Coding Agents.**
+> Bun-only fullstack framework where **a feature is a single contiguous file** (`*.slice.tsx`):
+> input contract, database DDL, server action, React UI and test oracle together.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-v1.2+-black)](https://bun.sh)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.8-blue)](https://www.typescriptlang.org)
 
-SynapseJS is a fullstack web framework and agentic runtime designed from the ground up to minimize cognitive fragmentation and maximize compound success rates for autonomous LLM coding agents (Cursor, Claude Code, Windsurf, Antigravity).
+## Requirements
 
----
+- Bun **>= 1.2** — this package ships TypeScript source (`main: src/index.ts`), uses `bun:sqlite`,
+  `Bun.serve`, `Bun.CryptoHasher` and `Bun.spawn`. It does not run on Node.
 
-## ⚡ Key Paradigm Pillars
+```bash
+bun add synapsejs
+```
 
-1. **Vertical Slices & Locality of Behavior (LoB):** Input contracts (TypeBox), DDL database schemas (`sliceSchema`), server actions, React UI components, and property-based test oracles (Fast-Check) live in a single contiguous file ($N = 1$).
-2. **Zero-Throw Functional Flow:** Control flow via Algebraic Data Types: `Result<T, E>` (`Ok`, `Err`), avoiding untyped exceptions and hidden side-effects.
-3. **AST-Driven Auto-Migrations:** Discovers `sliceSchema` declarations across all slices and idempotently synchronizes the database on startup.
-4. **Universal Multi-Database Engine:** High-performance embedded SQLite (WAL mode) and pooled PostgreSQL (`DATABASE_URL`), seamlessly swappable.
-5. **Native Model Context Protocol (MCP):** Stdio JSON-RPC 2.0 server providing native tools for AI agents (`synapse_get_repo_map`, `synapse_check`, `synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`).
-6. **AST Skeletonizer (< 3,000 Tokens):** Compresses the entire repository into strict types and signatures (`.codebase/repo-map.d.ts`) to fit easily into model context windows.
-7. **Fast Incremental Diagnostics (< 200ms):** Structured JSON compiler diagnostics for instantaneous agent self-healing loops.
+## Status
 
----
+Features are listed with the command that fails when they break. Nothing is documented as stable
+without one — see the repository's `AGENTS.md` for the full contract.
 
-## 🚀 Quick Start
+**Stable:** vertical slices (N = 1) · `Result<T, E>` flows · TypeBox JIT contracts · declarative
+`sliceSchema` migrations · embedded SQLite (WAL, prepared-statement cache, CTE-safe) · explicit RBAC
+via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery that never
+reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton
+map · MCP stdio server with 5 tools.
 
-### 1. Create a New SynapseJS Project
+**Experimental:** per-slice PBT oracles (isolated processes judged by exit code) · PostgreSQL client
+(no CI coverage against a live instance).
+
+**Roadmap:** incremental diagnostics daemon (`check --fast` was removed — measured slower than the
+full check), production bundling via `Bun.build`, auth/login flow in the example.
+
+## Quick start
 
 ```bash
 bunx synapsejs new my-app
-cd my-app
-bun install
-```
-
-### 2. Start the Development Server
-
-```bash
+cd my-app && bun install
 bun run dev
-```
-
-Visit `http://localhost:3000` to access the interactive Vertical Slice Hub.
-
-### 3. Scaffold a New Vertical Slice
-
-```bash
 bun run new-slice users register-user
 ```
 
-This creates `src/slices/users/register-user.slice.tsx` containing input validation, declarative table schema, server action, React UI form, and Fast-Check PBT oracle.
+## A slice
 
-### 4. Run Property-Based Invariant Tests
+```tsx
+import { Type, Static, Value, Ok, Err, type Result, type DatabaseClient, createSession, requireAuth, type SessionContext } from 'synapsejs';
 
-```bash
-bun run test
+export const TicketInputSchema = Type.Object({
+  subject: Type.String({ minLength: 3 }),
+  priority: Type.Integer({ minimum: 1, maximum: 5 })
+});
+export type TicketInput = Static<typeof TicketInputSchema>;
+
+export const sliceSchema = `
+  CREATE TABLE IF NOT EXISTS tickets (
+    id TEXT PRIMARY KEY,
+    subject TEXT NOT NULL,
+    priority INTEGER NOT NULL
+  );
+`;
+
+export type TicketOutput = Result<
+  { ticketId: string },
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'UNAUTHORIZED' | 'FORBIDDEN'
+>;
+
+// `db` is optional so the same call site is valid on the server (connection injected)
+// and on the client (where the call becomes an RPC stub).
+export async function createTicketAction(
+  payload: unknown,
+  db?: DatabaseClient,
+  session?: SessionContext
+): Promise<TicketOutput> {
+  const auth = requireAuth(session, ['support']);
+  if (!auth.ok) return Err(auth.error);
+  if (!db) return Err('NO_DATABASE');
+  if (!Value.Check(TicketInputSchema, payload)) return Err('INVALID_SCHEMA');
+
+  const input = payload as TicketInput;
+  await db.query(`INSERT INTO tickets (id, subject, priority) VALUES ($1, $2, $3)`, [
+    crypto.randomUUID(), input.subject, input.priority
+  ]);
+  return Ok({ ticketId: 'ticket-1' });
+}
+
+export function CreateTicketTrigger() {
+  return <form>{/* UI lives in the same file */}</form>;
+}
 ```
 
-### 5. Start the Native MCP Server
+## MCP server
 
 ```bash
-bun run mcp
+bun run mcp     # JSON-RPC 2.0 over stdio
 ```
 
----
+Tools: `synapse_get_repo_map`, `synapse_check`, `synapse_run_pbt`, `synapse_scaffold_slice`,
+`synapse_migrate`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
+instead of reporting an empty success.
 
-## 📦 Package API Exports
+Client configuration for an agent host:
+
+```json
+{
+  "mcpServers": {
+    "synapsejs": { "command": "bunx", "args": ["synapse", "mcp"], "cwd": "/path/to/your-app" }
+  }
+}
+```
+
+## Client / server isolation
+
+`synapse split` partitions each slice into `shared.tsx`, `server.ts` and `client.tsx` by
+**reachability resolved through the type checker**, then enforces two gates: the emitted modules must
+typecheck under your tsconfig, and the client module must not contain SQL, `db.query`, `sliceSchema`,
+`process.env` or `Bun.`. A server action referenced by a component contributes only its wire
+signature (payload + return type) to the client — never its body.
+
+## Package API
 
 ```typescript
 import {
-  // Functional Error Handling
-  Result,
-  Ok,
-  Err,
-  unwrap,
-  unwrapOr,
-  map,
-  mapErr,
-  Option,
-  Some,
-  None,
+  // Functional error handling
+  Result, Ok, Err, isOk, isErr, map, mapErr, unwrapOr, Option, Some, None,
 
-  // Runtime & Database
-  SynapseServer,
-  getDatabase,
+  // Runtime & database
+  SynapseServer, getDatabase, resetDatabaseInstance,
+  SqliteDatabaseClient, PostgresDatabaseClient, MockDatabaseClient,
   type DatabaseClient,
-  MockDatabaseClient,
 
-  // Auth & Session
-  AnonymousSession,
-  createSession,
-  requireAuth,
-  hasRole,
-  type SessionContext,
+  // RPC boundary (used by generated client stubs)
+  rpcCall, rpcTransportFailure, type RpcTransportError,
 
-  // JIT Validation & PBT
-  Type,
-  type Static,
-  Value,
-  fc,
+  // Session & RBAC
+  AnonymousSession, createSession, requireAuth, hasRole, hasAnyRole, type SessionContext,
 
-  // Compiler & Diagnostics
-  splitSlice,
-  scaffoldSlice,
-  compressRepositoryAST,
-  getFastDiagnostics,
-  runMachineVerifications,
-  runSliceMigrations,
+  // JIT validation
+  Type, type Static, type TSchema, Value, fc,
 
-  // MCP Server
+  // Compiler & diagnostics
+  runSliceMigrations, runMachineVerifications,
+  resolveSlicesDir, findSliceFiles, SLICE_EXTENSION,
+  splitSlice, verifySplit, writeSplitArtifacts, artifactDirectory,
+  scaffoldSlice, compressRepositoryAST,
+
+  // MCP
   SynapseMcpServer
 } from 'synapsejs';
 ```
 
----
-
-## 📄 License
+## License
 
 MIT © [Ismael Soilet](https://github.com/ismaelsoilet)

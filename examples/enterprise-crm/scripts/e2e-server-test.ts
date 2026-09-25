@@ -7,6 +7,16 @@ import { SynapseServer } from 'synapsejs';
 const TEST_PORT = 3456;
 const BASE_URL = `http://localhost:${TEST_PORT}`;
 
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
+
+// Credenciais fixas do e2e (fixture local, não são segredo real)
+const BILLING_AUTH_HEADERS = {
+  ...JSON_HEADERS,
+  Authorization: 'Bearer syn_live_secret_jwt_token_42',
+  'x-user-id': 'usr_admin_e2e_01',
+  'x-user-roles': 'admin,billing'
+};
+
 async function runE2ETests() {
   console.log('🚀 [E2E] Inicializando SynapseServer na porta', TEST_PORT);
   const serverInstance = new SynapseServer(process.cwd(), TEST_PORT);
@@ -124,12 +134,7 @@ async function runE2ETests() {
     const idempToken = `idemp-${Date.now()}-${Math.random().toString(36).substring(7)}`;
     const invoiceRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer syn_live_secret_jwt_token_42',
-        'x-user-id': 'usr_admin_e2e_01',
-        'x-user-roles': 'admin,billing'
-      },
+      headers: BILLING_AUTH_HEADERS,
       body: JSON.stringify({
         customerId,
         amountCents: 50000,
@@ -147,7 +152,7 @@ async function runE2ETests() {
     console.log('🧪 [9] Testando POST /_synapse/rpc/generate-invoice (Idempotência)...');
     const dupInvoiceRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: BILLING_AUTH_HEADERS,
       body: JSON.stringify({
         customerId,
         amountCents: 50000,
@@ -165,7 +170,7 @@ async function runE2ETests() {
     console.log('🧪 [10] Testando POST /_synapse/rpc/generate-invoice (Cliente Inexistente)...');
     const missingCustRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: BILLING_AUTH_HEADERS,
       body: JSON.stringify({
         customerId: 'cust-inexistente-99999',
         amountCents: 10000,
@@ -179,7 +184,51 @@ async function runE2ETests() {
       throw new Error('Falha ao rejeitar cliente inexistente');
     }
 
-    console.log('\n🎉 [E2E SUCCESS] Todos os 10 testes de integração (SSR, RPC, Auth Headers, Idempotência e Multi-Slices) foram APROVADOS com 100% de sucesso!');
+    // 11. RBAC: sem credenciais a action recusa
+    console.log('🧪 [11] Testando POST /_synapse/rpc/generate-invoice (sem credenciais)...');
+    const anonymousRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
+      method: 'POST',
+      headers: JSON_HEADERS,
+      body: JSON.stringify({
+        customerId,
+        amountCents: 1000,
+        taxRate: 0.10,
+        idempotencyToken: `anon-${Date.now()}`
+      })
+    });
+    const anonymousData = await anonymousRes.json();
+    console.log('   Anonymous result:', anonymousData, 'HTTP', anonymousRes.status);
+    if (anonymousData.ok || anonymousData.error !== 'UNAUTHORIZED') {
+      throw new Error(`Falha no RBAC: esperava UNAUTHORIZED sem credenciais, obteve ${JSON.stringify(anonymousData)}`);
+    }
+    if (anonymousRes.status !== 400) {
+      throw new Error(`Falha no RBAC: esperava HTTP 400, obteve ${anonymousRes.status}`);
+    }
+
+    // 12. RBAC: sessão autenticada sem o papel exigido recebe FORBIDDEN
+    console.log('🧪 [12] Testando POST /_synapse/rpc/generate-invoice (papel insuficiente)...');
+    const forbiddenRes = await fetch(`${BASE_URL}/_synapse/rpc/generate-invoice`, {
+      method: 'POST',
+      headers: {
+        ...JSON_HEADERS,
+        Authorization: 'Bearer syn_live_secret_jwt_token_42',
+        'x-user-id': 'usr_viewer_e2e_02',
+        'x-user-roles': 'viewer'
+      },
+      body: JSON.stringify({
+        customerId,
+        amountCents: 1000,
+        taxRate: 0.10,
+        idempotencyToken: `viewer-${Date.now()}`
+      })
+    });
+    const forbiddenData = await forbiddenRes.json();
+    console.log('   Forbidden result:', forbiddenData);
+    if (forbiddenData.ok || forbiddenData.error !== 'FORBIDDEN') {
+      throw new Error(`Falha no RBAC: esperava FORBIDDEN para papel sem 'billing', obteve ${JSON.stringify(forbiddenData)}`);
+    }
+
+    console.log('\n🎉 [E2E SUCCESS] Todos os 12 testes de integração (SSR, RPC, RBAC, Idempotência e Multi-Slices) foram APROVADOS com 100% de sucesso!');
   } finally {
     server.stop();
     console.log('🛑 [E2E] Servidor Bun encerrado.');

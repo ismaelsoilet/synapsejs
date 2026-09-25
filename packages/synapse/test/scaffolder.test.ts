@@ -1,0 +1,101 @@
+import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { generateSliceTemplate, scaffoldSlice } from '../src/compiler/scaffolder';
+
+let sandbox: string;
+
+beforeEach(() => {
+  sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-scaffolder-'));
+});
+
+afterEach(() => {
+  fs.rmSync(sandbox, { recursive: true, force: true });
+});
+
+describe('generateSliceTemplate', () => {
+  const template = generateSliceTemplate('orders', 'process-checkout');
+
+  it('derives PascalCase and camelCase names', () => {
+    expect(template).toContain('export const ProcessCheckoutInputSchema');
+    expect(template).toContain('export async function processCheckoutAction');
+    expect(template).toContain('export function ProcessCheckoutTrigger');
+  });
+
+  it('imports from the published package entry, never from an internal alias', () => {
+    expect(template).toContain(`from 'synapsejs'`);
+    expect(template).not.toContain(`from '@/`);
+  });
+
+  it('declares the slice contract pieces in one file', () => {
+    expect(template).toContain('export const sliceSchema');
+    expect(template).toContain('export const sliceTests');
+    expect(template).toContain('Type.Object(');
+  });
+
+  it('accepts a session context so RBAC can be enforced', () => {
+    expect(template).toContain('session?: SessionContext');
+  });
+});
+
+describe('scaffoldSlice', () => {
+  it('creates the slice inside an existing app', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'welcome'), { recursive: true });
+    fs.writeFileSync(path.join(appDir, 'src', 'slices', 'welcome', 'hello.slice.tsx'), '// fixture\n');
+
+    const created = scaffoldSlice('orders', 'process-checkout', appDir);
+
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      const expected = path.join(appDir, 'src', 'slices', 'orders', 'process-checkout.slice.tsx');
+      expect(created.value).toBe(expected);
+      expect(fs.existsSync(expected)).toBe(true);
+      expect(fs.readFileSync(expected, 'utf-8')).toContain(`from 'synapsejs'`);
+    }
+  });
+
+  it('creates src/slices when the app has none yet', () => {
+    const appDir = path.join(sandbox, 'fresh');
+    fs.mkdirSync(appDir, { recursive: true });
+
+    const created = scaffoldSlice('billing', 'create-invoice', appDir);
+
+    expect(created.ok).toBe(true);
+    expect(fs.existsSync(path.join(appDir, 'src', 'slices', 'billing', 'create-invoice.slice.tsx'))).toBe(true);
+  });
+
+  it('refuses to overwrite an existing slice', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(appDir, { recursive: true });
+
+    scaffoldSlice('billing', 'create-invoice', appDir);
+    const again = scaffoldSlice('billing', 'create-invoice', appDir);
+
+    expect(again.ok).toBe(false);
+    if (!again.ok) {
+      expect(again.error.code).toBe('SLICE_EXISTS');
+    }
+  });
+
+  it('refuses to guess the target inside an ambiguous workspace', () => {
+    fs.writeFileSync(
+      path.join(sandbox, 'package.json'),
+      JSON.stringify({ name: 'root', private: true, workspaces: ['apps/*'] }),
+      'utf-8'
+    );
+    for (const app of ['crm', 'shop']) {
+      const dir = path.join(sandbox, 'apps', app, 'src', 'slices', 'core');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'seed.slice.tsx'), '// fixture\n');
+    }
+
+    const created = scaffoldSlice('orders', 'process-checkout', sandbox);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('AMBIGUOUS_SLICES_DIR');
+    }
+  });
+});

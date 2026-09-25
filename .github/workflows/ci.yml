@@ -22,17 +22,17 @@ jobs:
       - name: Install Dependencies
         run: bun install
 
-      - name: TypeScript Typecheck
-        run: bun run check
+      - name: Framework Test Suite
+        run: bun test packages/synapse/test
 
-      - name: Validate Fast Incremental Diagnostics
-        run: bun run check:fast
+      - name: TypeScript Typecheck (whole monorepo)
+        run: bun run check
 
       - name: Verify AST Skeleton Compression
         run: bun run skeleton
 
-      - name: Run Isomorphic Slice Splitter
+      - name: Split Slices And Enforce Both Gates
         run: bun run split
 
-      - name: Run Property-Based Testing (PBT) Oracles & E2E Integration
+      - name: Slice PBT Oracles + Live E2E
         run: bun run test:all

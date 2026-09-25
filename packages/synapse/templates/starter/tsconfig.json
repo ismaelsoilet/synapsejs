@@ -10,24 +10,8 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "baseUrl": ".",
-    "paths": {
-      "synapsejs": ["../../packages/synapse/src/index.ts"]
-    },
-    "typeRoots": [
-      "../../node_modules/@types"
-    ],
-    "types": [
-      "bun",
-      "node"
-    ]
+    "types": ["bun"]
   },
-  "include": [
-    "src/**/*"
-  ],
-  "exclude": [
-    "node_modules",
-    ".codebase",
-    ".synapse"
-  ]
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", ".codebase", ".synapse"]
 }

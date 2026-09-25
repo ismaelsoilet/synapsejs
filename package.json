@@ -12,22 +12,22 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "examples/*",
-    "templates/*"
+    "examples/*"
   ],
   "scripts": {
     "dev": "bun --cwd examples/enterprise-crm dev",
     "check": "bun run packages/synapse/bin/synapse.ts check",
-    "check:fast": "bun run packages/synapse/bin/synapse.ts check --fast",
+    "check:template": "bun --cwd packages/synapse/templates/starter check",
     "migrate": "bun --cwd examples/enterprise-crm migrate",
-    "mcp": "bun run packages/synapse/bin/synapse.ts mcp",
+    "mcp": "bun --cwd examples/enterprise-crm mcp",
     "skeleton": "bun --cwd examples/enterprise-crm skeleton",
-    "test": "bun --cwd examples/enterprise-crm test",
+    "test": "bun test packages/synapse/test",
+    "test:slices": "bun --cwd examples/enterprise-crm test",
     "test:e2e": "bun --cwd examples/enterprise-crm test:e2e",
+    "test:all": "bun test packages/synapse/test && bun --cwd examples/enterprise-crm test && bun --cwd examples/enterprise-crm test:e2e",
     "split": "bun --cwd examples/enterprise-crm split",
     "new-slice": "bun --cwd examples/enterprise-crm new-slice",
-    "build": "bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton",
-    "test:all": "bun --cwd examples/enterprise-crm test && bun --cwd templates/starter test && bun --cwd examples/enterprise-crm test:e2e",
+    "build": "bun test packages/synapse/test && bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton && bun --cwd examples/enterprise-crm split",
     "new": "bun run packages/synapse/bin/synapse.ts new",
     "cli": "bun run packages/synapse/bin/synapse.ts"
   },

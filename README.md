@@ -1,234 +1,157 @@
-# SynapseJS ⚡ (v0.3.0)
+# SynapseJS ⚡
 
-> **The Machine-Centric Fullstack Framework & Agentic OS designed from the ground up for Autonomous AI Coding Agents.**
+> Framework fullstack para **Bun**, construído em torno de um invariante: **uma feature é um único
+> arquivo contíguo.** Contrato de entrada, DDL, server action, UI React e oráculo de teste moram
+> juntos em `*.slice.tsx`, e o tooling em volta existe para manter esse invariante utilizável por
+> uma máquina.
 
----
-
-## 📖 Visão Geral e Paradigma
-
-Durante mais de meio século, os paradigmas de engenharia de software (Clean Code, MVC horizontal, DDD dogmático e DRY) foram concebidos para mitigar a limitação biológica da memória humana ($\text{Lei de Miller: } 7 \pm 2$ itens). 
-
-Para **Modelos de Linguagem de Grande Porte (LLMs)** e agentes autônomos, esses paradigmas geram **dívida arquitetural profunda**:
-* **Dispersão de Atenção:** Saltos entre 5 arquivos distintos para alterar uma única regra fragmentam o mecanismo de Self-Attention (*Lost in the Middle*).
-* **Decaimento Exponencial:** A probabilidade de acerto composto da IA cai drasticamente conforme o número de arquivos tocados ($N$) aumenta:
-  $$P(\text{sucesso}) = \left(\prod_{i=1}^N p_i\right) \cdot (1 - \epsilon_{\text{interf}})^{N - 1}$$
-* **A Armadilha do DRY:** Refatorações "limpas" em utilitários globais geram efeitos colaterais imprevistos (*blast radius*) que quebram domínios distantes.
-
-**SynapseJS inverte essa lógica.** É um framework otimizado matematicamente para o menor atrito cognitivo da máquina:
-1. **Vertical Slices com Locality of Behavior (LoB):** Contrato de validação JIT, schema DDL declarativo, lógica de banco, componente React, injeção de segurança e testes oráculo residem no mesmo arquivo contíguo ($N = 1$).
-2. **Erradicação do `throw Error`:** Fluxo de controle puramente funcional com Tipos Algébricos e Uniões Discriminadas `Result<T, E>`.
-3. **SessionContext & RBAC Explícito:** Eliminação de variáveis de ambiente e reflexão oculta. Injeção determinística de sessão `(session?: SessionContext)` diretamente nas Server Actions com helpers funcionais (`requireAuth`, `hasRole`).
-4. **Validação JIT via TypeBox:** Validações ultra-rápidas em tempo de execução sem inflar a memória do TypeScript Language Server.
-5. **Auto-Migração Declarativa via AST:** O compilador extrai `export const sliceSchema` de cada fatia e orquestra a aplicação idempotente com rastreamento via tabela `_synapse_migrations`.
-6. **Multi-Database Universal Engine:** Conector agnóstico com suporte nativo a SQLite embutido de altíssimo desempenho (modo WAL) e PostgreSQL em pool (`postgres.js`), ativado dinamicamente via `DATABASE_URL`.
-7. **Fast-Check PBT (Property-Based Testing):** Oráculos matemáticos auto-contidos que testam centenas de casos limites e invariantes de negócio automaticamente.
-8. **AST Daemon & Skeletonizer:** Daemon nativo baseado no TypeScript Compiler API que comprime a arquitetura inteira em assinaturas exportadas (`.codebase/repo-map.d.ts`), garantindo $< 3.000$ tokens no contexto da IA.
-9. **Fast Incremental Diagnostics (<200ms):** Diagnósticos baseados em `ts.createIncrementalProgram` com cache em `.synapse/.tsbuildinfo` retornando coordenadas JSON exatas `(file, line, col, code, message)` para auto-cura sem travamento.
-10. **Native Model Context Protocol (MCP) Server:** Servidor JSON-RPC 2.0 stdio expondo 5 ferramentas nativas para IDEs e agentes autônomos (`synapse_get_repo_map`, `synapse_check`, `synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`).
-11. **Isomorphic Slice Splitter:** Compilador AST que particiona a fatia em bundles de servidor e cliente, garantindo que queries SQL e credenciais nunca vazem para o browser.
+~3k LOC de framework, um app de referência, um template. Não é uma plataforma — e não é um
+"Agentic OS": essa alegação (e a fórmula matemática que a acompanhava) foi removida na 0.4.0,
+junto com todas as features prometidas que não funcionavam.
 
 ---
 
-## 📂 Topologia do Repositório (v0.3.0 Monorepo)
+## Status — toda claim tem um teste
+
+Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra como **stable** sem um.
+
+### Stable
+
+| Feature | Evidência |
+|---|---|
+| Fatias verticais (N = 1) com Locality of Behavior | `examples/enterprise-crm`, `packages/synapse/templates/starter` |
+| Controle de fluxo `Result<T, E>` sem helper público que lança | `bun test packages/synapse/test/machine-types.test.ts` |
+| Contratos de entrada JIT com TypeBox | `bun test packages/synapse/test/slice-contract.test.ts` |
+| Migrações declarativas de `sliceSchema` (AST, hash, idempotente) | `bun test packages/synapse/test/migration-runner.test.ts` |
+| SQLite embutido (WAL, cache de statement, leitura segura de CTE) | `bun test packages/synapse/test/sqlite-client.test.ts` |
+| RBAC explícito via `requireAuth(session, roles)` | `bun test packages/synapse/test/slice-contract.test.ts` + `bun run test:e2e` |
+| Roteamento zero-wiring, shell SSR e dispatcher RPC | `bun run test:e2e` |
+| Descoberta de fatias que nunca retorna PASS com zero fatias | `bun test packages/synapse/test/slice-discovery.test.ts` |
+| Splitter isomórfico (shared/server/client) com dois gates | `bun test packages/synapse/test/slice-splitter.test.ts` |
+| Skeletonizer para `.codebase/repo-map.d.ts` (tipado, sem `any`) | `bun test packages/synapse/test/repo-map.test.ts` |
+| Servidor MCP stdio (5 ferramentas) | `bun test packages/synapse/test/mcp-server.test.ts` |
+
+### Experimental
+
+| Feature | O que falta |
+|---|---|
+| Oráculos PBT por fatia | Executados como processos isolados julgados por exit code; não é um runner completo |
+| Cliente PostgreSQL | Sem cobertura de CI contra uma instância PostgreSQL real |
+
+### Roadmap
+
+| Feature | Nota |
+|---|---|
+| Daemon de diagnósticos incrementais | `check --fast` foi **removido** na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s), porque o cache `.tsbuildinfo` nunca era lido de volta entre processos |
+| Bundling de produção | `split` emite módulos; alimentar `Bun.build` com dois targets não está implementado |
+| Fluxo de login no exemplo | O RBAC é aplicado, mas as credenciais vêm de headers ou cookies |
+
+---
+
+## Topologia
 
 ```text
-/home/ismaelsoilet/synapsejs/
-├── packages/
-│   └── synapse/                        # Pacote oficial publicado (synapsejs)
-│       ├── bin/synapse.ts              # Agent-CLI nativo v0.3.0
-│       ├── src/
-│       │   ├── core/                   # Kernel: Result<T,E>, SessionContext, Multi-DB
-│       │   ├── compiler/               # Fast-Diagnostics, AST Splitter, Scaffolder, Migrator
-│       │   ├── runtime/                # Bun.serve, Zero-Wiring Router, SSR HTML Shell
-│       │   ├── mcp/                    # Servidor nativo Model Context Protocol (stdio)
-│       │   └── index.ts                # Entrypoint canônico do SDK
-│       ├── templates/starter/          # Template oficial embutido para 'synapse new'
-│       ├── package.json
-│       └── README.md
-├── templates/
-│   └── starter/                        # Template independente para novos projetos
-│       ├── src/slices/welcome/
-│       │   └── hello-world.slice.tsx   # Fatia inaugural de boas-vindas
-│       └── package.json
-├── examples/
-│   └── enterprise-crm/                 # Suíte de referência de produção
-│       ├── .codebase/
-│       │   ├── repo-map.d.ts           # Skeleton map (< 3.000 tokens)
-│       │   └── architecture-graph.json # Grafo de fatias
-│       ├── src/slices/                 # Fatias Verticais Atômicas (N = 1)
-│       │   ├── billing/generate-invoice.slice.tsx
-│       │   ├── customers/create-customer.slice.tsx
-│       │   └── products/create-product.slice.tsx
-│       ├── scripts/
-│       │   └── e2e-server-test.ts      # 10 testes de integração E2E ao vivo
-│       └── package.json
-├── bin/synapse.ts                      # CLI proxy na raiz
-├── .github/workflows/ci.yml            # CI automatizado no GitHub Actions
-├── package.json                        # Workspaces monorepo
-├── tsconfig.json
-├── LICENSE
-└── README.md
+packages/synapse/
+  src/core/          Result/Option, DatabaseClient, SQLite, Postgres, sessão, cliente RPC
+  src/compiler/      slice-discovery, migration-runner, scaffolder, splitter, repo-map, diagnostics
+  src/runtime/       roteador Bun.serve + shell SSR + dispatcher RPC
+  src/mcp/           servidor MCP stdio (5 ferramentas)
+  bin/synapse.ts     a CLI
+  templates/starter/ o template que `synapse new` copia
+  test/              suíte bun:test + fixtures dos gates do splitter
+examples/enterprise-crm/   app de referência: 3 fatias + suíte e2e ao vivo (12 checagens)
+.synapse/                  gerado (gitignored): banco sqlite, artefatos do split
+.codebase/                 repo map gerado (commitado por app)
+AGENTS.md                  contrato completo para agentes autônomos
 ```
 
----
+## Começando
 
-## ⚡ Anatomia Canônica de uma Fatia (`.slice.tsx`)
+```bash
+bunx synapsejs new my-app
+cd my-app
+bun install
+bun run dev            # http://localhost:3000
+bun run new-slice users register-user
+bun run test
+bun run mcp            # servidor MCP via stdio
+```
 
-Toda a funcionalidade de ponta a ponta reside num único arquivo contíguo:
+## Anatomia de uma fatia
+
+Tudo de uma feature, num arquivo:
 
 ```tsx
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
-import { Value } from '@sinclair/typebox/value';
-import * as fc from 'fast-check';
-import { 
-  type DatabaseClient, 
-  Result, 
-  Ok, 
-  Err, 
-  type SessionContext, 
-  requireAuth 
-} from 'synapsejs';
+import { Type, Static, Value, Ok, Err, type Result, type DatabaseClient } from 'synapsejs';
 
-// 1. CONTRATO DE ENTRADA JIT
-export const InvoiceInputSchema = Type.Object({
-  customerId: Type.String({ minLength: 10 }),
-  amountCents: Type.Integer({ minimum: 1 }),
-  taxRate: Type.Number({ minimum: 0, maximum: 0.3 }),
-  idempotencyToken: Type.String({ minLength: 12 })
+export const TicketInputSchema = Type.Object({
+  subject: Type.String({ minLength: 3 }),
+  priority: Type.Integer({ minimum: 1, maximum: 5 })
 });
-export type InvoiceInput = Static<typeof InvoiceInputSchema>;
+export type TicketInput = Static<typeof TicketInputSchema>;
 
-// DDL DECLARATIVO DA FATIA (Auto-migrado via AST)
 export const sliceSchema = `
-  CREATE TABLE IF NOT EXISTS invoices (
+  CREATE TABLE IF NOT EXISTS tickets (
     id TEXT PRIMARY KEY,
-    customer_id TEXT NOT NULL,
-    base_cents INTEGER NOT NULL,
-    tax_rate REAL NOT NULL,
-    total_cents INTEGER NOT NULL,
-    idempotency_key TEXT UNIQUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    subject TEXT NOT NULL,
+    priority INTEGER NOT NULL
   );
 `;
 
-// 2. MODELAGEM ESTRITA DE DOMÍNIO
-export type InvoiceOutput = Result<
-  { invoiceId: string; totalWithTax: number; status: 'GENERATED' },
-  'INVALID_SCHEMA' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND' | 'UNAUTHORIZED'
->;
+export type TicketOutput = Result<{ ticketId: string }, 'INVALID_SCHEMA' | 'NO_DATABASE'>;
 
-// 3. EXECUÇÃO DE SERVIDOR PURA COM INJEÇÃO DE SESSÃO (SERVER ACTION)
-export async function createInvoiceAction(
+// `db` é opcional para que o mesmo ponto de chamada valha no servidor (que injeta
+// a conexão) e no cliente (onde a chamada vira stub RPC).
+export async function createTicketAction(
   payload: unknown,
-  db: DatabaseClient,
-  session?: SessionContext
-): Promise<InvoiceOutput> {
-  // Injeção de Segurança sem reflexão oculta
-  // const auth = requireAuth(session, ['billing']);
-  // if (!auth.ok) return Err('UNAUTHORIZED');
+  db?: DatabaseClient
+): Promise<TicketOutput> {
+  if (!db) return Err('NO_DATABASE');
+  if (!Value.Check(TicketInputSchema, payload)) return Err('INVALID_SCHEMA');
 
-  if (!Value.Check(InvoiceInputSchema, payload)) return Err('INVALID_SCHEMA');
-  const input = payload as InvoiceInput;
-  const total = input.amountCents + Math.round(input.amountCents * input.taxRate);
-
-  const existCheck = await db.query(`SELECT id FROM invoices WHERE idempotency_key = $1`, [input.idempotencyToken]);
-  if (existCheck.length > 0) return Err('DUPLICATE_IDEMPOTENCY');
-
-  const customerCheck = await db.query(`SELECT id FROM customers WHERE id = $1`, [input.customerId]);
-  if (customerCheck.length === 0) return Err('CUSTOMER_NOT_FOUND');
-
-  const result = await db.query<{ id: string }>(
-    `INSERT INTO invoices (id, customer_id, base_cents, tax_rate, total_cents, idempotency_key) 
-     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
-    [crypto.randomUUID(), input.customerId, input.amountCents, input.taxRate, total, input.idempotencyToken]
-  );
-
-  return Ok({ invoiceId: result[0]?.id ?? 'inv-generated', totalWithTax: total, status: 'GENERATED' });
+  const input = payload as TicketInput;
+  await db.query(`INSERT INTO tickets (id, subject, priority) VALUES ($1, $2, $3)`, [
+    crypto.randomUUID(),
+    input.subject,
+    input.priority
+  ]);
+  return Ok({ ticketId: 'ticket-1' });
 }
 
-// 4. COMPONENTE UI REACT
-export function InvoiceTrigger({ customerId, onSubmitAction }: { customerId: string; onSubmitAction?: Function }) {
-  return <form onSubmit={...}>...</form>;
+export function CreateTicketTrigger() {
+  return <form>{/* a UI mora aqui também */}</form>;
 }
 
-// 5. ORÁCULO DE AUTO-VERIFICAÇÃO PBT
 export const sliceTests = {
-  description: 'Verificação PBT de invariantes',
+  description: 'Invariantes de bilhetes',
   run: async () => {
-    fc.assert(fc.asyncProperty(...));
+    /* asserções em JS puro — executadas por `synapse test` */
   }
 };
 ```
 
----
+## Isolamento Client / Server
 
-## 🤖 Comandos do Agent-CLI
+`synapse split` particiona cada fatia por **alcançabilidade resolvida pelo type checker** em
+`shared.tsx`, `server.ts` e `client.tsx`, e então roda dois gates:
 
-Desenvolvidos com saídas JSON para integração determinística com agentes de IA:
+1. **Compilação** — os três módulos são typechecked com o tsconfig do seu projeto.
+2. **Sem vazamento** — o módulo cliente não pode conter SQL, `db.query`, `sliceSchema`,
+   `process.env` nem `Bun.`.
 
-```bash
-# 1. Iniciar servidor HTTP Zero-Wiring com auto-migração, SSR e Hub
-bun run dev
+Gate vermelho é build vermelho, com coordenadas — não é aviso. Descoberta de fatias, migrações e
+splitter se recusam a reportar sucesso quando nada foi verificado.
 
-# 2. Executar migrações declarativas (sliceSchema) no banco ativo
-bun run migrate
+## Medido
 
-# 3. Iniciar Servidor Nativo Model Context Protocol (MCP) para IA via stdio
-bun run mcp
+| Medição | Valor |
+|---|---|
+| `bun run check` (monorepo inteiro, 3 workspaces) | ~1.8s |
+| `bun run check --fast` | removido — 2.5s (mais lento) |
+| Repo map do app de exemplo | ~930 tokens (orçamento 3000) |
+| Suíte do framework | 79 testes, 10 arquivos |
+| Suíte e2e | 12 checagens (SSR, RPC, RBAC, idempotência) |
 
-# 4. Checagem incremental de tipos ultra-rápida com cache (<200ms)
-bun run check:fast
+## Licença
 
-# 5. Checagem sintática e semântica padrão
-bun run check
-
-# 6. Esqueletização do repositório para injeção de contexto (< 3.000 tokens)
-bun run skeleton
-
-# 7. Execução dos testes oráculo PBT em tempo real
-bun run test
-
-# 8. Suíte de integração E2E ao vivo (HTTP, SSR, RPC, Auth, SQLite)
-bun run test:e2e
-
-# 9. Particionamento seguro em bundles Client e Server
-bun run split
-
-# 10. Gerar nova fatia atômica padronizada
-bun run new-slice <domain> <name>
-# Exemplo: bun run new-slice orders process-checkout
-
-# 11. Metadados e inspeção do framework
-bun run cli info
-```
-
----
-
-## 🔌 Ferramentas Nativas do Servidor MCP
-
-O comando `bun run mcp` expõe via JSON-RPC 2.0 (`stdio`):
-
-| Ferramenta | Descrição |
-| :--- | :--- |
-| `synapse_get_repo_map` | Obtém o esqueleto comprimido do repositório (`< 3.000` tokens) para contexto imediato da IA. |
-| `synapse_check` | Executa diagnóstico do compilador retornando coordenadas exatas JSON `(file, line, col, message)`. |
-| `synapse_run_pbt` | Dispara a suíte de Property-Based Testing (Fast-Check) em todas as fatias. |
-| `synapse_scaffold_slice` | Cria nova fatia vertical com validação JIT, schema, ação, UI e testes PBT. |
-| `synapse_migrate` | Descobre via AST e aplica as definições `sliceSchema` no banco configurado. |
-
----
-
-## 🛡️ Isolamento Client / Server
-
-Quando `synapse split` é executado:
-* `.synapse/dist/server/:slice.server.ts`: Contém as queries de banco de dados, chaves e lógica sensível.
-* `.synapse/dist/client/:slice.client.tsx`: Contém apenas o JSX visual e uma chamada transparente `fetch('/_synapse/rpc/:name')`.
-* Nenhuma credencial ou query de banco atinge o navegador.
-
----
-
-## 🚀 Licença
-
-MIT License. Projetado para acelerar o desenvolvimento autônomo por agentes de IA.
-
+MIT © Ismael Soilet

@@ -2,10 +2,12 @@
   "name": "starter-app",
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "bun": ">=1.2.0"
+  },
   "scripts": {
     "dev": "synapse dev",
     "check": "synapse check",
-    "check:fast": "synapse check --fast",
     "migrate": "synapse migrate",
     "mcp": "synapse mcp",
     "skeleton": "synapse skeleton",

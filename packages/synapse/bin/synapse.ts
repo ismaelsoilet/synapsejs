@@ -6,11 +6,11 @@
  * 
  * Subcommands:
  *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router & Auto-Migrations
- *   synapse check      - Run typechecker (supports --fast for incremental <200ms cache)
+ *   synapse check      - Run the TypeScript typechecker and print JSON diagnostics
  *   synapse migrate    - Run declarative slice schema migrations on active DB
  *   synapse mcp        - Start native Model Context Protocol (MCP) server over stdio
  *   synapse skeleton   - Update AST skeleton map (.codebase/repo-map.d.ts)
- *   synapse split      - Perform isomorphic AST splitting of slices
+ *   synapse split      - Partition slices into shared/server/client modules (gated)
  *   synapse test       - Run all property-based testing (PBT) oracles
  *   synapse new-slice  - Scaffold a new atomic vertical slice
  *   synapse info       - Machine metadata and framework metrics
@@ -19,11 +19,16 @@
 import * as path from 'path';
 import * as fs from 'fs';
 import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
-import { getFastDiagnostics } from '../src/compiler/fast-diagnostics';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
-import { splitSlice } from '../src/compiler/slice-splitter';
+import {
+  artifactDirectory,
+  splitSlice,
+  verifySplit,
+  writeSplitArtifacts
+} from '../src/compiler/slice-splitter';
 import { scaffoldSlice } from '../src/compiler/scaffolder';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
+import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { SynapseServer } from '../src/runtime/server';
 import { SynapseMcpServer } from '../src/mcp/server';
 
@@ -42,12 +47,23 @@ async function main() {
 
     case 'check': {
       const arg1 = process.argv[3];
-      const isFast = arg1 === '--fast' || process.argv.includes('--fast');
-      const targetFile = isFast ? process.argv[4] : arg1;
 
-      const report = isFast
-        ? getFastDiagnostics(root, targetFile)
-        : runMachineVerifications(root, targetFile);
+      if (arg1 && arg1.startsWith('--')) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'FAIL',
+              code: 'UNKNOWN_FLAG',
+              message: `Flag desconhecida: ${arg1}. Uso: synapse check [arquivo]`
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(1);
+      }
+
+      const report = runMachineVerifications(root, arg1);
 
       process.stdout.write(JSON.stringify(report, null, 2) + '\n');
       process.exit(report.status === 'PASS' ? 0 : 1);
@@ -91,53 +107,77 @@ async function main() {
     }
 
     case 'split': {
-      const slicesDir = path.join(root, 'src/slices');
-      const distDir = path.join(root, '.synapse/dist');
+      const resolution = resolveSlicesDir(root);
 
-      const findSlices = (dir: string): string[] => {
-        let files: string[] = [];
-        for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
-          const full = path.join(dir, item.name);
-          if (item.isDirectory()) files.push(...findSlices(full));
-          else if (item.name.endsWith('.slice.tsx')) files.push(full);
-        }
-        return files;
-      };
+      if (!resolution.ok) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'FAIL',
+              operation: 'SLICE_SPLIT',
+              code: resolution.error.code,
+              message: resolution.error.message,
+              candidates: resolution.error.candidates
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(1);
+      }
 
-      const sliceFiles = findSlices(slicesDir);
-      const splitOutputs = [];
+      const sliceFiles = findSliceFiles(resolution.value.slicesDir);
+      const slices = [];
+      let failed = false;
 
       for (const file of sliceFiles) {
         const split = splitSlice(file, root);
-        const serverOut = path.join(distDir, 'server', `${split.sliceName}.server.ts`);
-        const clientOut = path.join(distDir, 'client', `${split.sliceName}.client.tsx`);
 
-        fs.mkdirSync(path.dirname(serverOut), { recursive: true });
-        fs.mkdirSync(path.dirname(clientOut), { recursive: true });
+        if (!split.ok) {
+          failed = true;
+          slices.push({
+            slice: path.basename(file, '.slice.tsx'),
+            status: 'FAIL',
+            code: split.error.code,
+            message: split.error.message
+          });
+          continue;
+        }
 
-        fs.writeFileSync(serverOut, split.serverCode, 'utf-8');
-        fs.writeFileSync(clientOut, split.clientCode, 'utf-8');
+        const outDir = artifactDirectory(root, split.value.sliceName);
+        const written = writeSplitArtifacts(split.value, outDir);
+        const verification = verifySplit(split.value, outDir);
 
-        splitOutputs.push({
-          slice: split.sliceName,
-          serverPath: path.relative(root, serverOut),
-          clientPath: path.relative(root, clientOut)
+        if (verification.status === 'FAIL') {
+          failed = true;
+        }
+
+        slices.push({
+          slice: split.value.sliceName,
+          status: verification.status,
+          outDir: path.relative(root, outDir),
+          artifacts: written.map((target) => path.relative(root, target)),
+          diagnostics: verification.diagnostics,
+          leaks: verification.leaks
         });
       }
+
+      const splitStatus = failed || slices.length === 0 ? 'FAIL' : 'PASS';
 
       process.stdout.write(
         JSON.stringify(
           {
-            status: 'PASS',
+            status: splitStatus,
             operation: 'SLICE_SPLIT',
-            totalProcessed: splitOutputs.length,
-            slices: splitOutputs
+            slicesDir: path.relative(root, resolution.value.slicesDir),
+            totalProcessed: slices.length,
+            slices
           },
           null,
           2
         ) + '\n'
       );
-      process.exit(0);
+      process.exit(splitStatus === 'PASS' ? 0 : 1);
       break;
     }
 
@@ -155,51 +195,64 @@ async function main() {
         process.exit(1);
       }
 
-      try {
-        const createdPath = scaffoldSlice(domain, name, root);
-        process.stdout.write(
+      const created = scaffoldSlice(domain, name, root);
+
+      if (!created.ok) {
+        process.stderr.write(
           JSON.stringify(
             {
-              status: 'PASS',
+              status: 'ERROR',
               operation: 'SCAFFOLD_SLICE',
-              domain,
-              name,
-              createdPath: path.relative(root, createdPath)
+              code: created.error.code,
+              message: created.error.message,
+              candidates: created.error.candidates
             },
             null,
             2
           ) + '\n'
         );
-        process.exit(0);
-      } catch (err: any) {
-        process.stderr.write(
-          JSON.stringify({
-            status: 'ERROR',
-            operation: 'SCAFFOLD_SLICE',
-            message: err.message
-          }) + '\n'
-        );
         process.exit(1);
       }
+
+      process.stdout.write(
+        JSON.stringify(
+          {
+            status: 'PASS',
+            operation: 'SCAFFOLD_SLICE',
+            domain,
+            name,
+            createdPath: path.relative(root, created.value)
+          },
+          null,
+          2
+        ) + '\n'
+      );
+      process.exit(0);
       break;
     }
 
     case 'test': {
-      const slicesDir = path.join(root, 'src/slices');
-      const findSliceFiles = (dir: string): string[] => {
-        let results: string[] = [];
-        if (!fs.existsSync(dir)) return [];
-        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-          const fullPath = path.join(dir, entry.name);
-          if (entry.isDirectory()) results.push(...findSliceFiles(fullPath));
-          else if (entry.name.endsWith('.slice.tsx')) results.push(fullPath);
-        }
-        return results;
-      };
+      const resolution = resolveSlicesDir(root);
 
-      const sliceFiles = findSliceFiles(slicesDir);
+      if (!resolution.ok) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'FAIL',
+              operation: 'PBT_ORACLE_TEST_SUITE',
+              code: resolution.error.code,
+              message: resolution.error.message,
+              candidates: resolution.error.candidates
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(1);
+      }
+
+      const sliceFiles = findSliceFiles(resolution.value.slicesDir);
       const testResults = [];
-      let allPassed = true;
 
       for (const slicePath of sliceFiles) {
         const proc = Bun.spawn([process.execPath, 'run', slicePath], {
@@ -213,8 +266,6 @@ async function main() {
           proc.exited
         ]);
 
-        if (exitCode !== 0) allPassed = false;
-
         testResults.push({
           slice: path.basename(slicePath, '.slice.tsx'),
           path: path.relative(root, slicePath),
@@ -223,11 +274,14 @@ async function main() {
         });
       }
 
+      const allPassed = testResults.length > 0 && testResults.every((r) => r.passed);
+
       process.stdout.write(
         JSON.stringify(
           {
             status: allPassed ? 'PASS' : 'FAIL',
             operation: 'PBT_ORACLE_TEST_SUITE',
+            slicesDir: path.relative(root, resolution.value.slicesDir),
             totalSlices: testResults.length,
             passedSlices: testResults.filter((r) => r.passed).length,
             results: testResults
@@ -334,21 +388,75 @@ async function main() {
           {
             framework: 'SynapseJS',
             version: '0.3.0',
-            paradigm: 'Fullstack AI-Native Machine-Centric OS',
-            runtime: 'Bun (WebKit/JavaScriptCore) + Bun.serve',
-            database: 'Multi-Engine (Embedded SQLite + PostgreSQL)',
-            compiler: 'TypeScript Compiler API + AST Daemon + Incremental Cache',
+            runtime: 'Bun + Bun.serve',
+            database: 'Embedded SQLite (WAL); PostgreSQL client present but experimental',
             protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
-            principles: [
-              'Locality of Behavior (LoB)',
-              'Vertical Slices (N = 1)',
-              'Zero-Wiring Routing & Auto-Migrations via AST',
-              'Explicit SessionContext & RBAC',
-              'Result<T, E> Zero-Throw Control Flow',
-              'TypeBox JIT Schemas',
-              'Fast-Check Property Based Testing',
-              'AST Skeletonizer (<3000 tokens)',
-              'Machine-Readable JSON Diagnostics (<200ms)'
+            features: [
+              {
+                feature: 'Vertical slices (N = 1) with Locality of Behavior',
+                status: 'stable',
+                evidence: 'examples/enterprise-crm, templates/starter'
+              },
+              {
+                feature: 'Result<T, E> control flow (no public throwing helper)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/machine-types.test.ts'
+              },
+              {
+                feature: 'TypeBox JIT input contracts',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/slice-contract.test.ts'
+              },
+              {
+                feature: 'Declarative sliceSchema migrations via AST (hash + idempotent)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/migration-runner.test.ts'
+              },
+              {
+                feature: 'Embedded SQLite engine (WAL, prepared-statement cache)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/sqlite-client.test.ts'
+              },
+              {
+                feature: 'Zero-wiring routing, SSR shell and RPC dispatcher',
+                status: 'stable',
+                evidence: 'bun --cwd examples/enterprise-crm test:e2e'
+              },
+              {
+                feature: 'Slice discovery resolution (never reports PASS with zero slices)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/slice-discovery.test.ts'
+              },
+              {
+                feature: 'MCP stdio server (5 tools)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/mcp-server.test.ts'
+              },
+              {
+                feature: 'AST skeletonizer to .codebase/repo-map.d.ts',
+                status: 'stable',
+                evidence: 'bun --cwd examples/enterprise-crm skeleton'
+              },
+              {
+                feature: 'Isomorphic slice splitter (shared/server/client modules)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/slice-splitter.test.ts'
+              },
+              {
+                feature: 'Fast-Check PBT oracles per slice',
+                status: 'experimental',
+                evidence: 'bun --cwd examples/enterprise-crm test'
+              },
+              {
+                feature: 'Incremental diagnostics cache across processes',
+                status: 'roadmap',
+                evidence: 'removido na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s)'
+              },
+              {
+                feature: 'PostgreSQL parity',
+                status: 'experimental',
+                evidence: 'no CI coverage against a live PostgreSQL instance'
+              }
             ],
             commands: ['new', 'dev', 'check', 'migrate', 'mcp', 'skeleton', 'split', 'test', 'new-slice', 'info']
           },

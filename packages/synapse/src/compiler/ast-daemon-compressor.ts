@@ -10,6 +10,25 @@ import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
 
+/**
+ * Resolves the runtime contract behind a TypeBox schema declaration.
+ *
+ * TypeBox carries the inferred shape on the `static` phantom property, which is
+ * exactly what `Static<typeof Schema>` exposes — the contract the agent needs.
+ */
+function describeSchemaType(checker: ts.TypeChecker, name: ts.Node): string {
+  const type = checker.getTypeAtLocation(name);
+  const staticProperty = type.getProperty('static');
+
+  if (staticProperty) {
+    const staticType = checker.getTypeOfSymbolAtLocation(staticProperty, name);
+    const printable = checker.typeToString(staticType, name, ts.TypeFormatFlags.NoTruncation);
+    return printable.length > 400 ? checker.typeToString(staticType, name) : printable;
+  }
+
+  return checker.typeToString(type, name);
+}
+
 interface SliceMetadata {
   slicePath: string;
   exportedTypes: string[];
@@ -67,12 +86,12 @@ export function compressRepositoryAST(baseDir: string, outputFile: string, graph
         sliceMeta.exportedTypes.push(node.name.text);
       }
 
-      // 2. Exported Schemas (TypeBox Type.Object definitions)
+      // 2. Exported Schemas & constants, resolved to their real inferred types
       if (isExported && ts.isVariableStatement(node)) {
         for (const decl of node.declarationList.declarations) {
           const varName = decl.name.getText(src);
           if (varName.endsWith('Schema')) {
-            manifest += `export declare const ${varName}: any;\n`;
+            manifest += `export declare const ${varName}: ${describeSchemaType(typeChecker, decl.name)};\n`;
             sliceMeta.exportedTypes.push(varName);
           }
           if (varName === 'sliceTests') {

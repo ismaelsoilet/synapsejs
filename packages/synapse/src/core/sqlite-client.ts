@@ -1,17 +1,33 @@
 /**
  * SynapseJS - Native SQLite Database Driver (bun:sqlite)
- * 
- * Provides zero-configuration, blazingly fast embedded persistence
- * implementing the core DatabaseClient contract.
+ *
+ * Provides zero-configuration embedded persistence implementing the core
+ * DatabaseClient contract, with an explicit prepared-statement cache and
+ * correct read/write classification (including CTEs and RETURNING clauses).
  */
 
-import { Database } from 'bun:sqlite';
+import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
 import * as path from 'path';
 import * as fs from 'fs';
 import type { DatabaseClient } from './database-client';
 
+const READ_KEYWORDS = new Set(['SELECT', 'WITH', 'EXPLAIN', 'PRAGMA', 'VALUES']);
+
+/**
+ * First SQL keyword, ignoring leading whitespace and comments.
+ */
+function firstKeyword(sql: string): string {
+  const withoutComments = sql
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .replace(/--[^\n]*/g, ' ');
+
+  const match = withoutComments.trim().match(/^[A-Za-z]+/);
+  return match ? match[0].toUpperCase() : '';
+}
+
 export class SqliteDatabaseClient implements DatabaseClient {
   private db: Database;
+  private statements: Map<string, Statement<unknown, SQLQueryBindings[]>> = new Map();
 
   constructor(filePath?: string) {
     if (filePath && filePath !== ':memory:') {
@@ -24,14 +40,30 @@ export class SqliteDatabaseClient implements DatabaseClient {
       this.db = new Database(':memory:');
     }
 
-    // Enable WAL mode for high concurrency & performance
     this.db.run('PRAGMA journal_mode = WAL;');
     this.db.run('PRAGMA foreign_keys = ON;');
   }
 
-  /**
-   * Helper to initialize schema tables if they don't exist.
-   */
+  private getStatement(sql: string): Statement<unknown, SQLQueryBindings[]> {
+    const cached = this.statements.get(sql);
+    if (cached) {
+      return cached;
+    }
+
+    const statement = this.db.query<unknown, SQLQueryBindings[]>(sql);
+    this.statements.set(sql, statement);
+    return statement;
+  }
+
+  private isReadQuery(sql: string): boolean {
+    if (READ_KEYWORDS.has(firstKeyword(sql))) {
+      return true;
+    }
+
+    // INSERT/UPDATE/DELETE ... RETURNING must surface the returned rows
+    return /\bRETURNING\b/i.test(sql);
+  }
+
   initSchema(ddl: string): this {
     this.db.run(ddl);
     return this;
@@ -40,17 +72,15 @@ export class SqliteDatabaseClient implements DatabaseClient {
   async query<T = unknown>(sql: string, params: unknown[] = []): Promise<T[]> {
     // Normalise Postgres $1, $2, $3 parameter notation to SQLite ?1, ?2, ?3 notation
     const sqliteSql = sql.replace(/\$(\d+)/g, '?$1');
-    
-    // Check if query is a mutation with RETURNING or just a SELECT
-    const trimmed = sqliteSql.trim().toUpperCase();
-    if (trimmed.startsWith('SELECT') || trimmed.includes('RETURNING')) {
-      const stmt = this.db.query<T, any>(sqliteSql);
-      return stmt.all(...(params as any[])) as T[];
-    } else {
-      const stmt = this.db.prepare(sqliteSql);
-      stmt.run(...(params as any[]));
-      return [] as T[];
+    const statement = this.getStatement(sqliteSql);
+    const bindings = params as SQLQueryBindings[];
+
+    if (this.isReadQuery(sqliteSql)) {
+      return statement.all(...bindings) as T[];
     }
+
+    statement.run(...bindings);
+    return [] as T[];
   }
 
   async queryOne<T = unknown>(sql: string, params: unknown[] = []): Promise<T | null> {
@@ -71,19 +101,7 @@ export class SqliteDatabaseClient implements DatabaseClient {
   }
 
   close(): void {
+    this.statements.clear();
     this.db.close();
   }
-}
-
-/**
- * Default shared database provider for SynapseJS.
- */
-let defaultInstance: SqliteDatabaseClient | null = null;
-
-export function getSqliteDatabase(dbPath?: string): SqliteDatabaseClient {
-  if (!defaultInstance) {
-    const targetPath = dbPath || path.join(process.cwd(), '.synapse/synapse.sqlite');
-    defaultInstance = new SqliteDatabaseClient(targetPath);
-  }
-  return defaultInstance;
 }

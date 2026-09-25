@@ -43,13 +43,6 @@ export function isErr<T, E>(result: Result<T, E>): result is Err<E> {
   return result.ok === false;
 }
 
-export function unwrap<T, E>(result: Result<T, E>): T {
-  if (result.ok) {
-    return result.value;
-  }
-  throw new Error(`Unwrap called on Err: ${JSON.stringify(result.error)}`);
-}
-
 export function unwrapOr<T, E>(result: Result<T, E>, fallback: T): T {
   return result.ok ? result.value : fallback;
 }
