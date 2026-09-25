@@ -5,6 +5,15 @@
  * Forces both LLMs and compilers to explicitly map success and failure
  * execution paths via discriminated unions.
  */
+import { FormatRegistry } from '@sinclair/typebox';
+
+// Register standard formats out-of-the-box for AI agents
+if (!FormatRegistry.Has('email')) {
+  FormatRegistry.Set('email', (val) => typeof val === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val));
+}
+if (!FormatRegistry.Has('uuid')) {
+  FormatRegistry.Set('uuid', (val) => typeof val === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(val));
+}
 
 export type Ok<T> = {
   readonly ok: true;

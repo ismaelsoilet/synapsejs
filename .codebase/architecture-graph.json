@@ -33,6 +33,15 @@
     "hasPBT": false
   },
   {
+    "slicePath": "src/core/sqlite-client.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "getDatabase"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
     "slicePath": "src/core/index.ts",
     "exportedTypes": [],
     "exportedFunctions": [],
@@ -50,6 +59,36 @@
     "exportedFunctions": [
       "createInvoiceAction",
       "InvoiceTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/customers/create-customer.slice.tsx",
+    "exportedTypes": [
+      "CustomerInputSchema",
+      "CustomerInput",
+      "CustomerOutput",
+      "CustomerTriggerProps"
+    ],
+    "exportedFunctions": [
+      "createCustomerAction",
+      "CustomerTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/products/create-product.slice.tsx",
+    "exportedTypes": [
+      "CreateProductInputSchema",
+      "CreateProductInput",
+      "CreateProductOutput",
+      "CreateProductTriggerProps"
+    ],
+    "exportedFunctions": [
+      "createProductAction",
+      "CreateProductTrigger"
     ],
     "hasUI": true,
     "hasPBT": true

@@ -57,14 +57,15 @@ export async function createInvoiceAction(
   }
 
   // Persistência Atômica
+  const invoiceId = crypto.randomUUID();
   const result = await db.query<{ id: string }>(
-    `INSERT INTO invoices (customer_id, base_cents, tax_rate, total_cents, idempotency_key) 
-     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [input.customerId, input.amountCents, input.taxRate, total, input.idempotencyToken]
+    `INSERT INTO invoices (id, customer_id, base_cents, tax_rate, total_cents, idempotency_key) 
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [invoiceId, input.customerId, input.amountCents, input.taxRate, total, input.idempotencyToken]
   );
 
   return Ok({
-    invoiceId: result[0]?.id ?? 'inv-generated',
+    invoiceId: result[0]?.id ?? invoiceId,
     totalWithTax: total,
     status: 'GENERATED'
   });

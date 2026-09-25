@@ -1,6 +1,6 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
-// GENERATED AT: 2026-09-25T19:54:11.633Z
+// GENERATED AT: 2026-09-25T20:14:11.256Z
 
 // ============================================================================
 // MODULE: src/core/database-client.ts
@@ -59,6 +59,11 @@ export declare function Some(value: T): Option<T>;
 export declare function None(): Option<T>;
 
 // ============================================================================
+// MODULE: src/core/sqlite-client.ts
+// ============================================================================
+export declare function getDatabase(dbPath: string): SqliteDatabaseClient;
+
+// ============================================================================
 // MODULE: src/core/index.ts
 // ============================================================================
 
@@ -80,4 +85,40 @@ export interface InvoiceTriggerProps {
 }
 
 export declare function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerProps): Element;
+
+// ============================================================================
+// MODULE: src/slices/customers/create-customer.slice.tsx
+// ============================================================================
+export declare const CustomerInputSchema: any;
+export type CustomerInput = Static<typeof CustomerInputSchema>;
+
+export type CustomerOutput = Result<
+  { customerId: string; name: string; email: string; taxId: string; status: 'ACTIVE' },
+  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
+>;
+
+export declare function createCustomerAction(payload: unknown, db: DatabaseClient): Promise<CustomerOutput>;
+export interface CustomerTriggerProps {
+  onSubmitAction?: (payload: unknown) => Promise<CustomerOutput>;
+}
+
+export declare function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps): Element;
+
+// ============================================================================
+// MODULE: src/slices/products/create-product.slice.tsx
+// ============================================================================
+export declare const CreateProductInputSchema: any;
+export type CreateProductInput = Static<typeof CreateProductInputSchema>;
+
+export type CreateProductOutput = Result<
+  { id: string; name: string; email: string; createdAt: string },
+  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
+>;
+
+export declare function createProductAction(payload: unknown, db: DatabaseClient): Promise<CreateProductOutput>;
+export interface CreateProductTriggerProps {
+  onSubmitAction?: (payload: unknown) => Promise<CreateProductOutput>;
+}
+
+export declare function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerProps): Element;
 

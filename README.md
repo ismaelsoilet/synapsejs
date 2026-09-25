@@ -127,20 +127,30 @@ export const sliceTests = {
 Desenvolvidos exclusivamente para chamadas programáticas de ferramentas de IA (Bash/Terminal):
 
 ```bash
-# 1. Checagem sintática e semântica com coordenadas JSON exatas
-bun run bin/synapse.ts check
+# 1. Iniciar servidor HTTP Zero-Wiring com SSR e Dashboard Hub
+bun run dev
 
-# 2. Esqueletização do repositório para injeção de contexto (< 3000 tokens)
-bun run bin/synapse.ts skeleton
+# 2. Gerar uma nova fatia atômica instantaneamente (Scaffolder de IA)
+bun run new-slice <domain> <name>
+# Exemplo: bun run new-slice products create-product
 
-# 3. Particionamento seguro em bundles Client e Server
-bun run bin/synapse.ts split
+# 3. Checagem sintática e semântica com coordenadas JSON exatas
+bun run check
 
-# 4. Execução dos testes oráculo PBT em tempo real
-bun run bin/synapse.ts test
+# 4. Esqueletização do repositório para injeção de contexto (< 3000 tokens)
+bun run skeleton
 
-# 5. Metadados do framework
-bun run bin/synapse.ts info
+# 5. Particionamento seguro em bundles Client e Server
+bun run split
+
+# 6. Execução de toda a suíte de testes oráculo PBT em tempo real
+bun run test
+
+# 7. Teste de integração E2E ao vivo (HTTP + SSR + RPC + SQLite)
+bun run test:e2e
+
+# 8. Metadados e inspeção do framework
+bun run cli info
 ```
 
 ---

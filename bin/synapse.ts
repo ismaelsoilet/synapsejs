@@ -5,11 +5,13 @@
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  * 
  * Subcommands:
- *   synapse check     - Run typechecker and emit structured JSON diagnostics
- *   synapse skeleton  - Update AST skeleton map (.codebase/repo-map.d.ts)
- *   synapse split     - Perform isomorphic AST splitting of slices
- *   synapse test      - Run all property-based testing (PBT) oracles
- *   synapse info      - Machine metadata and framework metrics
+ *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router
+ *   synapse check      - Run typechecker and emit structured JSON diagnostics
+ *   synapse skeleton   - Update AST skeleton map (.codebase/repo-map.d.ts)
+ *   synapse split      - Perform isomorphic AST splitting of slices
+ *   synapse test       - Run all property-based testing (PBT) oracles
+ *   synapse new-slice  - Scaffold a new atomic vertical slice
+ *   synapse info       - Machine metadata and framework metrics
  */
 
 import * as path from 'path';
@@ -17,12 +19,22 @@ import * as fs from 'fs';
 import { runMachineVerifications } from '../scripts/agent-diagnostic-json';
 import { compressRepositoryAST } from '../scripts/ast-daemon-compressor';
 import { splitSlice } from '../src/compiler/slice-splitter';
+import { scaffoldSlice } from '../src/compiler/scaffolder';
+import { SynapseServer } from '../src/runtime/server';
 
 const command = process.argv[2] || 'check';
 const root = process.cwd();
 
 async function main() {
   switch (command) {
+    case 'dev': {
+      const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
+      const server = new SynapseServer(root, port);
+      await server.discoverSlices();
+      server.start();
+      break;
+    }
+
     case 'check': {
       const targetFile = process.argv[3];
       const report = runMachineVerifications(root, targetFile);
@@ -57,7 +69,7 @@ async function main() {
     case 'split': {
       const slicesDir = path.join(root, 'src/slices');
       const distDir = path.join(root, '.synapse/dist');
-      
+
       const findSlices = (dir: string): string[] => {
         let files: string[] = [];
         for (const item of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -105,29 +117,99 @@ async function main() {
       break;
     }
 
+    case 'new-slice': {
+      const domain = process.argv[3];
+      const name = process.argv[4];
+
+      if (!domain || !name) {
+        process.stderr.write(
+          JSON.stringify({
+            status: 'ERROR',
+            message: 'Parâmetros obrigatórios ausentes. Uso: synapse new-slice <domain> <name>'
+          }) + '\n'
+        );
+        process.exit(1);
+      }
+
+      try {
+        const createdPath = scaffoldSlice(domain, name, root);
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'PASS',
+              operation: 'SCAFFOLD_SLICE',
+              domain,
+              name,
+              createdPath: path.relative(root, createdPath)
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(0);
+      } catch (err: any) {
+        process.stderr.write(
+          JSON.stringify({
+            status: 'ERROR',
+            operation: 'SCAFFOLD_SLICE',
+            message: err.message
+          }) + '\n'
+        );
+        process.exit(1);
+      }
+      break;
+    }
+
     case 'test': {
-      // Execute sample slice PBT
-      const slicePath = path.join(root, 'src/slices/billing/generate-invoice.slice.tsx');
-      const proc = Bun.spawn(['bun', 'run', slicePath], {
-        stdout: 'pipe',
-        stderr: 'pipe'
-      });
-      const output = await new Response(proc.stdout).text();
-      const exitCode = await proc.exited;
+      const slicesDir = path.join(root, 'src/slices');
+      const findSliceFiles = (dir: string): string[] => {
+        let results: string[] = [];
+        if (!fs.existsSync(dir)) return [];
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const fullPath = path.join(dir, entry.name);
+          if (entry.isDirectory()) results.push(...findSliceFiles(fullPath));
+          else if (entry.name.endsWith('.slice.tsx')) results.push(fullPath);
+        }
+        return results;
+      };
+
+      const sliceFiles = findSliceFiles(slicesDir);
+      const testResults = [];
+      let allPassed = true;
+
+      for (const slicePath of sliceFiles) {
+        const proc = Bun.spawn(['bun', 'run', slicePath], {
+          stdout: 'pipe',
+          stderr: 'pipe'
+        });
+        const output = await new Response(proc.stdout).text();
+        const errOutput = await new Response(proc.stderr).text();
+        const exitCode = await proc.exited;
+
+        if (exitCode !== 0) allPassed = false;
+
+        testResults.push({
+          slice: path.basename(slicePath, '.slice.tsx'),
+          path: path.relative(root, slicePath),
+          passed: exitCode === 0,
+          output: (output + errOutput).trim()
+        });
+      }
 
       process.stdout.write(
         JSON.stringify(
           {
-            status: exitCode === 0 ? 'PASS' : 'FAIL',
-            operation: 'PBT_ORACLE_TEST',
-            exitCode,
-            rawOutput: output.trim()
+            status: allPassed ? 'PASS' : 'FAIL',
+            operation: 'PBT_ORACLE_TEST_SUITE',
+            totalSlices: testResults.length,
+            passedSlices: testResults.filter((r) => r.passed).length,
+            results: testResults
           },
           null,
           2
         ) + '\n'
       );
-      process.exit(exitCode);
+      process.exit(allPassed ? 0 : 1);
       break;
     }
 
@@ -136,19 +218,22 @@ async function main() {
         JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '0.1.0',
+            version: '0.2.0',
             paradigm: 'Fullstack AI-Native Machine-Centric',
-            runtime: 'Bun (WebKit/JavaScriptCore)',
+            runtime: 'Bun (WebKit/JavaScriptCore) + Bun.serve',
+            database: 'SQLite via bun:sqlite (embedded)',
             compiler: 'TypeScript Compiler API + AST Daemon',
             principles: [
               'Locality of Behavior (LoB)',
               'Vertical Slices (N = 1)',
+              'Zero-Wiring Routing via AST',
               'Result<T, E> Zero-Throw Control Flow',
               'TypeBox JIT Schemas',
               'Fast-Check Property Based Testing',
               'AST Skeletonizer (<3000 tokens)',
               'Machine-Readable JSON Diagnostics'
-            ]
+            ],
+            commands: ['dev', 'check', 'skeleton', 'split', 'test', 'new-slice', 'info']
           },
           null,
           2
@@ -159,7 +244,9 @@ async function main() {
     }
 
     default: {
-      process.stderr.write(`Unknown command: ${command}\nAvailable: check, skeleton, split, test, info\n`);
+      process.stderr.write(
+        `Unknown command: ${command}\nAvailable: dev, check, skeleton, split, test, new-slice, info\n`
+      );
       process.exit(1);
     }
   }
