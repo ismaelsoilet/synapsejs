@@ -15,6 +15,12 @@ import * as fc from 'fast-check';
 
 export { type DiagnosticIssue, type DiagnosticReport, runMachineVerifications } from './compiler/agent-diagnostic-json';
 export { compressRepositoryAST } from './compiler/ast-daemon-compressor';
+export {
+  type MachineContract,
+  machineContract,
+  renderContractJson,
+  renderContractMarkdown
+} from './compiler/contract';
 // 3. Compiler & AST Tooling
 export { type MigrationReport, type MigrationResult, runSliceMigrations } from './compiler/migration-runner';
 export {
@@ -49,6 +55,7 @@ export {
 export type { SliceOracle, SliceOracleCase } from './core/oracle';
 // 5. Model Context Protocol (MCP) Server
 export { SynapseMcpServer } from './mcp/server';
+export * from './runtime/discovery-rules';
 
 // 4. Runtime & Zero-Wiring HTTP Server
 export {

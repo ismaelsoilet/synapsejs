@@ -18,6 +18,7 @@ import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../compiler/
 import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
 import { verifySessionToken } from '../core/session-token';
 import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
+import { isAction, isComponent, isLoader } from './discovery-rules';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -145,20 +146,16 @@ export class SynapseServer {
         let loaderFn: any = null;
 
         for (const [exportName, val] of Object.entries(mod)) {
-          if (typeof val === 'function') {
-            if (exportName.endsWith('Action')) {
-              actionFn = val;
-            } else if (exportName.endsWith('Loader')) {
-              loaderFn = val;
-            } else if (
-              exportName.endsWith('Trigger') ||
-              exportName.endsWith('View') ||
-              exportName.endsWith('Form') ||
-              exportName.endsWith('Component')
-            ) {
-              componentFn = val;
-              componentExport = exportName;
-            }
+          if (typeof val !== 'function') {
+            continue;
+          }
+          if (isAction(exportName)) {
+            actionFn = val;
+          } else if (isLoader(exportName)) {
+            loaderFn = val;
+          } else if (isComponent(exportName)) {
+            componentFn = val;
+            componentExport = exportName;
           }
         }
 

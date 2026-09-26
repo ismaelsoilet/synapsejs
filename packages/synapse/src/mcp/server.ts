@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
+import { machineContract } from '../compiler/contract';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { runSliceOracles } from '../compiler/oracle-runner';
 import { scaffoldSlice } from '../compiler/scaffolder';
@@ -123,6 +124,12 @@ export class SynapseMcpServer {
                 }
               },
               {
+                name: 'synapse_contract',
+                description:
+                  'Return the machine contract: slice exports and suffixes, Result and HTTP semantics, session rules, addressing, SSR behavior and the gates to run',
+                inputSchema: { type: 'object', properties: {} }
+              },
+              {
                 name: 'synapse_migrate',
                 description:
                   'Auto-discover and apply sliceSchema DDL declarations across slices into the active database',
@@ -228,6 +235,8 @@ export class SynapseMcpServer {
               null,
               2
             );
+          } else if (toolName === 'synapse_contract') {
+            contentText = JSON.stringify(machineContract(), null, 2);
           } else if (toolName === 'synapse_migrate') {
             const report = await runSliceMigrations(this.root);
             contentText = JSON.stringify(report, null, 2);

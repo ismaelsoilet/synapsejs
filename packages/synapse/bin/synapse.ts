@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
+import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
 import { scaffoldSlice } from '../src/compiler/scaffolder';
@@ -247,6 +248,14 @@ async function main() {
       break;
     }
 
+    case 'contract': {
+      // O framework se descreve numa chamada: e o que o agente le em vez de adivinhar.
+      const asMarkdown = process.argv.includes('--markdown');
+      process.stdout.write((asMarkdown ? renderContractMarkdown() : renderContractJson()) + '\n');
+      process.exit(0);
+      break;
+    }
+
     case 'test': {
       const report = await runSliceOracles(root);
 
@@ -445,7 +454,19 @@ async function main() {
                 evidence: 'bun run bench'
               }
             ],
-            commands: ['new', 'dev', 'check', 'migrate', 'mcp', 'skeleton', 'split', 'test', 'new-slice', 'info']
+            commands: [
+              'new',
+              'dev',
+              'check',
+              'migrate',
+              'mcp',
+              'skeleton',
+              'split',
+              'test',
+              'new-slice',
+              'contract',
+              'info'
+            ]
           },
           null,
           2
@@ -457,7 +478,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, split, test, new-slice, info\n`
+        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, split, test, new-slice, contract, info\n`
       );
       process.exit(1);
     }

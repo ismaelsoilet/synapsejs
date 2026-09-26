@@ -52,7 +52,7 @@ async function runMcp(
 }
 
 describe('SynapseMcpServer over stdio', () => {
-  it('completes the JSON-RPC handshake and lists its five tools', async () => {
+  it('completes the JSON-RPC handshake and lists its six tools', async () => {
     const { responses } = await runMcp([
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {} } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
@@ -70,12 +70,23 @@ describe('SynapseMcpServer over stdio', () => {
     const toolNames = list?.result.tools.map((t: { name: string }) => t.name).sort();
     expect(toolNames).toEqual([
       'synapse_check',
+      'synapse_contract',
       'synapse_get_repo_map',
       'synapse_migrate',
       'synapse_run_pbt',
       'synapse_scaffold_slice'
     ]);
     expect(list?.result.tools.every((t: { description?: string }) => Boolean(t.description))).toBe(true);
+  });
+
+  it('serves the machine contract as a tool', async () => {
+    const { responses } = await runMcp([
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'synapse_contract', arguments: {} } }
+    ]);
+
+    const contract = JSON.parse(responses[0].result.content[0].text);
+    expect(contract.slice.exports.length).toBeGreaterThan(3);
+    expect(contract.results.httpStatus.UNAUTHORIZED).toBe('401');
   });
 
   it('rejects unknown methods and unknown tools with JSON-RPC errors', async () => {

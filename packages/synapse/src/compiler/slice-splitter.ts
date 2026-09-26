@@ -21,6 +21,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
 import { Err, Ok, type Result } from '../core/machine-types';
+import {
+  COMPONENT_SUFFIXES,
+  SERVER_ROOT_SUFFIXES,
+  SLICE_DDL_EXPORT,
+  TEST_ONLY_EXPORTS
+} from '../runtime/discovery-rules';
 
 export type ArtifactKind = 'shared' | 'server' | 'client';
 
@@ -57,10 +63,9 @@ export interface SplitVerification {
   leaks: string[];
 }
 
-const SERVER_ROOT_SUFFIXES = ['Action'];
-const CLIENT_ROOT_SUFFIXES = ['Trigger', 'View', 'Form', 'Component'];
-const SERVER_ROOT_NAMES = ['sliceSchema'];
-const TEST_ONLY_NAMES = ['sliceTests'];
+const SERVER_ROOTS = [...SERVER_ROOT_SUFFIXES, SLICE_DDL_EXPORT];
+const CLIENT_ROOTS = [...COMPONENT_SUFFIXES];
+const TEST_ONLY_NAMES: readonly string[] = [...TEST_ONLY_EXPORTS];
 
 const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   // `SELECT ... FROM` e não `SELECT` seguido de qualquer palavra: sem o FROM, a
@@ -346,7 +351,7 @@ function reachableFrom(
   return visited;
 }
 
-function rootsFor(entries: Map<string, DeclEntry>, suffixes: string[], names: string[]): string[] {
+function rootsFor(entries: Map<string, DeclEntry>, suffixes: readonly string[], names: readonly string[]): string[] {
   const roots: string[] = [];
   for (const entry of entries.values()) {
     if (!entry.isExported || TEST_ONLY_NAMES.includes(entry.key)) {
@@ -521,8 +526,8 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
   const checker = program.getTypeChecker();
   const entries = collectDeclarations(sourceFile, checker);
 
-  const serverRoots = rootsFor(entries, SERVER_ROOT_SUFFIXES, SERVER_ROOT_NAMES);
-  const clientRoots = rootsFor(entries, CLIENT_ROOT_SUFFIXES, []);
+  const serverRoots = rootsFor(entries, SERVER_ROOT_SUFFIXES, [SLICE_DDL_EXPORT]);
+  const clientRoots = rootsFor(entries, CLIENT_ROOTS, []);
 
   if (serverRoots.length === 0 && clientRoots.length === 0) {
     return Err({

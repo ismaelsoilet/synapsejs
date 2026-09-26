@@ -215,6 +215,18 @@ describe('synapse new', () => {
   });
 });
 
+describe('synapse contract', () => {
+  it('describes the slice contract without the agent reading any source', async () => {
+    const result = await runCli(['contract']);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json?.slice.location).toBe('src/slices/<domain>/<name>.slice.tsx');
+    expect(Array.isArray(result.json?.slice.exports)).toBe(true);
+    expect(result.json?.slice.example).toContain('sliceTests');
+    expect(result.json?.gates.length).toBeGreaterThan(0);
+  });
+});
+
 describe('synapse info', () => {
   it('reports every feature with a status and verifiable evidence', async () => {
     const result = await runCli(['info']);
