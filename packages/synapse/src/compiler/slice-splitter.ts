@@ -63,7 +63,9 @@ const SERVER_ROOT_NAMES = ['sliceSchema'];
 const TEST_ONLY_NAMES = ['sliceTests'];
 
 const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
-  { label: 'SELECT statement', pattern: /\bSELECT\s+[\w*"`]/i },
+  // `SELECT ... FROM` e não `SELECT` seguido de qualquer palavra: sem o FROM, a
+  // tag HTML `<select id="x">` de um formulário casava como vazamento de SQL.
+  { label: 'SELECT statement', pattern: /\bSELECT\s+[\w*"`][\w*"`.,\s]*\bFROM\b/i },
   { label: 'INSERT statement', pattern: /\bINSERT\s+INTO\b/i },
   { label: 'UPDATE statement', pattern: /\bUPDATE\s+\w+\s+SET\b/i },
   { label: 'DELETE statement', pattern: /\bDELETE\s+FROM\b/i },

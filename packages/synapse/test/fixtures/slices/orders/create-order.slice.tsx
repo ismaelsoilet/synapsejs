@@ -60,8 +60,15 @@ export function CreateOrderTrigger({ amountCents = 500 }: { amountCents?: number
   };
 
   return (
-    <button type="button" onClick={submit}>
-      {label} / {status}
-    </button>
+    <div>
+      <label htmlFor="order-tier">Faixa de preço</label>
+      <select id="order-tier" name="tier" defaultValue="padrao">
+        <option value="padrao">Padrão</option>
+        <option value="expresso">Expresso</option>
+      </select>
+      <button type="button" onClick={submit}>
+        {label} / {status}
+      </button>
+    </div>
   );
 }
