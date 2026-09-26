@@ -52,15 +52,25 @@ describe('synapse test', () => {
     expect(result.exitCode).toBe(1);
     expect(result.json?.status).toBe('FAIL');
     expect(result.json?.code).toBe('NO_SLICES_DIR');
-    expect(result.json?.totalSlices).toBeUndefined();
+    expect(result.json?.totalSlices).toBe(0);
+    expect(Array.isArray(result.json?.candidates)).toBe(true);
   });
 
-  it('runs the slices it finds and reports them', async () => {
+  it('reports one named entry per invariant', async () => {
     const sliceDir = path.join(sandbox, 'src', 'slices', 'demo');
     fs.mkdirSync(sliceDir, { recursive: true });
     fs.writeFileSync(
       path.join(sliceDir, 'always-ok.slice.tsx'),
-      ['export const sliceTests = { run: async () => true };', 'if (import.meta.main) process.exit(0);', ''].join('\n'),
+      [
+        'export const sliceTests = {',
+        `  description: 'fixture',`,
+        '  cases: [',
+        `    { name: 'invariante que passa', run: async () => {} },`,
+        `    { name: 'outro invariante', run: async () => {} }`,
+        '  ]',
+        '};',
+        ''
+      ].join('\n'),
       'utf-8'
     );
 
@@ -70,6 +80,37 @@ describe('synapse test', () => {
     expect(result.json?.status).toBe('PASS');
     expect(result.json?.totalSlices).toBe(1);
     expect(result.json?.passedSlices).toBe(1);
+    expect(result.json?.totalCases).toBe(2);
+    expect(result.json?.results[0].cases.map((item: { name: string }) => item.name)).toEqual([
+      'invariante que passa',
+      'outro invariante'
+    ]);
+  });
+
+  it('fails, names the broken invariant and surfaces its message', async () => {
+    const sliceDir = path.join(sandbox, 'src', 'slices', 'demo');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'broken.slice.tsx'),
+      [
+        'export const sliceTests = {',
+        `  cases: [`,
+        `    { name: 'quebrado de proposito', run: async () => { throw new Error('invariante violada'); } }`,
+        '  ]',
+        '};',
+        ''
+      ].join('\n'),
+      'utf-8'
+    );
+
+    const result = await runCli(['test']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.status).toBe('FAIL');
+    expect(result.json?.passedSlices).toBe(0);
+    expect(result.json?.results[0].cases[0].passed).toBe(false);
+    expect(result.json?.results[0].cases[0].name).toBe('quebrado de proposito');
+    expect(result.json?.results[0].cases[0].message).toContain('invariante violada');
   });
 });
 
@@ -80,6 +121,37 @@ describe('synapse migrate', () => {
     expect(result.exitCode).toBe(1);
     expect(result.json?.status).toBe('FAIL');
     expect(result.json?.code).toBe('NO_SLICES_DIR');
+  });
+});
+
+describe('zero-verification guards', () => {
+  it('check fails when the tsconfig matches no file', async () => {
+    fs.writeFileSync(
+      path.join(sandbox, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['src/**/*'] }),
+      'utf-8'
+    );
+
+    const result = await runCli(['check']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.status).toBe('FAIL');
+    expect(result.json?.code).toBe('NO_FILES_MATCHED');
+  });
+
+  it('skeleton fails when no module can be mapped', async () => {
+    fs.writeFileSync(
+      path.join(sandbox, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['src/**/*'] }),
+      'utf-8'
+    );
+
+    const result = await runCli(['skeleton']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.status).toBe('FAIL');
+    expect(result.json?.code).toBe('EMPTY_REPO_MAP');
+    expect(result.json?.totalModules).toBe(0);
   });
 });
 

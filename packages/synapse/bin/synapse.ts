@@ -28,6 +28,7 @@ import {
 } from '../src/compiler/slice-splitter';
 import { scaffoldSlice } from '../src/compiler/scaffolder';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
+import { runSliceOracles } from '../src/compiler/oracle-runner';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { SynapseServer } from '../src/runtime/server';
 import { SynapseMcpServer } from '../src/mcp/server';
@@ -87,22 +88,31 @@ async function main() {
       const repoMapPath = path.join(root, '.codebase/repo-map.d.ts');
       const graphPath = path.join(root, '.codebase/architecture-graph.json');
       const stats = compressRepositoryAST(root, repoMapPath, graphPath);
+
+      const skeletonStatus = stats.totalModules > 0 ? 'PASS' : 'FAIL';
+
       process.stdout.write(
         JSON.stringify(
           {
-            status: 'PASS',
+            status: skeletonStatus,
             operation: 'SKELETON_COMPRESS',
             repoMapPath: '.codebase/repo-map.d.ts',
+            totalModules: stats.totalModules,
             totalSlices: stats.totalSlices,
             estimatedTokens: stats.manifestTokensEstimate,
             budgetTokens: 3000,
-            budgetAdherencePercent: ((stats.manifestTokensEstimate / 3000) * 100).toFixed(1) + '%'
+            ...(skeletonStatus === 'FAIL'
+              ? {
+                  code: 'EMPTY_REPO_MAP',
+                  message: `O tsconfig em '${root}/tsconfig.json' não inclui nenhum módulo — nada foi mapeado.`
+                }
+              : {})
           },
           null,
           2
         ) + '\n'
       );
-      process.exit(0);
+      process.exit(skeletonStatus === 'PASS' ? 0 : 1);
       break;
     }
 
@@ -232,65 +242,10 @@ async function main() {
     }
 
     case 'test': {
-      const resolution = resolveSlicesDir(root);
+      const report = await runSliceOracles(root);
 
-      if (!resolution.ok) {
-        process.stdout.write(
-          JSON.stringify(
-            {
-              status: 'FAIL',
-              operation: 'PBT_ORACLE_TEST_SUITE',
-              code: resolution.error.code,
-              message: resolution.error.message,
-              candidates: resolution.error.candidates
-            },
-            null,
-            2
-          ) + '\n'
-        );
-        process.exit(1);
-      }
-
-      const sliceFiles = findSliceFiles(resolution.value.slicesDir);
-      const testResults = [];
-
-      for (const slicePath of sliceFiles) {
-        const proc = Bun.spawn([process.execPath, 'run', slicePath], {
-          cwd: root,
-          stdout: 'pipe',
-          stderr: 'pipe'
-        });
-        const [output, errOutput, exitCode] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-          proc.exited
-        ]);
-
-        testResults.push({
-          slice: path.basename(slicePath, '.slice.tsx'),
-          path: path.relative(root, slicePath),
-          passed: exitCode === 0,
-          output: (output + errOutput).trim()
-        });
-      }
-
-      const allPassed = testResults.length > 0 && testResults.every((r) => r.passed);
-
-      process.stdout.write(
-        JSON.stringify(
-          {
-            status: allPassed ? 'PASS' : 'FAIL',
-            operation: 'PBT_ORACLE_TEST_SUITE',
-            slicesDir: path.relative(root, resolution.value.slicesDir),
-            totalSlices: testResults.length,
-            passedSlices: testResults.filter((r) => r.passed).length,
-            results: testResults
-          },
-          null,
-          2
-        ) + '\n'
-      );
-      process.exit(allPassed ? 0 : 1);
+      process.stdout.write(JSON.stringify({ operation: 'PBT_ORACLE_TEST_SUITE', ...report }, null, 2) + '\n');
+      process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
 

@@ -11,7 +11,7 @@ import * as fs from 'fs';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
 import { scaffoldSlice } from '../compiler/scaffolder';
 import { runSliceMigrations } from '../compiler/migration-runner';
-import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
+import { runSliceOracles } from '../compiler/oracle-runner';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -174,61 +174,23 @@ export class SynapseMcpServer {
             const report = runMachineVerifications(this.root, args.targetFile);
             contentText = JSON.stringify(report, null, 2);
           } else if (toolName === 'synapse_run_pbt') {
-            const resolution = resolveSlicesDir(this.root);
+            const report = await runSliceOracles(this.root);
 
-            if (!resolution.ok) {
+            if (
+              report.status === 'FAIL' &&
+              (report.code === 'NO_SLICES_DIR' || report.code === 'AMBIGUOUS_SLICES_DIR')
+            ) {
               return {
                 jsonrpc: '2.0',
                 id,
                 result: {
                   isError: true,
-                  content: [
-                    {
-                      type: 'text',
-                      text: JSON.stringify(
-                        {
-                          status: 'FAIL',
-                          code: resolution.error.code,
-                          message: resolution.error.message,
-                          candidates: resolution.error.candidates
-                        },
-                        null,
-                        2
-                      )
-                    }
-                  ]
+                  content: [{ type: 'text', text: JSON.stringify(report, null, 2) }]
                 }
               };
             }
 
-            const files = findSliceFiles(resolution.value.slicesDir);
-            const results = [];
-            for (const f of files) {
-              const proc = Bun.spawn([process.execPath, 'run', f], { cwd: this.root, stdout: 'pipe', stderr: 'pipe' });
-              const [stdout, stderr, code] = await Promise.all([
-                new Response(proc.stdout).text(),
-                new Response(proc.stderr).text(),
-                proc.exited
-              ]);
-              results.push({
-                slice: path.basename(f, '.slice.tsx'),
-                passed: code === 0,
-                output: (stdout + (stderr ? '\n' + stderr : '')).trim()
-              });
-            }
-
-            const allPassed = results.length > 0 && results.every((r) => r.passed);
-            contentText = JSON.stringify(
-              {
-                status: allPassed ? 'PASS' : 'FAIL',
-                totalSlices: results.length,
-                passedSlices: results.filter((r) => r.passed).length,
-                slicesDir: path.relative(this.root, resolution.value.slicesDir),
-                results
-              },
-              null,
-              2
-            );
+            contentText = JSON.stringify(report, null, 2);
           } else if (toolName === 'synapse_scaffold_slice') {
             const created = scaffoldSlice(args.domain, args.name, this.root);
 

@@ -27,7 +27,7 @@ export const sliceSchema = `
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     message TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
 
@@ -36,7 +36,7 @@ export const sliceSchema = `
 // ============================================================================
 export type HelloWorldOutput = Result<
   { greetingId: string; greeting: string; createdAt: string },
-  'INVALID_SCHEMA' | 'PERSISTENCE_FAILED'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'PERSISTENCE_FAILED'
 >;
 
 // ============================================================================
@@ -44,9 +44,13 @@ export type HelloWorldOutput = Result<
 // ============================================================================
 export async function helloWorldAction(
   payload: unknown,
-  db: DatabaseClient,
+  db?: DatabaseClient,
   session?: SessionContext
 ): Promise<HelloWorldOutput> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
   if (!Value.Check(HelloWorldInputSchema, payload)) {
     return Err('INVALID_SCHEMA');
   }
@@ -138,29 +142,27 @@ export function HelloWorldView({ defaultName = 'Desenvolvedor', onSubmitAction }
 // ============================================================================
 export const sliceTests = {
   description: 'Verificação PBT de invariantes para hello-world',
-  run: async () => {
-    fc.assert(
-      fc.asyncProperty(
-        fc.string({ minLength: 2, maxLength: 50 }),
-        async (validName) => {
-          const mockDb = new MockDatabaseClient();
-          const result = await helloWorldAction({ name: validName }, mockDb);
-          return result.ok === true && result.value.greeting.includes(validName);
-        }
-      )
-    );
-    return true;
-  }
-};
+  cases: [
+    {
+      name: 'nome válido produz saudação que o contém',
+      run: async () => {
+        fc.assert(
+          fc.asyncProperty(fc.string({ minLength: 2, maxLength: 50 }), async (validName) => {
+            const result = await helloWorldAction({ name: validName }, new MockDatabaseClient());
+            return result.ok === true && result.value.greeting.includes(validName);
+          })
+        );
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const result = await helloWorldAction({ name: 'Ismael' });
 
-if (import.meta.main) {
-  sliceTests.run()
-    .then(() => {
-      console.log('✅ [PBT PASS] Hello World oráculo aprovado!');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ [PBT FAIL] Falha no oráculo Hello World:', err);
-      process.exit(1);
-    });
-}
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error(`Invariante violada: esperava NO_DATABASE, obteve ${JSON.stringify(result)}`);
+        }
+      }
+    }
+  ]
+};

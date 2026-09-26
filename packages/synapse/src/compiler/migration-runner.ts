@@ -68,12 +68,13 @@ export async function runSliceMigrations(
 ): Promise<MigrationReport> {
   const db = customDb || getDatabase();
 
-  // Ensure migrations tracking table exists
+  // Ensure migrations tracking table exists.
+  // TIMESTAMP is accepted by both SQLite and PostgreSQL; DATETIME is SQLite-only.
   await db.query(`
     CREATE TABLE IF NOT EXISTS _synapse_migrations (
       slice_name TEXT PRIMARY KEY,
       schema_hash TEXT NOT NULL,
-      applied_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
   `);
 

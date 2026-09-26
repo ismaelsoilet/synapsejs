@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'bun:test';
+import { getDatabase, resetDatabaseInstance } from '../src/core/database-factory';
 import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 
 describe('SqliteDatabaseClient', () => {
@@ -81,5 +82,19 @@ describe('SqliteDatabaseClient', () => {
     ).rejects.toThrow('boom');
 
     expect(await db.query(`SELECT id FROM items WHERE id = $1`, ['g'])).toEqual([]);
+  });
+});
+
+describe('getDatabase engine guard', () => {
+  it('refuses an unsupported URL scheme instead of silently using SQLite', () => {
+    resetDatabaseInstance();
+    expect(() => getDatabase('mysql://user@host/db')).toThrow(/esquema não suportado/);
+    resetDatabaseInstance();
+  });
+
+  it('still accepts a bare SQLite file path', () => {
+    resetDatabaseInstance();
+    expect(getDatabase(':memory:')).toBeInstanceOf(SqliteDatabaseClient);
+    resetDatabaseInstance();
   });
 });

@@ -46,5 +46,12 @@
     ],
     "hasUI": true,
     "hasPBT": true
+  },
+  {
+    "slicePath": "scripts/e2e-server-test.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [],
+    "hasUI": false,
+    "hasPBT": false
   }
 ]

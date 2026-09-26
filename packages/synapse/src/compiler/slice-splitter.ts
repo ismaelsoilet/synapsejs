@@ -70,6 +70,7 @@ const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'CREATE TABLE statement', pattern: /\bCREATE\s+TABLE\b/i },
   { label: 'database call', pattern: /\bdb\s*\.\s*query\b/ },
   { label: 'sliceSchema symbol', pattern: /\bsliceSchema\b/ },
+  { label: 'test runner import', pattern: /from\s+['"]bun:test['"]/ },
   { label: 'process.env access', pattern: /\bprocess\.env\b/ },
   { label: 'Bun global', pattern: /\bBun\./ }
 ];

@@ -5,6 +5,7 @@ import * as path from 'path';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
 
 const exampleApp = path.resolve(import.meta.dir, '../../../examples/enterprise-crm');
+const conventionalApp = path.resolve(import.meta.dir, 'fixtures', 'conventional-app');
 
 const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-repomap-'));
 const repoMapPath = path.join(outputDir, 'repo-map.d.ts');
@@ -13,13 +14,27 @@ const graphPath = path.join(outputDir, 'architecture-graph.json');
 const stats = compressRepositoryAST(exampleApp, repoMapPath, graphPath);
 const manifest = fs.readFileSync(repoMapPath, 'utf-8');
 
+const conventionalMapPath = path.join(outputDir, 'conventional-map.d.ts');
+const conventionalStats = compressRepositoryAST(conventionalApp, conventionalMapPath, undefined);
+
 afterAll(() => {
   fs.rmSync(outputDir, { recursive: true, force: true });
 });
 
 describe('compressRepositoryAST', () => {
-  it('maps every slice of the example app', () => {
+  it('maps every module the project compiles', () => {
     expect(stats.totalSlices).toBe(3);
+    // 3 slices + the app's e2e script, which its tsconfig also includes
+    expect(stats.totalModules).toBe(4);
+  });
+
+  it('maps a conventional app that has no slices at all', () => {
+    expect(conventionalStats.totalModules).toBe(2);
+    expect(conventionalStats.totalSlices).toBe(0);
+
+    const conventionalManifest = fs.readFileSync(conventionalMapPath, 'utf-8');
+    expect(conventionalManifest).toContain('export declare function createTicket(subject: string): Ticket;');
+    expect(conventionalManifest).toContain('export declare function handleCreateTicket(request: Request): Response;');
   });
 
   it('never degrades a schema contract to any', () => {

@@ -27,7 +27,7 @@ export const sliceSchema = `
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
     tax_id TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
 
@@ -36,16 +36,22 @@ export const sliceSchema = `
 // ============================================================================
 export type CustomerOutput = Result<
   { customerId: string; name: string; email: string; taxId: string; status: 'ACTIVE' },
-  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
 >;
 
 // ============================================================================
 // 3. EXECUÇÃO DE SERVIDOR PURA (Server Action)
+// `db` é opcional para que o mesmo ponto de chamada valha no servidor (que
+// injeta a conexão) e no cliente (onde a chamada vira stub RPC).
 // ============================================================================
 export async function createCustomerAction(
   payload: unknown,
-  db: DatabaseClient
+  db?: DatabaseClient
 ): Promise<CustomerOutput> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
   // Validação rápida em memória JIT
   if (!Value.Check(CustomerInputSchema, payload)) {
     return Err('INVALID_SCHEMA');
@@ -183,56 +189,58 @@ export function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps) {
 // ============================================================================
 export const sliceTests = {
   description: 'Verificação PBT de invariantes para create-customer',
-  run: async () => {
-    // 1. Invariante: Nomes < 3 caracteres SEMPRE retornam INVALID_SCHEMA
-    fc.assert(
-      fc.asyncProperty(
-        fc.string({ minLength: 0, maxLength: 2 }),
-        async (shortName) => {
-          const mockDb = new MockDatabaseClient();
-          const result = await createCustomerAction(
-            {
-              name: shortName,
-              email: 'valid@test.com',
-              taxId: '12345678'
-            },
-            mockDb
-          );
-          return result.ok === false && result.error === 'INVALID_SCHEMA';
+  cases: [
+    {
+      name: 'nomes com menos de 3 caracteres retornam INVALID_SCHEMA',
+      run: async () => {
+        fc.assert(
+          fc.asyncProperty(fc.string({ minLength: 0, maxLength: 2 }), async (shortName) => {
+            const result = await createCustomerAction(
+              {
+                name: shortName,
+                email: 'valid@test.com',
+                taxId: '12345678'
+              },
+              new MockDatabaseClient()
+            );
+            return result.ok === false && result.error === 'INVALID_SCHEMA';
+          })
+        );
+      }
+    },
+    {
+      name: 'e-mail já cadastrado retorna DUPLICATE_EMAIL',
+      run: async () => {
+        const mockDbEmail = new MockDatabaseClient();
+        mockDbEmail.onQuery(/SELECT id FROM customers WHERE email/, () => [{ id: 'dup-123' }]);
+
+        const dupEmailResult = await createCustomerAction(
+          {
+            name: 'Cliente Valido',
+            email: 'ja_existe@test.com',
+            taxId: '123456789'
+          },
+          mockDbEmail
+        );
+
+        if (dupEmailResult.ok || dupEmailResult.error !== 'DUPLICATE_EMAIL') {
+          throw new Error(`Invariante violada: esperava DUPLICATE_EMAIL`);
         }
-      )
-    );
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const result = await createCustomerAction({
+          name: 'Cliente Valido',
+          email: 'novo@test.com',
+          taxId: '123456789'
+        });
 
-    // 2. Invariante: E-mail duplicado SEMPRE retorna DUPLICATE_EMAIL
-    const mockDbEmail = new MockDatabaseClient();
-    mockDbEmail.onQuery(/SELECT id FROM customers WHERE email/, () => [{ id: 'dup-123' }]);
-
-    const dupEmailResult = await createCustomerAction(
-      {
-        name: 'Cliente Valido',
-        email: 'ja_existe@test.com',
-        taxId: '123456789'
-      },
-      mockDbEmail
-    );
-
-    if (dupEmailResult.ok || dupEmailResult.error !== 'DUPLICATE_EMAIL') {
-      throw new Error(`Invariante violada: esperava DUPLICATE_EMAIL`);
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error(`Invariante violada: esperava NO_DATABASE, obteve ${JSON.stringify(result)}`);
+        }
+      }
     }
-
-    return true;
-  }
+  ]
 };
-
-if (import.meta.main) {
-  console.log('⚡ Executando Oráculo PBT do Slice create-customer...');
-  sliceTests.run()
-    .then(() => {
-      console.log('✅ [PBT ORACLE PASS] Todos os invariantes de cliente foram aprovados!');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ [PBT ORACLE FAIL] Falha na verificação de invariantes:', err);
-      process.exit(1);
-    });
-}

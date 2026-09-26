@@ -36,6 +36,17 @@ export {
 } from './compiler/slice-splitter';
 export { scaffoldSlice, type ScaffoldError, type ScaffoldErrorCode } from './compiler/scaffolder';
 export { compressRepositoryAST } from './compiler/ast-daemon-compressor';
+export {
+  runSliceOracles,
+  parseOracleJunit,
+  oracleWrapperSource,
+  ORACLE_DIR_NAME,
+  type OracleReport,
+  type OracleSliceResult,
+  type OracleCaseResult,
+  type OracleErrorCode
+} from './compiler/oracle-runner';
+export type { SliceOracle, SliceOracleCase } from './core/oracle';
 export { runMachineVerifications, type DiagnosticReport, type DiagnosticIssue } from './compiler/agent-diagnostic-json';
 
 // 4. Runtime & Zero-Wiring HTTP Server

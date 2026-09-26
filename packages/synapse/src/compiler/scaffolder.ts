@@ -61,7 +61,7 @@ export const sliceSchema = \`
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 \`;
 
@@ -199,53 +199,54 @@ export function ${triggerName}({ onSubmitAction }: ${pascal}TriggerProps) {
 // 5. ORÁCULO DE AUTO-VERIFICAÇÃO PBT (Property-Based Testing)
 // ============================================================================
 export const sliceTests = {
-  description: 'Verificação PBT de invariantes para ${sliceName}',
-  run: async () => {
-    // 1. Invariante: Nomes curtos ou e-mails sem @ SEMPRE retornam INVALID_SCHEMA
-    fc.assert(
-      fc.asyncProperty(
-        fc.string({ minLength: 0, maxLength: 1 }),
-        fc.stringMatching(/^[a-z0-9]{1,10}$/),
-        async (shortName, invalidEmail) => {
-          const mockDb = new MockDatabaseClient();
-          const result = await ${actionName}(
-            { name: shortName, email: invalidEmail },
-            mockDb
-          );
-          return result.ok === false && result.error === 'INVALID_SCHEMA';
+  description: 'Invariantes de ${sliceName}',
+  cases: [
+    {
+      name: 'nome curto ou e-mail inválido retornam INVALID_SCHEMA',
+      run: async () => {
+        fc.assert(
+          fc.asyncProperty(
+            fc.string({ minLength: 0, maxLength: 1 }),
+            fc.stringMatching(/^[a-z0-9]{1,10}$/),
+            async (shortName, invalidEmail) => {
+              const result = await ${actionName}(
+                { name: shortName, email: invalidEmail },
+                new MockDatabaseClient()
+              );
+              return result.ok === false && result.error === 'INVALID_SCHEMA';
+            }
+          )
+        );
+      }
+    },
+    {
+      name: 'e-mail já cadastrado retorna DUPLICATE_EMAIL',
+      run: async () => {
+        const mockDbDuplicate = new MockDatabaseClient();
+        mockDbDuplicate.onQuery(/SELECT id FROM/, () => [{ id: 'existing-id-123' }]);
+
+        const dupResult = await ${actionName}(
+          { name: 'Usuario Valido', email: 'teste@dominio.com' },
+          mockDbDuplicate
+        );
+
+        if (dupResult.ok || dupResult.error !== 'DUPLICATE_EMAIL') {
+          throw new Error(\`Invariante violada: esperava DUPLICATE_EMAIL, obteve \${JSON.stringify(dupResult)}\`);
         }
-      )
-    );
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const result = await ${actionName}({ name: 'Usuario Valido', email: 'teste@dominio.com' });
 
-    // 2. Invariante: E-mail já cadastrado SEMPRE retorna DUPLICATE_EMAIL
-    const mockDbDuplicate = new MockDatabaseClient();
-    mockDbDuplicate.onQuery(/SELECT id FROM/, () => [{ id: 'existing-id-123' }]);
-
-    const dupResult = await ${actionName}(
-      { name: 'Usuario Valido', email: 'teste@dominio.com' },
-      mockDbDuplicate
-    );
-
-    if (dupResult.ok || dupResult.error !== 'DUPLICATE_EMAIL') {
-      throw new Error(\`Invariante violada: esperava DUPLICATE_EMAIL, obteve \${JSON.stringify(dupResult)}\`);
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error(\`Invariante violada: esperava NO_DATABASE, obteve \${JSON.stringify(result)}\`);
+        }
+      }
     }
-
-    return true;
-  }
+  ]
 };
-
-if (import.meta.main) {
-  console.log('⚡ Executando Oráculo PBT do Slice ${sliceName}...');
-  sliceTests.run()
-    .then(() => {
-      console.log('✅ [PBT ORACLE PASS] Todos os invariantes aprovados com sucesso!');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ [PBT ORACLE FAIL] Falha na verificação de invariantes:', err);
-      process.exit(1);
-    });
-}
 `;
 }
 

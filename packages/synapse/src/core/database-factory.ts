@@ -25,11 +25,19 @@ export function getDatabase(connectionUri?: string): DatabaseClient {
     return cachedInstance;
   }
 
+  // A configured engine that is neither supported nor a file path must not be
+  // silently downgraded to embedded SQLite: that would make a Postgres parity
+  // check pass against the wrong engine.
+  if (uri && /^[a-z][a-z0-9+.-]*:\/\//i.test(uri)) {
+    throw new Error(
+      `DATABASE_URL '${uri}' usa um esquema não suportado. Use postgres://, postgresql:// ou um caminho de arquivo SQLite.`
+    );
+  }
+
   // Fallback to embedded SQLite
   const dbPath = uri || path.join(process.cwd(), '.synapse/synapse.sqlite');
-  const sqlite = new SqliteDatabaseClient(dbPath);
+  cachedInstance = new SqliteDatabaseClient(dbPath);
 
-  cachedInstance = sqlite;
   return cachedInstance;
 }
 

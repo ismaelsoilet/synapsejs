@@ -8,10 +8,10 @@
 export declare const InvoiceInputSchema: { customerId: string; amountCents: number; taxRate: number; idempotencyToken: string; };
 export type InvoiceInput = Static<typeof InvoiceInputSchema>;
 
-export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS invoices (\n    id TEXT PRIMARY KEY,\n    customer_id TEXT NOT NULL,\n    base_cents INTEGER NOT NULL,\n    tax_rate REAL NOT NULL,\n    total_cents INTEGER NOT NULL,\n    idempotency_key TEXT UNIQUE NOT NULL,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (custo...;
+export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS invoices (\n    id TEXT PRIMARY KEY,\n    customer_id TEXT NOT NULL,\n    base_cents INTEGER NOT NULL,\n    tax_rate REAL NOT NULL,\n    total_cents INTEGER NOT NULL,\n    idempotency_key TEXT UNIQUE NOT NULL,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,\n    FOREIGN KEY (cust...;
 export type InvoiceOutput = Result<
   { invoiceId: string; totalWithTax: number; status: 'GENERATED' },
-  'INVALID_SCHEMA' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'UNAUTHORIZED' | 'FORBIDDEN' | 'DUPLICATE_IDEMPOTENCY' | 'CUSTOMER_NOT_FOUND'
 >;
 
 export declare function createInvoiceAction(payload: unknown, db: DatabaseClient, session: SessionContext): Promise<InvoiceOutput>;
@@ -28,10 +28,10 @@ export declare function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTr
 export declare const CustomerInputSchema: { name: string; email: string; taxId: string; };
 export type CustomerInput = Static<typeof CustomerInputSchema>;
 
-export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS customers (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    email TEXT NOT NULL UNIQUE,\n    tax_id TEXT NOT NULL,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n  );\n";
+export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS customers (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    email TEXT NOT NULL UNIQUE,\n    tax_id TEXT NOT NULL,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n  );\n";
 export type CustomerOutput = Result<
   { customerId: string; name: string; email: string; taxId: string; status: 'ACTIVE' },
-  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'DUPLICATE_EMAIL' | 'DUPLICATE_TAX_ID'
 >;
 
 export declare function createCustomerAction(payload: unknown, db: DatabaseClient): Promise<CustomerOutput>;
@@ -47,10 +47,10 @@ export declare function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps
 export declare const CreateProductInputSchema: { metadata?: string | undefined; name: string; email: string; };
 export type CreateProductInput = Static<typeof CreateProductInputSchema>;
 
-export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS products (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    email TEXT,\n    created_at DATETIME DEFAULT CURRENT_TIMESTAMP\n  );\n";
+export declare const sliceSchema: "\n  CREATE TABLE IF NOT EXISTS products (\n    id TEXT PRIMARY KEY,\n    name TEXT NOT NULL,\n    email TEXT,\n    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP\n  );\n";
 export type CreateProductOutput = Result<
   { id: string; name: string; email: string; createdAt: string },
-  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
 >;
 
 export declare function createProductAction(payload: unknown, db: DatabaseClient): Promise<CreateProductOutput>;
@@ -59,4 +59,8 @@ export interface CreateProductTriggerProps {
 }
 
 export declare function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerProps): Element;
+
+// ============================================================================
+// MODULE: scripts/e2e-server-test.ts
+// ============================================================================
 

@@ -38,16 +38,18 @@ export function runMachineVerifications(projectRoot: string, targetFile?: string
     ? parsed.fileNames.filter((f) => f.endsWith(targetFile) || f.includes(targetFile))
     : parsed.fileNames;
 
-  // A target that matched nothing is not a pass: nothing was verified.
-  if (targetFile && fileNames.length === 0) {
+  // Nothing matched is not a pass: no file was verified.
+  if (fileNames.length === 0) {
     return {
       status: 'FAIL',
       errorCount: 1,
       timestamp: new Date().toISOString(),
       durationMs: Date.now() - startTime,
       issues: [],
-      code: 'TARGET_FILE_NOT_FOUND',
-      message: `Nenhum arquivo do projeto corresponde a '${targetFile}'.`
+      code: targetFile ? 'TARGET_FILE_NOT_FOUND' : 'NO_FILES_MATCHED',
+      message: targetFile
+        ? `Nenhum arquivo do projeto corresponde a '${targetFile}'.`
+        : `O tsconfig em '${tsConfigPath}' não inclui nenhum arquivo — nada foi verificado.`
     };
   }
 

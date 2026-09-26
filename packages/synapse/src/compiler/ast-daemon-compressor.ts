@@ -37,17 +37,22 @@ interface SliceMetadata {
   hasPBT: boolean;
 }
 
+function isTestFile(fileName: string): boolean {
+  return /\.(test|spec)\.[cm]?tsx?$/.test(fileName);
+}
+
 export function compressRepositoryAST(baseDir: string, outputFile: string, graphFile?: string): {
   manifestTokensEstimate: number;
+  totalModules: number;
   totalSlices: number;
 } {
   const tsConfigPath = path.join(baseDir, 'tsconfig.json');
   const configFile = ts.readConfigFile(tsConfigPath, ts.sys.readFile);
   const parsed = ts.parseJsonConfigFileContent(configFile.config, ts.sys, baseDir);
 
-  const sourceFiles = parsed.fileNames.filter(
-    (f) => (f.includes('/slices/') || f.includes('/core/')) && !f.endsWith('.d.ts')
-  );
+  // Every file the project compiles is mapped, not only `slices/` and `core/`:
+  // the tooling must also work on a conventional app that adopts it.
+  const sourceFiles = parsed.fileNames.filter((f) => !f.endsWith('.d.ts') && !isTestFile(f));
 
   const program = ts.createProgram(sourceFiles, parsed.options);
   const typeChecker = program.getTypeChecker();
@@ -151,7 +156,8 @@ export function compressRepositoryAST(baseDir: string, outputFile: string, graph
 
   return {
     manifestTokensEstimate: tokenEstimate,
-    totalSlices: architectureGraph.length
+    totalModules: architectureGraph.length,
+    totalSlices: architectureGraph.filter((entry) => entry.slicePath.endsWith('.slice.tsx')).length
   };
 }
 

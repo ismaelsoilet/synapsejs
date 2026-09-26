@@ -26,7 +26,7 @@ export const sliceSchema = `
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
 
@@ -35,16 +35,22 @@ export const sliceSchema = `
 // ============================================================================
 export type CreateProductOutput = Result<
   { id: string; name: string; email: string; createdAt: string },
-  'INVALID_SCHEMA' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'DUPLICATE_EMAIL' | 'PERSISTENCE_FAILED'
 >;
 
 // ============================================================================
 // 3. EXECUÇÃO DE SERVIDOR PURA (Server Action)
+// `db` é opcional para que o mesmo ponto de chamada valha no servidor (que
+// injeta a conexão) e no cliente (onde a chamada vira stub RPC).
 // ============================================================================
 export async function createProductAction(
   payload: unknown,
-  db: DatabaseClient
+  db?: DatabaseClient
 ): Promise<CreateProductOutput> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
   // Parsing JIT em memória
   if (!Value.Check(CreateProductInputSchema, payload)) {
     return Err('INVALID_SCHEMA');
@@ -158,49 +164,50 @@ export function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerPro
 // ============================================================================
 export const sliceTests = {
   description: 'Verificação PBT de invariantes para create-product',
-  run: async () => {
-    // 1. Invariante: Nomes curtos ou e-mails sem @ SEMPRE retornam INVALID_SCHEMA
-    fc.assert(
-      fc.asyncProperty(
-        fc.string({ minLength: 0, maxLength: 1 }),
-        fc.stringMatching(/^[a-z0-9]{1,10}$/),
-        async (shortName, invalidEmail) => {
-          const mockDb = new MockDatabaseClient();
-          const result = await createProductAction(
-            { name: shortName, email: invalidEmail },
-            mockDb
-          );
-          return result.ok === false && result.error === 'INVALID_SCHEMA';
+  cases: [
+    {
+      name: 'nome curto ou e-mail sem @ retornam INVALID_SCHEMA',
+      run: async () => {
+        fc.assert(
+          fc.asyncProperty(
+            fc.string({ minLength: 0, maxLength: 1 }),
+            fc.stringMatching(/^[a-z0-9]{1,10}$/),
+            async (shortName, invalidEmail) => {
+              const result = await createProductAction(
+                { name: shortName, email: invalidEmail },
+                new MockDatabaseClient()
+              );
+              return result.ok === false && result.error === 'INVALID_SCHEMA';
+            }
+          )
+        );
+      }
+    },
+    {
+      name: 'e-mail já cadastrado retorna DUPLICATE_EMAIL',
+      run: async () => {
+        const mockDbDuplicate = new MockDatabaseClient();
+        mockDbDuplicate.onQuery(/SELECT id FROM/, () => [{ id: 'existing-id-123' }]);
+
+        const dupResult = await createProductAction(
+          { name: 'Usuario Valido', email: 'teste@dominio.com' },
+          mockDbDuplicate
+        );
+
+        if (dupResult.ok || dupResult.error !== 'DUPLICATE_EMAIL') {
+          throw new Error(`Invariante violada: esperava DUPLICATE_EMAIL, obteve ${JSON.stringify(dupResult)}`);
         }
-      )
-    );
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const result = await createProductAction({ name: 'Produto Valido', email: 'novo@dominio.com' });
 
-    // 2. Invariante: E-mail já cadastrado SEMPRE retorna DUPLICATE_EMAIL
-    const mockDbDuplicate = new MockDatabaseClient();
-    mockDbDuplicate.onQuery(/SELECT id FROM/, () => [{ id: 'existing-id-123' }]);
-
-    const dupResult = await createProductAction(
-      { name: 'Usuario Valido', email: 'teste@dominio.com' },
-      mockDbDuplicate
-    );
-
-    if (dupResult.ok || dupResult.error !== 'DUPLICATE_EMAIL') {
-      throw new Error(`Invariante violada: esperava DUPLICATE_EMAIL, obteve ${JSON.stringify(dupResult)}`);
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error(`Invariante violada: esperava NO_DATABASE, obteve ${JSON.stringify(result)}`);
+        }
+      }
     }
-
-    return true;
-  }
+  ]
 };
-
-if (import.meta.main) {
-  console.log('⚡ Executando Oráculo PBT do Slice create-product...');
-  sliceTests.run()
-    .then(() => {
-      console.log('✅ [PBT ORACLE PASS] Todos os invariantes aprovados com sucesso!');
-      process.exit(0);
-    })
-    .catch((err) => {
-      console.error('❌ [PBT ORACLE FAIL] Falha na verificação de invariantes:', err);
-      process.exit(1);
-    });
-}
