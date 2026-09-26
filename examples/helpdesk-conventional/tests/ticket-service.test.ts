@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'bun:test';
 import type { Database } from 'bun:sqlite';
+import { beforeEach, describe, expect, it } from 'bun:test';
 import { openDatabase } from '../src/db/tickets';
 import { assignTicket, createTicket, listTickets } from '../src/services/ticket-service';
 

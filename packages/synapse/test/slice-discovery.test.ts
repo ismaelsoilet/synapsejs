@@ -41,7 +41,9 @@ describe('findSliceFiles', () => {
     const slicesDir = writeSlice(appDir, 'billing', 'generate-invoice');
     writeSlice(appDir, 'customers', 'create-customer');
 
-    const found = findSliceFiles(slicesDir).map((f) => path.basename(f)).sort();
+    const found = findSliceFiles(slicesDir)
+      .map((f) => path.basename(f))
+      .sort();
     expect(found).toEqual(['create-customer.slice.tsx', 'generate-invoice.slice.tsx']);
   });
 });

@@ -1,15 +1,16 @@
-import React, { useState } from 'react';
-import { 
-  Type, 
-  Static, 
-  Value, 
-  fc, 
-  Result, 
-  Ok, 
-  Err, 
-  type DatabaseClient, 
+import type React from 'react';
+import { useState } from 'react';
+import {
+  type DatabaseClient,
+  Err,
+  fc,
+  MockDatabaseClient,
+  Ok,
+  type Result,
   type SessionContext,
-  MockDatabaseClient 
+  type Static,
+  Type,
+  Value
 } from 'synapsejs';
 
 // ============================================================================
@@ -45,7 +46,7 @@ export type HelloWorldOutput = Result<
 export async function helloWorldAction(
   payload: unknown,
   db?: DatabaseClient,
-  session?: SessionContext
+  _session?: SessionContext
 ): Promise<HelloWorldOutput> {
   if (!db) {
     return Err('NO_DATABASE');
@@ -58,10 +59,11 @@ export async function helloWorldAction(
   const greetingId = crypto.randomUUID();
   const greeting = `Olá, ${input.name}! Bem-vindo ao SynapseJS.`;
 
-  await db.query(
-    `INSERT INTO greetings (id, name, message) VALUES ($1, $2, $3)`,
-    [greetingId, input.name, input.message || 'Boas-vindas']
-  );
+  await db.query(`INSERT INTO greetings (id, name, message) VALUES ($1, $2, $3)`, [
+    greetingId,
+    input.name,
+    input.message || 'Boas-vindas'
+  ]);
 
   return Ok({
     greetingId,
@@ -105,8 +107,11 @@ export function HelloWorldView({ defaultName = 'Desenvolvedor', onSubmitAction }
       <h2 className="text-xl font-bold mb-4 text-cyan-400">⚡ SynapseJS Starter Slice</h2>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
-          <label className="block text-xs font-mono text-slate-400 mb-1">Seu Nome:</label>
+          <label htmlFor="hello-name" className="block text-xs font-mono text-slate-400 mb-1">
+            Seu Nome:
+          </label>
           <input
+            id="hello-name"
             name="name"
             defaultValue={defaultName}
             required
@@ -114,8 +119,11 @@ export function HelloWorldView({ defaultName = 'Desenvolvedor', onSubmitAction }
           />
         </div>
         <div>
-          <label className="block text-xs font-mono text-slate-400 mb-1">Mensagem (Opcional):</label>
+          <label htmlFor="hello-message" className="block text-xs font-mono text-slate-400 mb-1">
+            Mensagem (Opcional):
+          </label>
           <input
+            id="hello-message"
             name="message"
             placeholder="Primeira fatia no SynapseJS..."
             className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded text-sm text-white"
@@ -128,11 +136,7 @@ export function HelloWorldView({ defaultName = 'Desenvolvedor', onSubmitAction }
           Executar Ação RPC
         </button>
       </form>
-      {feedback && (
-        <div className="mt-4 p-3 bg-slate-800 rounded text-xs font-mono text-cyan-300">
-          {feedback}
-        </div>
-      )}
+      {feedback && <div className="mt-4 p-3 bg-slate-800 rounded text-xs font-mono text-cyan-300">{feedback}</div>}
     </div>
   );
 }

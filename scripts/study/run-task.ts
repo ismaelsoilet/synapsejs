@@ -66,7 +66,7 @@ function readLog(): Attempt[] {
 
 function appendLog(attempt: Attempt): void {
   fs.mkdirSync(resultsDir, { recursive: true });
-  fs.appendFileSync(logPath, JSON.stringify(attempt) + '\n', 'utf-8');
+  fs.appendFileSync(logPath, `${JSON.stringify(attempt)}\n`, 'utf-8');
 }
 
 async function diffStats(appDir: string): Promise<DiffStats> {
@@ -116,7 +116,7 @@ async function record(): Promise<never> {
 
   if (!task || !stack || !stackId) {
     process.stdout.write(
-      JSON.stringify(
+      `${JSON.stringify(
         {
           status: 'FAIL',
           code: 'UNKNOWN_TASK_OR_STACK',
@@ -125,7 +125,7 @@ async function record(): Promise<never> {
         },
         null,
         2
-      ) + '\n'
+      )}\n`
     );
     process.exit(1);
   }
@@ -172,7 +172,7 @@ async function record(): Promise<never> {
   }
 
   process.stdout.write(
-    JSON.stringify(
+    `${JSON.stringify(
       {
         status: green ? 'PASS' : 'FAIL',
         operation: 'STUDY_ATTEMPT',
@@ -186,7 +186,7 @@ async function record(): Promise<never> {
       },
       null,
       2
-    ) + '\n'
+    )}\n`
   );
   process.exit(green ? 0 : 1);
 }
@@ -221,7 +221,7 @@ function report(): never {
     }
   }
 
-  process.stdout.write(lines.join('\n') + '\n');
+  process.stdout.write(`${lines.join('\n')}\n`);
   process.exit(0);
 }
 

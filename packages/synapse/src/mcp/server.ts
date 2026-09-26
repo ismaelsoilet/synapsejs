@@ -1,17 +1,17 @@
 /**
  * SynapseJS - Native Model Context Protocol (MCP) Server
- * 
+ *
  * Exposes SynapseJS machine capabilities (repo-map, diagnostics, PBT, migrations, scaffolding)
  * directly to AI Agents (Cursor, Claude Code, Windsurf, Antigravity) via JSON-RPC 2.0 over stdio.
  */
 
-import * as readline from 'readline';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
+import * as readline from 'readline';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
-import { scaffoldSlice } from '../compiler/scaffolder';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { runSliceOracles } from '../compiler/oracle-runner';
+import { scaffoldSlice } from '../compiler/scaffolder';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -42,15 +42,15 @@ export class SynapseMcpServer {
         const request: JsonRpcRequest = JSON.parse(trimmed);
         const response = await this.handleRequest(request);
         if (response) {
-          process.stdout.write(JSON.stringify(response) + '\n');
+          process.stdout.write(`${JSON.stringify(response)}\n`);
         }
       } catch (err: any) {
         process.stdout.write(
-          JSON.stringify({
+          `${JSON.stringify({
             jsonrpc: '2.0',
             id: null,
             error: { code: -32700, message: `Parse error: ${err.message}` }
-          }) + '\n'
+          })}\n`
         );
       }
     });
@@ -89,12 +89,14 @@ export class SynapseMcpServer {
             tools: [
               {
                 name: 'synapse_get_repo_map',
-                description: 'Get compressed codebase skeleton map (.codebase/repo-map.d.ts) for AI context (<3000 tokens)',
+                description:
+                  'Get compressed codebase skeleton map (.codebase/repo-map.d.ts) for AI context (<3000 tokens)',
                 inputSchema: { type: 'object', properties: {} }
               },
               {
                 name: 'synapse_check',
-                description: 'Run machine-centric compiler diagnostics, returning exact JSON coordinates (file, line, col, message)',
+                description:
+                  'Run machine-centric compiler diagnostics, returning exact JSON coordinates (file, line, col, message)',
                 inputSchema: {
                   type: 'object',
                   properties: {
@@ -109,7 +111,8 @@ export class SynapseMcpServer {
               },
               {
                 name: 'synapse_scaffold_slice',
-                description: 'Scaffold a new fullstack atomic vertical slice with TypeBox, Result, Action, React UI and PBT',
+                description:
+                  'Scaffold a new fullstack atomic vertical slice with TypeBox, Result, Action, React UI and PBT',
                 inputSchema: {
                   type: 'object',
                   required: ['domain', 'name'],
@@ -121,7 +124,8 @@ export class SynapseMcpServer {
               },
               {
                 name: 'synapse_migrate',
-                description: 'Auto-discover and apply sliceSchema DDL declarations across slices into the active database',
+                description:
+                  'Auto-discover and apply sliceSchema DDL declarations across slices into the active database',
                 inputSchema: { type: 'object', properties: {} }
               }
             ]

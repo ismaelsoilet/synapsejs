@@ -2,8 +2,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
+import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 
 let sandbox: string;
 let db: SqliteDatabaseClient;

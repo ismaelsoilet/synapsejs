@@ -22,7 +22,10 @@ interface McpResponse {
   error?: { code: number; message: string };
 }
 
-async function runMcp(requests: unknown[], cwd: string = sandbox): Promise<{ responses: McpResponse[]; exitCode: number }> {
+async function runMcp(
+  requests: unknown[],
+  cwd: string = sandbox
+): Promise<{ responses: McpResponse[]; exitCode: number }> {
   const env = { ...process.env } as Record<string, string>;
   delete env.SYNAPSE_ROOT;
 
@@ -34,7 +37,7 @@ async function runMcp(requests: unknown[], cwd: string = sandbox): Promise<{ res
     stderr: 'pipe'
   });
 
-  proc.stdin.write(requests.map((r) => JSON.stringify(r)).join('\n') + '\n');
+  proc.stdin.write(`${requests.map((r) => JSON.stringify(r)).join('\n')}\n`);
   await proc.stdin.end();
 
   const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);

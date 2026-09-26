@@ -1,13 +1,14 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import type React from 'react';
+import { useState } from 'react';
 import {
+  createSession,
   type DatabaseClient,
-  Result,
-  Ok,
   Err,
   MockDatabaseClient,
-  createSession,
+  Ok,
+  type Result,
   requireAuth,
   type SessionContext
 } from 'synapsejs';
@@ -72,7 +73,11 @@ export async function assignTicketAction(
 // ============================================================================
 // 4. UI REACT
 // ============================================================================
-export function AssignTicketTrigger({ onSubmitAction }: { onSubmitAction?: (payload: unknown) => Promise<AssignTicketOutput> }) {
+export function AssignTicketTrigger({
+  onSubmitAction
+}: {
+  onSubmitAction?: (payload: unknown) => Promise<AssignTicketOutput>;
+}) {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

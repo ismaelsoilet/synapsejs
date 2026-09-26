@@ -1,14 +1,14 @@
 /**
  * SynapseJS - Agent Diagnostic JSON Engine
- * 
+ *
  * Machine-only compiler diagnostic interceptor.
  * Replaces human-targeted ANSI text output with structured JSON coordinates:
  * { status, errorCount, issues: [{ file, line, column, errorCode, message }] }
  * Enables closed-loop deterministic auto-correction by AI agents.
  */
 
-import * as ts from 'typescript';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 export interface DiagnosticIssue {
   file: string;
@@ -103,7 +103,7 @@ if (import.meta.main) {
   const report = runMachineVerifications(process.cwd(), target);
 
   // Write pure, unadulterated JSON to stdout for agent consumption
-  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
 
   if (report.status === 'FAIL') {
     process.exit(1);

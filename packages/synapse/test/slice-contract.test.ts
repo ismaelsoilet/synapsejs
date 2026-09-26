@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'bun:test';
-import { MockDatabaseClient, createSession } from '../src/index';
-
 import {
-  InvoiceInputSchema,
-  createInvoiceAction
+  createInvoiceAction,
+  InvoiceInputSchema
 } from '../../../examples/enterprise-crm/src/slices/billing/generate-invoice.slice.tsx';
 import { createCustomerAction } from '../../../examples/enterprise-crm/src/slices/customers/create-customer.slice.tsx';
 import { createProductAction } from '../../../examples/enterprise-crm/src/slices/products/create-product.slice.tsx';
+import { createSession, MockDatabaseClient } from '../src/index';
 import { helloWorldAction } from '../templates/starter/src/slices/welcome/hello-world.slice.tsx';
 
 const billingSession = createSession({ userId: 'usr-1', roles: ['billing'] });
@@ -124,7 +123,10 @@ describe('create-customer slice', () => {
       .onQuery(/SELECT id FROM customers WHERE email/, () => [])
       .onQuery(/SELECT id FROM customers WHERE tax_id/, () => [{ id: 'dup' }]);
 
-    const result = await createCustomerAction({ name: 'Cliente Valido', email: 'novo@test.com', taxId: '12345678' }, db);
+    const result = await createCustomerAction(
+      { name: 'Cliente Valido', email: 'novo@test.com', taxId: '12345678' },
+      db
+    );
 
     expect(result).toEqual({ ok: false, error: 'DUPLICATE_TAX_ID' });
   });
@@ -132,7 +134,10 @@ describe('create-customer slice', () => {
   it('activates a valid customer', async () => {
     const db = new MockDatabaseClient().onQuery(/SELECT id FROM customers/, () => []);
 
-    const result = await createCustomerAction({ name: 'Cliente Valido', email: 'novo@test.com', taxId: '12345678' }, db);
+    const result = await createCustomerAction(
+      { name: 'Cliente Valido', email: 'novo@test.com', taxId: '12345678' },
+      db
+    );
 
     expect(result.ok).toBe(true);
     if (result.ok) {

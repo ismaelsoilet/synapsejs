@@ -1,6 +1,6 @@
 /**
  * SynapseJS - Zero-Wiring HTTP Server & Dynamic Slice Dispatcher
- * 
+ *
  * Leverages native Bun.serve to provide:
  * 1. Automatic file-system slice discovery (Zero-Wiring Routing)
  * 2. SSR HTML Shell with client-side RPC form wiring & Tailwind styling
@@ -8,13 +8,13 @@
  * 4. Machine Endpoints for AI agents (/_synapse/api/repo-map, health)
  */
 
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
-import { getDatabase, type DatabaseClient, AnonymousSession, createSession, type SessionContext } from '../core/index';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
+import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -385,7 +385,7 @@ export class SynapseServer {
           const sliceName = pathname.replace('/_synapse/rpc/', '');
           const slice = this.slices.get(sliceName);
 
-          if (!slice || !slice.actionFn) {
+          if (!slice?.actionFn) {
             return Response.json(
               { ok: false, error: `Action para a fatia '${sliceName}' não encontrada.` },
               { status: 404 }
@@ -404,7 +404,7 @@ export class SynapseServer {
             if (authHeader?.startsWith('Bearer ') || userIdHeader) {
               const token = authHeader?.replace('Bearer ', '');
               session = createSession({
-                userId: userIdHeader || 'user-' + (token?.slice(0, 8) || 'authenticated'),
+                userId: userIdHeader || `user-${token?.slice(0, 8) || 'authenticated'}`,
                 roles: rolesHeader ? rolesHeader.split(',').map((r) => r.trim()) : ['user'],
                 token
               });
@@ -415,10 +415,7 @@ export class SynapseServer {
               status: result.ok ? 200 : 400
             });
           } catch (err: any) {
-            return Response.json(
-              { ok: false, error: `Falha interna no RPC: ${err.message}` },
-              { status: 500 }
-            );
+            return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });
           }
         }
 

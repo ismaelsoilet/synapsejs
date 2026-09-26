@@ -1,14 +1,14 @@
 /**
  * SynapseJS - Native AST Daemon & Codebase Compressor
- * 
+ *
  * Extracts exact structural topology and signatures from slices and core modules.
  * Suppresses implementation bodies to produce a compressed skeleton map (.codebase/repo-map.d.ts)
  * that fits well within a 3,000-token budget for LLM context injection.
  */
 
-import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 
 /**
  * Resolves the runtime contract behind a TypeBox schema declaration.
@@ -41,7 +41,11 @@ function isTestFile(fileName: string): boolean {
   return /\.(test|spec)\.[cm]?tsx?$/.test(fileName);
 }
 
-export function compressRepositoryAST(baseDir: string, outputFile: string, graphFile?: string): {
+export function compressRepositoryAST(
+  baseDir: string,
+  outputFile: string,
+  graphFile?: string
+): {
   manifestTokensEstimate: number;
   totalModules: number;
   totalSlices: number;

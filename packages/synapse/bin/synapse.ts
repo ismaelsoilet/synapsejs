@@ -1,9 +1,10 @@
 #!/usr/bin/env bun
+
 /**
  * SynapseJS - Agent CLI v0.6.0
- * 
+ *
  * Provides headless, machine-readable interfaces for AI autonomous agents.
- * 
+ *
  * Subcommands:
  *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router & Auto-Migrations
  *   synapse check      - Run the TypeScript typechecker and print JSON diagnostics
@@ -16,22 +17,17 @@
  *   synapse info       - Machine metadata and framework metrics
  */
 
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
-import {
-  artifactDirectory,
-  splitSlice,
-  verifySplit,
-  writeSplitArtifacts
-} from '../src/compiler/slice-splitter';
-import { scaffoldSlice } from '../src/compiler/scaffolder';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
+import { scaffoldSlice } from '../src/compiler/scaffolder';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
-import { SynapseServer } from '../src/runtime/server';
+import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { SynapseMcpServer } from '../src/mcp/server';
+import { SynapseServer } from '../src/runtime/server';
 
 const command = process.argv[2] || 'check';
 const root = process.cwd();
@@ -49,9 +45,9 @@ async function main() {
     case 'check': {
       const arg1 = process.argv[3];
 
-      if (arg1 && arg1.startsWith('--')) {
+      if (arg1?.startsWith('--')) {
         process.stdout.write(
-          JSON.stringify(
+          `${JSON.stringify(
             {
               status: 'FAIL',
               code: 'UNKNOWN_FLAG',
@@ -59,21 +55,21 @@ async function main() {
             },
             null,
             2
-          ) + '\n'
+          )}\n`
         );
         process.exit(1);
       }
 
       const report = runMachineVerifications(root, arg1);
 
-      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
 
     case 'migrate': {
       const report = await runSliceMigrations(root);
-      process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
       process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
@@ -92,7 +88,7 @@ async function main() {
       const skeletonStatus = stats.totalModules > 0 ? 'PASS' : 'FAIL';
 
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             status: skeletonStatus,
             operation: 'SKELETON_COMPRESS',
@@ -110,7 +106,7 @@ async function main() {
           },
           null,
           2
-        ) + '\n'
+        )}\n`
       );
       process.exit(skeletonStatus === 'PASS' ? 0 : 1);
       break;
@@ -121,7 +117,7 @@ async function main() {
 
       if (!resolution.ok) {
         process.stdout.write(
-          JSON.stringify(
+          `${JSON.stringify(
             {
               status: 'FAIL',
               operation: 'SLICE_SPLIT',
@@ -131,7 +127,7 @@ async function main() {
             },
             null,
             2
-          ) + '\n'
+          )}\n`
         );
         process.exit(1);
       }
@@ -175,7 +171,7 @@ async function main() {
       const splitStatus = failed || slices.length === 0 ? 'FAIL' : 'PASS';
 
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             status: splitStatus,
             operation: 'SLICE_SPLIT',
@@ -185,7 +181,7 @@ async function main() {
           },
           null,
           2
-        ) + '\n'
+        )}\n`
       );
       process.exit(splitStatus === 'PASS' ? 0 : 1);
       break;
@@ -197,10 +193,10 @@ async function main() {
 
       if (!domain || !name) {
         process.stderr.write(
-          JSON.stringify({
+          `${JSON.stringify({
             status: 'ERROR',
             message: 'Parâmetros obrigatórios ausentes. Uso: synapse new-slice <domain> <name>'
-          }) + '\n'
+          })}\n`
         );
         process.exit(1);
       }
@@ -209,7 +205,7 @@ async function main() {
 
       if (!created.ok) {
         process.stderr.write(
-          JSON.stringify(
+          `${JSON.stringify(
             {
               status: 'ERROR',
               operation: 'SCAFFOLD_SLICE',
@@ -219,13 +215,13 @@ async function main() {
             },
             null,
             2
-          ) + '\n'
+          )}\n`
         );
         process.exit(1);
       }
 
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             status: 'PASS',
             operation: 'SCAFFOLD_SLICE',
@@ -235,7 +231,7 @@ async function main() {
           },
           null,
           2
-        ) + '\n'
+        )}\n`
       );
       process.exit(0);
       break;
@@ -244,7 +240,7 @@ async function main() {
     case 'test': {
       const report = await runSliceOracles(root);
 
-      process.stdout.write(JSON.stringify({ operation: 'PBT_ORACLE_TEST_SUITE', ...report }, null, 2) + '\n');
+      process.stdout.write(`${JSON.stringify({ operation: 'PBT_ORACLE_TEST_SUITE', ...report }, null, 2)}\n`);
       process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
@@ -255,23 +251,26 @@ async function main() {
       const rawTarget = process.argv[3];
       if (!rawTarget) {
         process.stderr.write(
-          JSON.stringify({
+          `${JSON.stringify({
             status: 'ERROR',
             message: 'Nome do projeto obrigatório. Uso: synapse new <project-name>'
-          }) + '\n'
+          })}\n`
         );
         process.exit(1);
       }
 
       const targetDir = path.resolve(root, rawTarget);
-      const cleanProjectName = path.basename(targetDir).toLowerCase().replace(/[^a-z0-9-_]/g, '-');
+      const cleanProjectName = path
+        .basename(targetDir)
+        .toLowerCase()
+        .replace(/[^a-z0-9-_]/g, '-');
 
       if (fs.existsSync(targetDir)) {
         process.stderr.write(
-          JSON.stringify({
+          `${JSON.stringify({
             status: 'ERROR',
             message: `O diretório '${rawTarget}' já existe em ${targetDir}.`
-          }) + '\n'
+          })}\n`
         );
         process.exit(1);
       }
@@ -288,10 +287,10 @@ async function main() {
 
       if (!templateDir) {
         process.stderr.write(
-          JSON.stringify({
+          `${JSON.stringify({
             status: 'ERROR',
             message: 'Template oficial starter não encontrado nos diretórios candidatos.'
-          }) + '\n'
+          })}\n`
         );
         process.exit(1);
       }
@@ -324,7 +323,7 @@ async function main() {
       copyRecursive(templateDir, targetDir);
 
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             status: 'PASS',
             operation: 'CREATE_PROJECT',
@@ -334,7 +333,7 @@ async function main() {
           },
           null,
           2
-        ) + '\n'
+        )}\n`
       );
       process.exit(0);
       break;
@@ -342,7 +341,7 @@ async function main() {
 
     case 'info': {
       process.stdout.write(
-        JSON.stringify(
+        `${JSON.stringify(
           {
             framework: 'SynapseJS',
             version: '0.6.0',
@@ -425,7 +424,7 @@ async function main() {
           },
           null,
           2
-        ) + '\n'
+        )}\n`
       );
       process.exit(0);
       break;
@@ -441,6 +440,6 @@ async function main() {
 }
 
 main().catch((err) => {
-  process.stderr.write(JSON.stringify({ status: 'ERROR', error: String(err) }) + '\n');
+  process.stderr.write(`${JSON.stringify({ status: 'ERROR', error: String(err) })}\n`);
   process.exit(1);
 });

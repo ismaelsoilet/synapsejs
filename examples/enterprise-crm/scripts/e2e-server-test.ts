@@ -138,7 +138,7 @@ async function runE2ETests() {
       body: JSON.stringify({
         customerId,
         amountCents: 50000,
-        taxRate: 0.10,
+        taxRate: 0.1,
         idempotencyToken: idempToken
       })
     });
@@ -156,7 +156,7 @@ async function runE2ETests() {
       body: JSON.stringify({
         customerId,
         amountCents: 50000,
-        taxRate: 0.10,
+        taxRate: 0.1,
         idempotencyToken: idempToken
       })
     });
@@ -174,7 +174,7 @@ async function runE2ETests() {
       body: JSON.stringify({
         customerId: 'cust-inexistente-99999',
         amountCents: 10000,
-        taxRate: 0.10,
+        taxRate: 0.1,
         idempotencyToken: `token-${Date.now()}`
       })
     });
@@ -192,7 +192,7 @@ async function runE2ETests() {
       body: JSON.stringify({
         customerId,
         amountCents: 1000,
-        taxRate: 0.10,
+        taxRate: 0.1,
         idempotencyToken: `anon-${Date.now()}`
       })
     });
@@ -218,17 +218,21 @@ async function runE2ETests() {
       body: JSON.stringify({
         customerId,
         amountCents: 1000,
-        taxRate: 0.10,
+        taxRate: 0.1,
         idempotencyToken: `viewer-${Date.now()}`
       })
     });
     const forbiddenData = await forbiddenRes.json();
     console.log('   Forbidden result:', forbiddenData);
     if (forbiddenData.ok || forbiddenData.error !== 'FORBIDDEN') {
-      throw new Error(`Falha no RBAC: esperava FORBIDDEN para papel sem 'billing', obteve ${JSON.stringify(forbiddenData)}`);
+      throw new Error(
+        `Falha no RBAC: esperava FORBIDDEN para papel sem 'billing', obteve ${JSON.stringify(forbiddenData)}`
+      );
     }
 
-    console.log('\n🎉 [E2E SUCCESS] Todos os 12 testes de integração (SSR, RPC, RBAC, Idempotência e Multi-Slices) foram APROVADOS com 100% de sucesso!');
+    console.log(
+      '\n🎉 [E2E SUCCESS] Todos os 12 testes de integração (SSR, RPC, RBAC, Idempotência e Multi-Slices) foram APROVADOS com 100% de sucesso!'
+    );
   } finally {
     server.stop();
     console.log('🛑 [E2E] Servidor Bun encerrado.');
@@ -241,4 +245,3 @@ runE2ETests()
     console.error('❌ [E2E FAILED]:', err);
     process.exit(1);
   });
-

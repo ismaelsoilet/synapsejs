@@ -1,6 +1,6 @@
 /**
  * SynapseJS - Database Context & Query Builder Abstraction
- * 
+ *
  * Provides a clean, type-safe persistence contract without reflection-based ORM bloat.
  * Compatible with raw parameterized SQL, Kysely, and Drizzle query builders.
  */

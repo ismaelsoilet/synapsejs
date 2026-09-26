@@ -23,10 +23,10 @@ describe('SqliteDatabaseClient', () => {
   });
 
   it('surfaces rows from INSERT ... RETURNING', async () => {
-    const rows = await db.query<{ id: string }>(
-      `INSERT INTO items (id, label) VALUES ($1, $2) RETURNING id`,
-      ['b', 'beta']
-    );
+    const rows = await db.query<{ id: string }>(`INSERT INTO items (id, label) VALUES ($1, $2) RETURNING id`, [
+      'b',
+      'beta'
+    ]);
 
     expect(rows).toEqual([{ id: 'b' }]);
   });
@@ -34,12 +34,15 @@ describe('SqliteDatabaseClient', () => {
   it('surfaces rows from a CTE (WITH ... SELECT)', async () => {
     await db.query(`INSERT INTO items (id, label) VALUES ($1, $2)`, ['c', 'gamma']);
 
-    const rows = await db.query<{ label: string }>(`
+    const rows = await db.query<{ label: string }>(
+      `
       WITH matching AS (
         SELECT label FROM items WHERE id = $1
       )
       SELECT label FROM matching
-    `, ['c']);
+    `,
+      ['c']
+    );
 
     expect(rows).toEqual([{ label: 'gamma' }]);
   });

@@ -1,4 +1,4 @@
-import { FormatRegistry, Type, type Static } from '@sinclair/typebox';
+import { FormatRegistry, type Static, Type } from '@sinclair/typebox';
 
 // TypeBox only validates `format: 'email'` when the format is registered; the
 // slice-based app gets this from the framework, here it is glue we own.

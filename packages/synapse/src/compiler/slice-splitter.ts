@@ -17,10 +17,10 @@
  *   2. the client module must not reference any server-only symbol.
  */
 
-import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
-import { Ok, Err, type Result } from '../core/machine-types';
+import * as ts from 'typescript';
+import { Err, Ok, type Result } from '../core/machine-types';
 
 export type ArtifactKind = 'shared' | 'server' | 'client';
 
@@ -130,7 +130,7 @@ function projectOptions(startDir: string): ts.CompilerOptions {
   };
 }
 
-function hasExportModifier(node: ts.Node, sourceFile: ts.SourceFile): boolean {
+function hasExportModifier(node: ts.Node, _sourceFile: ts.SourceFile): boolean {
   const statement = ts.isVariableDeclaration(node) ? node.parent.parent : node;
   const modifiers = ts.canHaveModifiers(statement) ? ts.getModifiers(statement) : undefined;
   return Boolean(modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword));
@@ -626,7 +626,8 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
     });
   }
 
-  const serverSharedImport = sharedEntries.length > 0 ? `import { ${sharedEntries.map((e) => e.key).join(', ')} } from './shared';` : '';
+  const serverSharedImport =
+    sharedEntries.length > 0 ? `import { ${sharedEntries.map((e) => e.key).join(', ')} } from './shared';` : '';
 
   artifacts.push({
     kind: 'server',
@@ -641,7 +642,8 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
     )
   });
 
-  const clientSharedImport = sharedEntries.length > 0 ? `import { ${sharedEntries.map((e) => e.key).join(', ')} } from './shared';` : '';
+  const clientSharedImport =
+    sharedEntries.length > 0 ? `import { ${sharedEntries.map((e) => e.key).join(', ')} } from './shared';` : '';
   const clientRpcImport = stubbedKeys.length > 0 ? `import { rpcCall } from 'synapsejs';` : '';
 
   artifacts.push({
@@ -652,7 +654,11 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
         `// [SYNAPSE-JS CLIENT TARGET] AUTO-SPLIT FROM ${relativePath}`,
         `// REACT UI AND TRANSPARENT RPC STUBS (NO DATABASE ACCESS)`
       ],
-      [importsFor(sourceFile, clientEntries, sourceDir, outDir, stubSignatureImports), clientSharedImport, clientRpcImport],
+      [
+        importsFor(sourceFile, clientEntries, sourceDir, outDir, stubSignatureImports),
+        clientSharedImport,
+        clientRpcImport
+      ],
       clientEntries
         .map((entry) =>
           stubbedKeys.includes(entry.key)

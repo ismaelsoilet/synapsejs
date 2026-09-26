@@ -1,14 +1,14 @@
 /**
  * SynapseJS - Declarative AST Slice Migration Runner
- * 
+ *
  * Auto-discovers 'sliceSchema' DDL definitions co-located in *.slice.tsx files
  * and applies them idempotently to the active database (SQLite or PostgreSQL).
  * Preserves Locality of Behavior (LoB): each slice owns its own table contracts!
  */
 
-import * as ts from 'typescript';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as ts from 'typescript';
 import type { DatabaseClient } from '../core/database-client';
 import { getDatabase } from '../core/index';
 import { findSliceFiles, resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
@@ -100,13 +100,7 @@ export async function runSliceMigrations(
 
   for (const filePath of sliceFiles) {
     const fileContent = fs.readFileSync(filePath, 'utf-8');
-    const sourceFile = ts.createSourceFile(
-      filePath,
-      fileContent,
-      ts.ScriptTarget.Latest,
-      true,
-      ts.ScriptKind.TSX
-    );
+    const sourceFile = ts.createSourceFile(filePath, fileContent, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
 
     const sliceName = path.basename(filePath, '.slice.tsx');
     const ddlContent = extractSliceSchema(sourceFile);
@@ -183,6 +177,6 @@ export async function runSliceMigrations(
 if (import.meta.main) {
   console.log('⚡ [Synapse Migrator] Varrendo fatias verticais para auto-descoberta de DDL...');
   const report = await runSliceMigrations();
-  process.stdout.write(JSON.stringify(report, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
   process.exit(report.status === 'PASS' ? 0 : 1);
 }

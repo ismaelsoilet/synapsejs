@@ -58,7 +58,7 @@ function parseJson(output: string): Record<string, unknown> | null {
 }
 
 function emit(payload: Record<string, unknown>, ok: boolean): never {
-  process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   process.exit(ok ? 0 : 1);
 }
 
@@ -131,21 +131,28 @@ try {
     'utf-8'
   );
   const importRun = await run(['bun', 'run', 'probe.ts'], consumerDir);
-  record('entry point imports', importRun.exitCode === 0 && importRun.output.includes('function'), importRun.output.trim().slice(-200));
+  record(
+    'entry point imports',
+    importRun.exitCode === 0 && importRun.output.includes('function'),
+    importRun.output.trim().slice(-200)
+  );
 
   const info = await run([synapseBin, 'info'], consumerDir);
   record('synapse info runs', parseJson(info.output)?.status !== 'FAIL' && info.output.includes('"version"'));
 
   const created = await run([synapseBin, 'new', 'my-app'], consumerDir);
   const appDir = path.join(consumerDir, 'my-app');
-  record('synapse new', created.exitCode === 0 && fs.existsSync(path.join(appDir, 'src', 'slices')), parseJson(created.output)?.status as string | undefined);
+  record(
+    'synapse new',
+    created.exitCode === 0 && fs.existsSync(path.join(appDir, 'src', 'slices')),
+    parseJson(created.output)?.status as string | undefined
+  );
   record('generated project has a gitignore', fs.existsSync(path.join(appDir, '.gitignore')));
 
   const appManifestPath = path.join(appDir, 'package.json');
-  const appManifest = fs.readFileSync(appManifestPath, 'utf-8').replace(
-    /"synapsejs":\s*"[^"]+"/,
-    `"synapsejs": "file:${tarballPath}"`
-  );
+  const appManifest = fs
+    .readFileSync(appManifestPath, 'utf-8')
+    .replace(/"synapsejs":\s*"[^"]+"/, `"synapsejs": "file:${tarballPath}"`);
   fs.writeFileSync(appManifestPath, appManifest, 'utf-8');
 
   const appInstall = await run(['bun', 'install'], appDir);
@@ -186,7 +193,10 @@ try {
     ],
     appDir
   );
-  record('MCP server answers a handshake', mcp.output.includes('"protocolVersion"') && mcp.output.includes('synapse_run_pbt'));
+  record(
+    'MCP server answers a handshake',
+    mcp.output.includes('"protocolVersion"') && mcp.output.includes('synapse_run_pbt')
+  );
 
   const failed = steps.filter((step) => !step.ok);
   emit(

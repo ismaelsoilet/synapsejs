@@ -1,13 +1,13 @@
 /**
  * SynapseJS - Slice Scaffolder for Autonomous AI Agents
- * 
+ *
  * Generates an end-to-end atomic .slice.tsx file with zero boilerplate,
  * including TypeBox schema, Result types, server action, React UI form, and Fast-Check PBT tests.
  */
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Ok, Err, type Result } from '../core/machine-types';
+import { Err, Ok, type Result } from '../core/machine-types';
 import { resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
 
 export function toPascalCase(str: string): string {

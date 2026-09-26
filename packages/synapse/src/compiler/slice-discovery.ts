@@ -11,7 +11,7 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { Ok, Err, type Result } from '../core/machine-types';
+import { Err, Ok, type Result } from '../core/machine-types';
 
 export const SLICE_EXTENSION = '.slice.tsx';
 

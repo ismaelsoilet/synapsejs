@@ -1,14 +1,9 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
-import { 
-  type DatabaseClient, 
-  Result, 
-  Ok, 
-  Err, 
-  MockDatabaseClient 
-} from 'synapsejs';
+import type React from 'react';
+import { useState } from 'react';
+import { type DatabaseClient, Err, MockDatabaseClient, Ok, type Result } from 'synapsejs';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA JIT (TypeBox)
@@ -44,10 +39,7 @@ export type CustomerOutput = Result<
 // `db` é opcional para que o mesmo ponto de chamada valha no servidor (que
 // injeta a conexão) e no cliente (onde a chamada vira stub RPC).
 // ============================================================================
-export async function createCustomerAction(
-  payload: unknown,
-  db?: DatabaseClient
-): Promise<CustomerOutput> {
+export async function createCustomerAction(payload: unknown, db?: DatabaseClient): Promise<CustomerOutput> {
   if (!db) {
     return Err('NO_DATABASE');
   }
@@ -59,29 +51,25 @@ export async function createCustomerAction(
   const input = payload as CustomerInput;
 
   // Verificação de E-mail existente
-  const emailCheck = await db.query<{ id: string }>(
-    `SELECT id FROM customers WHERE email = $1`,
-    [input.email]
-  );
+  const emailCheck = await db.query<{ id: string }>(`SELECT id FROM customers WHERE email = $1`, [input.email]);
   if (emailCheck.length > 0) {
     return Err('DUPLICATE_EMAIL');
   }
 
   // Verificação de Tax ID existente
-  const taxCheck = await db.query<{ id: string }>(
-    `SELECT id FROM customers WHERE tax_id = $1`,
-    [input.taxId]
-  );
+  const taxCheck = await db.query<{ id: string }>(`SELECT id FROM customers WHERE tax_id = $1`, [input.taxId]);
   if (taxCheck.length > 0) {
     return Err('DUPLICATE_TAX_ID');
   }
 
   const generatedId = crypto.randomUUID();
 
-  await db.query(
-    `INSERT INTO customers (id, name, email, tax_id) VALUES ($1, $2, $3, $4)`,
-    [generatedId, input.name, input.email, input.taxId]
-  );
+  await db.query(`INSERT INTO customers (id, name, email, tax_id) VALUES ($1, $2, $3, $4)`, [
+    generatedId,
+    input.name,
+    input.email,
+    input.taxId
+  ]);
 
   return Ok({
     customerId: generatedId,
@@ -128,13 +116,18 @@ export function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps) {
   return (
     <div className="synapse-customer-slice">
       <h3 className="text-xl font-bold text-white mb-2">Cadastro de Cliente</h3>
-      <p className="text-xs text-slate-400 font-mono mb-4">Gera a entidade base necessária para a emissão de faturas.</p>
+      <p className="text-xs text-slate-400 font-mono mb-4">
+        Gera a entidade base necessária para a emissão de faturas.
+      </p>
 
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
-          <label className="block text-xs font-mono text-slate-300 mb-1">Razão Social / Nome:</label>
+          <label htmlFor="customer-name" className="block text-xs font-mono text-slate-300 mb-1">
+            Razão Social / Nome:
+          </label>
           <input
             type="text"
+            id="customer-name"
             name="name"
             required
             minLength={3}
@@ -144,9 +137,12 @@ export function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps) {
         </div>
 
         <div>
-          <label className="block text-xs font-mono text-slate-300 mb-1">E-mail Comercial:</label>
+          <label htmlFor="customer-email" className="block text-xs font-mono text-slate-300 mb-1">
+            E-mail Comercial:
+          </label>
           <input
             type="email"
+            id="customer-email"
             name="email"
             required
             defaultValue="financeiro@acme.com"
@@ -155,9 +151,12 @@ export function CustomerTrigger({ onSubmitAction }: CustomerTriggerProps) {
         </div>
 
         <div>
-          <label className="block text-xs font-mono text-slate-300 mb-1">CNPJ / CPF / Tax ID:</label>
+          <label htmlFor="customer-tax-id" className="block text-xs font-mono text-slate-300 mb-1">
+            CNPJ / CPF / Tax ID:
+          </label>
           <input
             type="text"
+            id="customer-tax-id"
             name="taxId"
             required
             minLength={5}

@@ -80,9 +80,9 @@ export function parseOracleJunit(xml: string): JunitSuite[] {
     const suite = byFile.get(file) ?? { name: file, cases: [] };
 
     const casePattern = /<testcase ([^>]*?)(\/>|>)([\s\S]*?)(?:<\/testcase>|(?=<testcase )|$)/g;
-    let match: RegExpExecArray | null;
+    let match = casePattern.exec(suiteChunk);
 
-    while ((match = casePattern.exec(suiteChunk)) !== null) {
+    while (match !== null) {
       const body = match[3] ?? '';
       const caseName = attribute(match[1], 'name') ?? 'unnamed';
       const failureMatch = body.match(/<failure ([^>]*?)(\/>|>)/);
@@ -94,6 +94,7 @@ export function parseOracleJunit(xml: string): JunitSuite[] {
       }
 
       suite.cases.push(result);
+      match = casePattern.exec(suiteChunk);
     }
 
     byFile.set(file, suite);

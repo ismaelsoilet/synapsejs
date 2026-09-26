@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { Err, None, Ok, Some, isErr, isOk, map, mapErr, unwrapOr } from '../src/core/machine-types';
-import * as publicEntry from '../src/index';
+import { Err, isErr, isOk, map, mapErr, None, Ok, Some, unwrapOr } from '../src/core/machine-types';
 import type {
   DatabaseClient,
   DiagnosticReport,
@@ -11,6 +10,7 @@ import type {
   SlicesDirError,
   SplitResult
 } from '../src/index';
+import * as publicEntry from '../src/index';
 
 // Type-only exports are part of the documented contract too. `bun test` transpiles
 // without typechecking, so this tuple is what makes a removed type break a gate:
@@ -79,19 +79,44 @@ describe('public surface', () => {
   });
 });
 
-
 describe('public contract (decision recorded in packages/synapse/README.md)', () => {
   it('keeps every export the documented contract promises', () => {
     const contract = [
-      'Ok', 'Err', 'isOk', 'isErr', 'map', 'mapErr', 'unwrapOr', 'Some', 'None',
-      'Type', 'Value', 'fc',
-      'MockDatabaseClient', 'SqliteDatabaseClient', 'PostgresDatabaseClient',
-      'getDatabase', 'resetDatabaseInstance',
-      'AnonymousSession', 'createSession', 'requireAuth', 'hasRole', 'hasAnyRole',
-      'rpcCall', 'rpcTransportFailure',
-      'resolveSlicesDir', 'findSliceFiles', 'runSliceMigrations', 'runSliceOracles',
-      'splitSlice', 'verifySplit', 'scaffoldSlice', 'compressRepositoryAST',
-      'runMachineVerifications', 'SynapseServer', 'SynapseMcpServer'
+      'Ok',
+      'Err',
+      'isOk',
+      'isErr',
+      'map',
+      'mapErr',
+      'unwrapOr',
+      'Some',
+      'None',
+      'Type',
+      'Value',
+      'fc',
+      'MockDatabaseClient',
+      'SqliteDatabaseClient',
+      'PostgresDatabaseClient',
+      'getDatabase',
+      'resetDatabaseInstance',
+      'AnonymousSession',
+      'createSession',
+      'requireAuth',
+      'hasRole',
+      'hasAnyRole',
+      'rpcCall',
+      'rpcTransportFailure',
+      'resolveSlicesDir',
+      'findSliceFiles',
+      'runSliceMigrations',
+      'runSliceOracles',
+      'splitSlice',
+      'verifySplit',
+      'scaffoldSlice',
+      'compressRepositoryAST',
+      'runMachineVerifications',
+      'SynapseServer',
+      'SynapseMcpServer'
     ];
 
     const missing = contract.filter((name) => !(name in publicEntry));

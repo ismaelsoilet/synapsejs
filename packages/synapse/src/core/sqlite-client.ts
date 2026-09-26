@@ -7,8 +7,8 @@
  */
 
 import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
-import * as path from 'path';
 import * as fs from 'fs';
+import * as path from 'path';
 import type { DatabaseClient } from './database-client';
 
 const READ_KEYWORDS = new Set(['SELECT', 'WITH', 'EXPLAIN', 'PRAGMA', 'VALUES']);
@@ -17,9 +17,7 @@ const READ_KEYWORDS = new Set(['SELECT', 'WITH', 'EXPLAIN', 'PRAGMA', 'VALUES'])
  * First SQL keyword, ignoring leading whitespace and comments.
  */
 function firstKeyword(sql: string): string {
-  const withoutComments = sql
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/--[^\n]*/g, ' ');
+  const withoutComments = sql.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/--[^\n]*/g, ' ');
 
   const match = withoutComments.trim().match(/^[A-Za-z]+/);
   return match ? match[0].toUpperCase() : '';

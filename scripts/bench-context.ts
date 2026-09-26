@@ -18,7 +18,7 @@ const apps = [
 const surfaces = apps.map((app) => measureAppSurface(app));
 
 if (process.argv.includes('--json')) {
-  process.stdout.write(JSON.stringify({ surfaces }, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify({ surfaces }, null, 2)}\n`);
 } else {
-  process.stdout.write(renderSurfaceReport(surfaces) + '\n');
+  process.stdout.write(`${renderSurfaceReport(surfaces)}\n`);
 }

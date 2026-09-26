@@ -1,14 +1,9 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
-import { 
-  type DatabaseClient, 
-  Result, 
-  Ok, 
-  Err, 
-  MockDatabaseClient 
-} from 'synapsejs';
+import type React from 'react';
+import { useState } from 'react';
+import { type DatabaseClient, Err, MockDatabaseClient, Ok, type Result } from 'synapsejs';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA JIT (TypeBox)
@@ -43,10 +38,7 @@ export type CreateProductOutput = Result<
 // `db` é opcional para que o mesmo ponto de chamada valha no servidor (que
 // injeta a conexão) e no cliente (onde a chamada vira stub RPC).
 // ============================================================================
-export async function createProductAction(
-  payload: unknown,
-  db?: DatabaseClient
-): Promise<CreateProductOutput> {
+export async function createProductAction(payload: unknown, db?: DatabaseClient): Promise<CreateProductOutput> {
   if (!db) {
     return Err('NO_DATABASE');
   }
@@ -58,10 +50,7 @@ export async function createProductAction(
   const input = payload as CreateProductInput;
 
   // Checagem de Duplicidade
-  const existing = await db.query<{ id: string }>(
-    `SELECT id FROM ${'products'} WHERE email = $1`,
-    [input.email]
-  );
+  const existing = await db.query<{ id: string }>(`SELECT id FROM ${'products'} WHERE email = $1`, [input.email]);
   if (existing.length > 0) {
     return Err('DUPLICATE_EMAIL');
   }
@@ -69,10 +58,11 @@ export async function createProductAction(
   const generatedId = crypto.randomUUID();
   const now = new Date().toISOString();
 
-  await db.query(
-    `INSERT INTO ${'products'} (id, name, email) VALUES ($1, $2, $3)`,
-    [generatedId, input.name, input.email]
-  );
+  await db.query(`INSERT INTO ${'products'} (id, name, email) VALUES ($1, $2, $3)`, [
+    generatedId,
+    input.name,
+    input.email
+  ]);
 
   return Ok({
     id: generatedId,
@@ -119,9 +109,12 @@ export function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerPro
       <h3 className="text-xl font-bold text-white mb-4">Novo Registro: CreateProduct</h3>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
-          <label className="block text-xs font-mono text-slate-300 mb-1">Nome Completo:</label>
+          <label htmlFor="product-name" className="block text-xs font-mono text-slate-300 mb-1">
+            Nome Completo:
+          </label>
           <input
             type="text"
+            id="product-name"
             name="name"
             required
             minLength={2}
@@ -131,9 +124,12 @@ export function CreateProductTrigger({ onSubmitAction }: CreateProductTriggerPro
         </div>
 
         <div>
-          <label className="block text-xs font-mono text-slate-300 mb-1">E-mail Corporativo:</label>
+          <label htmlFor="product-email" className="block text-xs font-mono text-slate-300 mb-1">
+            E-mail Corporativo:
+          </label>
           <input
             type="email"
+            id="product-email"
             name="email"
             required
             placeholder="usuario@empresa.com"

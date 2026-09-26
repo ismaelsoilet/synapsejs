@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
+import type React from 'react';
+import { useState } from 'react';
 import {
+  createSession,
   type DatabaseClient,
-  Result,
-  Ok,
   Err,
   MockDatabaseClient,
-  createSession,
+  Ok,
+  type Result,
   requireAuth,
   type SessionContext
 } from 'synapsejs';
@@ -68,10 +69,13 @@ export async function createTicketAction(
   const input = payload as TicketInput;
   const ticketId = crypto.randomUUID();
 
-  await db.query(
-    `INSERT INTO tickets (id, subject, priority, requester_email, status) VALUES ($1, $2, $3, $4, $5)`,
-    [ticketId, input.subject, input.priority, input.requesterEmail, 'OPEN']
-  );
+  await db.query(`INSERT INTO tickets (id, subject, priority, requester_email, status) VALUES ($1, $2, $3, $4, $5)`, [
+    ticketId,
+    input.subject,
+    input.priority,
+    input.requesterEmail,
+    'OPEN'
+  ]);
 
   return Ok({ ticketId, status: 'OPEN' });
 }
@@ -79,7 +83,11 @@ export async function createTicketAction(
 // ============================================================================
 // 4. UI REACT
 // ============================================================================
-export function CreateTicketTrigger({ onSubmitAction }: { onSubmitAction?: (payload: unknown) => Promise<TicketOutput> }) {
+export function CreateTicketTrigger({
+  onSubmitAction
+}: {
+  onSubmitAction?: (payload: unknown) => Promise<TicketOutput>;
+}) {
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {

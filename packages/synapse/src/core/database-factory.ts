@@ -1,6 +1,6 @@
 /**
  * SynapseJS - Universal Database Factory
- * 
+ *
  * Auto-detects the database engine from DATABASE_URL:
  * - If postgres:// or postgresql:// -> Instantiates PostgresDatabaseClient
  * - Otherwise -> Instantiates embedded SqliteDatabaseClient
@@ -8,8 +8,8 @@
 
 import * as path from 'path';
 import type { DatabaseClient } from './database-client';
-import { SqliteDatabaseClient } from './sqlite-client';
 import { PostgresDatabaseClient } from './postgres-client';
+import { SqliteDatabaseClient } from './sqlite-client';
 
 let cachedInstance: DatabaseClient | null = null;
 

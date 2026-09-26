@@ -1,16 +1,17 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import * as fc from 'fast-check';
-import { 
-  type DatabaseClient, 
-  Result, 
-  Ok, 
-  Err, 
-  MockDatabaseClient, 
+import type React from 'react';
+import { useState } from 'react';
+import {
   createSession,
+  type DatabaseClient,
+  Err,
+  MockDatabaseClient,
+  Ok,
+  type Result,
   requireAuth,
-  type SessionContext 
+  type SessionContext
 } from 'synapsejs';
 
 // ============================================================================
@@ -72,19 +73,15 @@ export async function createInvoiceAction(
   const total = input.amountCents + Math.round(input.amountCents * input.taxRate);
 
   // Verificação de Idempotência
-  const existCheck = await db.query<{ id: string }>(
-    `SELECT id FROM invoices WHERE idempotency_key = $1`,
-    [input.idempotencyToken]
-  );
+  const existCheck = await db.query<{ id: string }>(`SELECT id FROM invoices WHERE idempotency_key = $1`, [
+    input.idempotencyToken
+  ]);
   if (existCheck.length > 0) {
     return Err('DUPLICATE_IDEMPOTENCY');
   }
 
   // Verificação de Existência do Cliente
-  const customerCheck = await db.query<{ id: string }>(
-    `SELECT id FROM customers WHERE id = $1`,
-    [input.customerId]
-  );
+  const customerCheck = await db.query<{ id: string }>(`SELECT id FROM customers WHERE id = $1`, [input.customerId]);
   if (customerCheck.length === 0) {
     return Err('CUSTOMER_NOT_FOUND');
   }
@@ -145,14 +142,7 @@ export function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerPro
       <form id="invoice-form" onSubmit={handleSubmit} className="flex flex-col gap-3">
         <label className="flex flex-col">
           <span>Valor (em centavos):</span>
-          <input
-            type="number"
-            name="amountCents"
-            required
-            min="1"
-            defaultValue="5000"
-            className="border p-1 rounded"
-          />
+          <input type="number" name="amountCents" required min="1" defaultValue="5000" className="border p-1 rounded" />
         </label>
 
         <label className="flex flex-col">
@@ -180,11 +170,7 @@ export function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerPro
         </button>
       </form>
 
-      {feedback && (
-        <div className="mt-3 p-2 bg-gray-100 rounded text-sm font-mono">
-          {feedback}
-        </div>
-      )}
+      {feedback && <div className="mt-3 p-2 bg-gray-100 rounded text-sm font-mono">{feedback}</div>}
     </div>
   );
 }
@@ -268,9 +254,7 @@ export const sliceTests = {
       run: async () => {
         const session = createSession({ userId: 'pbt-oracle', roles: ['billing'] });
         const mockDbMissing = new MockDatabaseClient();
-        mockDbMissing
-          .onQuery(/SELECT id FROM invoices/, () => [])
-          .onQuery(/SELECT id FROM customers/, () => []);
+        mockDbMissing.onQuery(/SELECT id FROM invoices/, () => []).onQuery(/SELECT id FROM customers/, () => []);
 
         const missingResult = await createInvoiceAction(
           {

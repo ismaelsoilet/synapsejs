@@ -3,10 +3,10 @@ import * as fs from 'fs';
 import * as path from 'path';
 import {
   artifactDirectory,
+  type SplitResult,
   splitSlice,
   verifySplit,
-  writeSplitArtifacts,
-  type SplitResult
+  writeSplitArtifacts
 } from '../src/compiler/slice-splitter';
 
 const fixturesDir = path.resolve(import.meta.dir, 'fixtures');

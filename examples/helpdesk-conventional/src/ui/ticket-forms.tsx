@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import type React from 'react';
+import { useState } from 'react';
 import type { Ticket } from '../schemas/ticket';
 
 async function post(path: string, payload: unknown): Promise<unknown> {

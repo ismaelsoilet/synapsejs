@@ -1,5 +1,5 @@
-import { Value } from '@sinclair/typebox/value';
 import type { Database } from 'bun:sqlite';
+import { Value } from '@sinclair/typebox/value';
 import { findTicketById, insertTicket, updateTicketAssignee } from '../db/tickets';
 import { AssignTicketSchema, CreateTicketSchema, type Ticket } from '../schemas/ticket';
 
@@ -8,7 +8,7 @@ export type ServiceResult<T, E extends string> = { ok: true; value: T } | { ok: 
 export type Session = { userId: string; roles: string[] };
 
 function isSupport(session?: Session): boolean {
-  return Boolean(session && session.roles.includes('support'));
+  return Boolean(session?.roles.includes('support'));
 }
 
 export function createTicket(
@@ -37,7 +37,10 @@ export function assignTicket(
   payload: unknown,
   db: Database,
   session?: Session
-): ServiceResult<{ ticketId: string; assignee: string; status: 'ASSIGNED' }, 'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA' | 'TICKET_NOT_FOUND'> {
+): ServiceResult<
+  { ticketId: string; assignee: string; status: 'ASSIGNED' },
+  'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA' | 'TICKET_NOT_FOUND'
+> {
   if (!session) {
     return { ok: false, error: 'UNAUTHORIZED' };
   }
@@ -60,7 +63,14 @@ export function assignTicket(
 export function listTickets(db: Database): Ticket[] {
   return db
     .query<
-      { id: string; subject: string; priority: number; requester_email: string; assignee: string | null; status: 'OPEN' | 'ASSIGNED' },
+      {
+        id: string;
+        subject: string;
+        priority: number;
+        requester_email: string;
+        assignee: string | null;
+        status: 'OPEN' | 'ASSIGNED';
+      },
       []
     >(`SELECT id, subject, priority, requester_email, assignee, status FROM tickets`)
     .all()

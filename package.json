@@ -35,7 +35,9 @@
     "new": "bun run packages/synapse/bin/synapse.ts new",
     "cli": "bun run packages/synapse/bin/synapse.ts",
     "rehearse:publish": "bun run scripts/rehearse-publish.ts",
-    "study": "bun run scripts/study/run-task.ts"
+    "study": "bun run scripts/study/run-task.ts",
+    "lint": "bunx @biomejs/biome@latest check .",
+    "lint:fix": "bunx @biomejs/biome@latest check --write ."
   },
   "dependencies": {
     "synapsejs": "workspace:*",

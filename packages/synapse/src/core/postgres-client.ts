@@ -1,6 +1,6 @@
 /**
  * SynapseJS - PostgreSQL Database Driver (postgres.js)
- * 
+ *
  * Provides production-ready, pooled, high-performance PostgreSQL persistence
  * implementing the core DatabaseClient contract.
  */

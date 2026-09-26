@@ -13,13 +13,13 @@
  */
 
 import * as path from 'path';
+import { createTicketAction } from '../../../examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx';
+import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { PostgresDatabaseClient } from '../src/core/postgres-client';
 import { createSession } from '../src/core/session-context';
-import { runSliceMigrations } from '../src/compiler/migration-runner';
-import { createTicketAction } from '../../../examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx';
 
 function emit(payload: Record<string, unknown>, ok: boolean): never {
-  process.stdout.write(JSON.stringify(payload, null, 2) + '\n');
+  process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
   process.exit(ok ? 0 : 1);
 }
 

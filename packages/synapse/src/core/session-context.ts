@@ -1,12 +1,12 @@
 /**
  * SynapseJS - Session & Role-Based Access Control (RBAC) Context
- * 
+ *
  * Provides explicit, deterministic security contracts for slices.
  * Eliminates implicit global auth states by injecting SessionContext directly
  * into server actions without throws or hidden reflection.
  */
 
-import { Result, Ok, Err } from './machine-types';
+import { Err, Ok, type Result } from './machine-types';
 
 export interface SessionContext {
   readonly userId?: string;
@@ -52,7 +52,7 @@ export function hasAnyRole(session: SessionContext, roles: string[]): boolean {
 export type AuthCheckResult = Result<SessionContext, 'UNAUTHORIZED' | 'FORBIDDEN'>;
 
 export function requireAuth(session?: SessionContext, requiredRoles?: string[]): AuthCheckResult {
-  if (!session || !session.isAuthenticated) {
+  if (!session?.isAuthenticated) {
     return Err('UNAUTHORIZED');
   }
 
