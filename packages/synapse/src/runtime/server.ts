@@ -338,12 +338,17 @@ export class SynapseServer {
       'utf-8'
     );
 
+    // Em desenvolvimento o React completo da mensagens melhores; em produção o
+    // bundle é minificado e usa a build de produção (~4x menor).
+    const production = process.env.NODE_ENV === 'production';
     const buildDir = path.join(this.baseDir, '.synapse/client');
     const result = await Bun.build({
       entrypoints: [entryPath],
       target: 'browser',
       outdir: buildDir,
-      naming: '[name].js'
+      naming: '[name].js',
+      minify: production,
+      define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
     });
 
     if (!result.success || !result.outputs[0]) {

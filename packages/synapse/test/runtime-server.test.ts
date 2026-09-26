@@ -69,9 +69,11 @@ describe('client hydration', () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toContain('javascript');
-    expect(code).toContain('hydrateRoot');
+    // Nomes somem na minificação; o que prova o bundle é o código do componente
+    // estar lá e o SQL não estar.
     expect(code).toContain('sem dados do loader');
-    expect(code).not.toContain('SELECT');
+    expect(code).not.toMatch(/SELECT\s+[\w*"`][\w*"`.,\s]*\bFROM\b/i);
+    expect(code).not.toContain('INSERT INTO');
   });
 
   it('answers 404 for a bundle that does not exist', async () => {
