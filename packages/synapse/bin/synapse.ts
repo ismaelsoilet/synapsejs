@@ -398,9 +398,9 @@ async function main() {
                 evidence: 'bun test packages/synapse/test/slice-splitter.test.ts'
               },
               {
-                feature: 'Fast-Check PBT oracles per slice',
-                status: 'experimental',
-                evidence: 'bun --cwd examples/enterprise-crm test'
+                feature: 'Slice invariants executed by bun:test (per-invariant reporting)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/oracle-runner.test.ts'
               },
               {
                 feature: 'Incremental diagnostics cache across processes',
@@ -408,9 +408,14 @@ async function main() {
                 evidence: 'removido na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s)'
               },
               {
-                feature: 'PostgreSQL parity',
-                status: 'experimental',
-                evidence: 'no CI coverage against a live PostgreSQL instance'
+                feature: 'PostgreSQL parity (migrations, DDL, action round-trip)',
+                status: 'stable',
+                evidence: 'bun run test:postgres (CI roda contra um serviço postgres:16)'
+              },
+              {
+                feature: 'Context surface benchmark (files/tokens an agent must read)',
+                status: 'stable',
+                evidence: 'bun run bench'
               }
             ],
             commands: ['new', 'dev', 'check', 'migrate', 'mcp', 'skeleton', 'split', 'test', 'new-slice', 'info']

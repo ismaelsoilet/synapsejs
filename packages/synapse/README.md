@@ -24,13 +24,14 @@ without one — see the repository's `AGENTS.md` for the full contract.
 `sliceSchema` migrations · embedded SQLite (WAL, prepared-statement cache, CTE-safe) · explicit RBAC
 via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery that never
 reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton
-map · MCP stdio server with 5 tools.
-
-**Experimental:** per-slice PBT oracles (isolated processes judged by exit code) · PostgreSQL client
-(no CI coverage against a live instance).
+map · MCP stdio server with 5 tools · slice invariants under `bun:test` with per-invariant reporting ·
+PostgreSQL parity (migrations, DDL and an action round-trip against a real server).
 
 **Roadmap:** incremental diagnostics daemon (`check --fast` was removed — measured slower than the
 full check), production bundling via `Bun.build`, auth/login flow in the example.
+
+The repository README carries a measured context-surface benchmark of the same two features
+implemented with and without the slice convention, including what the numbers do not show.
 
 ## Quick start
 
@@ -87,6 +88,21 @@ export async function createTicketAction(
 export function CreateTicketTrigger() {
   return <form>{/* UI lives in the same file */}</form>;
 }
+
+// Invariants run under Bun's real test runner via `synapse test`; the framework
+// generates the wrapper, so slices never import a test library.
+export const sliceTests = {
+  description: 'Ticket invariants',
+  cases: [
+    {
+      name: 'an anonymous caller is rejected before touching the database',
+      run: async () => {
+        const result = await createTicketAction({ subject: 'printer', priority: 2, requesterEmail: 'a@b.com' });
+        if (result.ok || result.error !== 'UNAUTHORIZED') throw new Error('expected UNAUTHORIZED');
+      }
+    }
+  ]
+};
 ```
 
 ## MCP server

@@ -30,13 +30,15 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Splitter isomórfico (shared/server/client) com dois gates | `bun test packages/synapse/test/slice-splitter.test.ts` |
 | Skeletonizer para `.codebase/repo-map.d.ts` (tipado, sem `any`) | `bun test packages/synapse/test/repo-map.test.ts` |
 | Servidor MCP stdio (5 ferramentas) | `bun test packages/synapse/test/mcp-server.test.ts` |
+| Invariantes das fatias sob `bun:test`, com relatório por invariante | `bun test packages/synapse/test/oracle-runner.test.ts` + `bun run test:helpdesk` |
+| Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16`) |
+| Benchmark de superfície de contexto | `bun run bench` |
 
 ### Experimental
 
 | Feature | O que falta |
 |---|---|
-| Oráculos PBT por fatia | Executados como processos isolados julgados por exit code; não é um runner completo |
-| Cliente PostgreSQL | Sem cobertura de CI contra uma instância PostgreSQL real |
+| Repasse de credencial por cookie no shell SSR | É uma conveniência de demonstração, não uma fronteira de segurança (o RBAC é aplicado no servidor) |
 
 ### Roadmap
 
@@ -53,14 +55,16 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 ```text
 packages/synapse/
   src/core/          Result/Option, DatabaseClient, SQLite, Postgres, sessão, cliente RPC
-  src/compiler/      slice-discovery, migration-runner, scaffolder, splitter, repo-map, diagnostics
+  src/compiler/      slice-discovery, migration-runner, oracle-runner, scaffolder, splitter, repo-map, bench
   src/runtime/       roteador Bun.serve + shell SSR + dispatcher RPC
   src/mcp/           servidor MCP stdio (5 ferramentas)
   bin/synapse.ts     a CLI
   templates/starter/ o template que `synapse new` copia
-  test/              suíte bun:test + fixtures dos gates do splitter
-examples/enterprise-crm/   app de referência: 3 fatias + suíte e2e ao vivo (12 checagens)
-.synapse/                  gerado (gitignored): banco sqlite, artefatos do split
+  test/              suíte bun:test + fixtures dos gates do splitter, dos oráculos e do bench
+examples/enterprise-crm/       app de referência: 3 fatias + suíte e2e ao vivo (12 checagens)
+examples/helpdesk-slices/      as mesmas 2 features de outro domínio, em 2 fatias
+examples/helpdesk-conventional/ as mesmas 2 features em camadas, sem o framework (adoção + comparador)
+.synapse/                      gerado (gitignored): banco sqlite, artefatos do split, wrappers de oráculo
 .codebase/                 repo map gerado (commitado por app)
 AGENTS.md                  contrato completo para agentes autônomos
 ```
@@ -146,11 +150,40 @@ splitter se recusam a reportar sucesso quando nada foi verificado.
 
 | Medição | Valor |
 |---|---|
-| `bun run check` (monorepo inteiro, 3 workspaces) | ~1.8s |
-| `bun run check --fast` | removido — 2.5s (mais lento) |
-| Repo map do app de exemplo | ~930 tokens (orçamento 3000) |
-| Suíte do framework | 79 testes, 10 arquivos |
+| `bun run check` (monorepo inteiro, 4 apps) | ~2s |
+| `bun run check --fast` | removido — 2.5s (mais lento que o check completo) |
+| Repo map do app de exemplo | ~1005 tokens (orçamento 3000) |
+| Suíte do framework | 102 testes, 12 arquivos |
 | Suíte e2e | 12 checagens (SSR, RPC, RBAC, idempotência) |
+| Paridade PostgreSQL | verificada contra `postgres:16` (migração, DDL, round-trip de action) |
+
+## Superfície de contexto (o que o agente precisa ler)
+
+As mesmas duas features implementadas em duas stacks — `bun run bench`:
+
+| app | feature | arquivos (app) | tokens (app, ≈) | arquivos (total) | tokens (total, ≈) |
+|---|---|---|---|---|---|
+| helpdesk-slices | abrir chamado | 1 | 1.6k | 20 | 28.6k |
+| helpdesk-slices | atribuir chamado | 1 | 1.4k | 20 | 28.4k |
+| helpdesk-conventional | abrir chamado | 4 | 1.4k | 4 | 1.4k |
+| helpdesk-conventional | atribuir chamado | 4 | 1.4k | 4 | 1.4k |
+
+Contagens de arquivo são exatas e estáveis; tokens são arredondados porque derivam a cada mudança de
+código (`bun run bench` imprime os valores do commit atual).
+
+**O que isso mostra:** a convenção de fatia reduz de **4 arquivos para 1** o que precisa ser
+coordenado para mudar uma feature. É a claim de Locality of Behavior, medida em vez de afirmada.
+
+**O que isso não mostra:** não é "menos contexto". Em bytes estimados o arquivo único fica **maior**
+(≈1.6k vs ≈1.4k), porque carrega contrato, DDL, action, UI e oráculo juntos. E o `total` da stack de
+fatias inclui o código do framework alcançado pelo mapeamento `paths` (≈28k tokens) — custo pago
+**uma vez** e compartilhado por todas as features, não por feature. Os dois números são reportados
+justamente porque a fronteira do fecho muda a resposta; `node_modules` e `.d.ts` ficam de fora dos
+dois lados, e tokens são estimados como bytes/4.
+
+**O que continua não medido:** se menos arquivos melhora o resultado de um agente. Isso é
+comportamental e exige um protocolo com agente real — o harness mede superfície de contexto, não
+taxa de sucesso.
 
 ## Licença
 

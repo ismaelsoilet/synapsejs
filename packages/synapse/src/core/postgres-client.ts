@@ -15,6 +15,9 @@ export class PostgresDatabaseClient implements DatabaseClient {
     this.sql = postgres(connectionString, {
       max: options?.max || 10,
       idle_timeout: options?.idle_timeout || 30,
+      // Notices are noise for a machine consumer: `stdout` must carry only the
+      // command's JSON result.
+      onnotice: () => {},
       ...options
     });
   }

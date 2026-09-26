@@ -37,6 +37,38 @@
         "typescript": "^5.8.2",
       },
     },
+    "examples/helpdesk-conventional": {
+      "name": "helpdesk-conventional-example",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
+    "examples/helpdesk-slices": {
+      "name": "helpdesk-slices-example",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "synapsejs": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "latest",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
     "packages/synapse": {
       "name": "synapsejs",
       "version": "0.4.0",
@@ -76,6 +108,10 @@
     "enterprise-crm-example": ["enterprise-crm-example@workspace:examples/enterprise-crm"],
 
     "fast-check": ["fast-check@3.23.2", "", { "dependencies": { "pure-rand": "^6.1.0" } }, "sha512-h5+1OzzfCC3Ef7VbtKdcv7zsstUQwUDlYpUTvjeUsJAssPgLn7QzbboPtL5ro04Mq0rPOsMzl7q5hIbRs2wD1A=="],
+
+    "helpdesk-conventional-example": ["helpdesk-conventional-example@workspace:examples/helpdesk-conventional"],
+
+    "helpdesk-slices-example": ["helpdesk-slices-example@workspace:examples/helpdesk-slices"],
 
     "postgres": ["postgres@3.4.9", "", {}, "sha512-GD3qdB0x1z9xgFI6cdRD6xu2Sp2WCOEoe3mtnyB5Ee0XrrL5Pe+e4CCnJrRMnL1zYtRDZmQQVbvOttLnKDLnaw=="],
 

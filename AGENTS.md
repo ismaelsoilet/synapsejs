@@ -26,9 +26,11 @@ packages/synapse/src/         framework source
   mcp/server.ts               MCP stdio server (5 tools)
 packages/synapse/bin/synapse.ts   the CLI (single entry point)
 packages/synapse/templates/starter/   the starter template that `synapse new` copies
-packages/synapse/test/        bun:test suite (+ fixtures/ for splitter fixtures)
-examples/enterprise-crm/      the reference app (3 slices + live e2e suite)
-.synapse/                     generated output (gitignored): sqlite db, split artifacts
+packages/synapse/test/        bun:test suite (+ fixtures/ for splitter, oracle and bench fixtures)
+examples/enterprise-crm/      reference app (3 slices + live e2e suite)
+examples/helpdesk-slices/     2-slice app in another domain (tickets)
+examples/helpdesk-conventional/  the same two features layered without the framework (adoption + benchmark comparator)
+.synapse/                     generated output (gitignored): sqlite db, split artifacts, oracle wrappers
 .codebase/                    generated repo map (committed, per app)
 ```
 
@@ -44,10 +46,14 @@ failures only, so a machine consumer can always parse stdout.
 |---|---|---|
 | `bun run test` | exit 0 | `bun test` output (framework suite) |
 | `bun run check` | `{"status":"PASS","errorCount":0,...}` | `issues[]` with `{file,line,column,errorCode,message}` |
-| `bun run skeleton` | `{"status":"PASS","totalSlices":N,...}` | writes `.codebase/repo-map.d.ts` |
-| `bun run split` | `{"status":"PASS","slices":[{status,diagnostics,leaks}]}` | gates per slice |
-| `bun run test:slices` | `{"status":"PASS","totalSlices":N,"results":[...]}` | per-slice oracle output |
+| `bun run skeleton` | `{"status":"PASS","totalModules":N,...}` | writes `.codebase/repo-map.d.ts`; `EMPTY_REPO_MAP` when nothing mapped |
+| `bun run split` | `{"status":"PASS","slices":[{status,diagnostics,leaks}]}` | gates per slice, for both slice apps |
+| `bun run test:slices` | `{"status":"PASS","totalCases":N,...}` | per-invariant results for the CRM example |
+| `bun run test:helpdesk` | same shape | per-invariant results for the help-desk slice app |
+| `bun run test:helpdesk-conventional` | exit 0 | the adoption app's own `bun test` suite |
+| `bun run test:postgres` | `{"status":"PASS","checks":{...}}` | PostgreSQL parity; FAILs without `TEST_DATABASE_URL` |
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
+| `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run mcp` | stdio JSON-RPC | targets `examples/enterprise-crm` via `--cwd` |
 
 ### Failure codes you must handle
@@ -74,7 +80,9 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
    server (which injects the connection) and on the client (where the call becomes an RPC stub).
    Authorize with `requireAuth(session, ['role'])` and return `Err(auth.error)`.
 5. `<Name>Trigger|View|Form|Component` — React UI.
-6. `sliceTests` — invariants. Assert real domain behaviour, not the TypeBox library.
+6. `sliceTests` — invariants, as named cases: `{ description, cases: [{ name, run }] }`. `run()` alone
+   still works and is reported as a single case. The runner registers each case with `bun:test` from a
+   generated wrapper under `.synapse/oracles/`, so slices never import a test library.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 
@@ -116,7 +124,6 @@ A server action referenced by a component contributes **only its wire signature*
 
 - No incremental diagnostics daemon. `check --fast` was removed: measured **slower** than the full
   check (2.5s vs 1.9s) because the `.tsbuildinfo` cache was never read back across processes.
-- No PostgreSQL test coverage. The client exists; parity is unverified.
 - No production bundling step. `split` emits modules; feeding `Bun.build` is on the roadmap.
 - No auth/login flow in the example. RBAC is enforced, but credentials come from
   `Authorization`/`x-user-id`/`x-user-roles` headers (or the `synapse_token` / `synapse_roles`
@@ -131,8 +138,10 @@ bun test packages/synapse/test      # framework suite
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map
-bun run split                       # splitter + both gates
-bun run test:all                    # framework suite + slice oracles + live e2e
+bun run split                       # splitter + both gates, for both slice apps
+bun run test:all                    # framework suite + oracles of both apps + adoption app + live e2e
+bun run bench                       # context surface of the same two features, both stacks
+TEST_DATABASE_URL=postgres://... bun run test:postgres   # parity against a real PostgreSQL
 ```
 
 If you touched discovery, migrations, the scaffolder or the splitter, also run the negative cases:

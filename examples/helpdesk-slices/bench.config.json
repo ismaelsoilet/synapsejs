@@ -1,0 +1,6 @@
+{
+  "features": {
+    "abrir chamado": ["src/slices/tickets/create-ticket.slice.tsx"],
+    "atribuir chamado": ["src/slices/tickets/assign-ticket.slice.tsx"]
+  }
+}

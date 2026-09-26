@@ -37,8 +37,46 @@ jobs:
       - name: Committed Repo Map Must Match The Generator
         run: git diff --exit-code -- examples/enterprise-crm/.codebase .codebase
 
-      - name: Split Slices And Enforce Both Gates
+      - name: Split Every App And Enforce Both Gates
         run: bun run split
 
-      - name: Slice PBT Oracles + Live E2E
+      - name: Slice Oracles, Adoption App Tests And Live E2E
         run: bun run test:all
+
+      - name: Context Surface Benchmark
+        run: bun run bench
+
+  postgres-parity:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: pg
+          POSTGRES_PASSWORD: pg
+          POSTGRES_DB: synapse
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pg -d synapse"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: PostgreSQL Parity (migrations, DDL, action round-trip)
+        run: bun run test:postgres
+        env:
+          TEST_DATABASE_URL: postgres://pg:pg@localhost:5432/synapse

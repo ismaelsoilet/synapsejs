@@ -27,6 +27,8 @@
     "packages/synapse/test/**/*",
     "examples/enterprise-crm/src/**/*",
     "examples/enterprise-crm/scripts/**/*",
+    "examples/helpdesk-slices/src/**/*",
+    "examples/helpdesk-conventional/src/**/*",
     "packages/synapse/templates/starter/src/**/*"
   ],
   "exclude": [
