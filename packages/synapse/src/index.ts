@@ -51,5 +51,10 @@ export type { SliceOracle, SliceOracleCase } from './core/oracle';
 export { SynapseMcpServer } from './mcp/server';
 
 // 4. Runtime & Zero-Wiring HTTP Server
-export { type DiscoveredSlice, SynapseServer } from './runtime/server';
+export {
+  type DiscoveredSlice,
+  type SliceLoadError,
+  type SliceLoaderContext,
+  SynapseServer
+} from './runtime/server';
 export { fc };

@@ -80,12 +80,24 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 4. `<name>Action(payload, db?, session?)` — `db` **optional** so the same call site is valid on the
    server (which injects the connection) and on the client (where the call becomes an RPC stub).
    Authorize with `requireAuth(session, ['role'])` and return `Err(auth.error)`.
-5. `<Name>Trigger|View|Form|Component` — React UI.
+5. `<Name>Trigger|View|Form|Component` — React UI. It receives the query string plus whatever the
+   slice's loader returned; nothing is injected by the framework.
+6. `<Name>Loader(context)` — **optional** server-side data for the component, called on every SSR
+   request with `{ url, params, db, session }`. This is how a page shows real rows instead of demo
+   props; a loader that throws is rendered in the page and logged, never swallowed.
+7. `sliceTests` — invariants, as named cases: `{ description, cases: [{ name, run }] }`. `run()` alone
+   still works and is reported as a single case. The runner registers each case with `bun:test` from a
+   generated wrapper under `.synapse/oracles/`, so slices never import a test library.
 6. `sliceTests` — invariants, as named cases: `{ description, cases: [{ name, run }] }`. `run()` alone
    still works and is reported as a single case. The runner registers each case with `bun:test` from a
    generated wrapper under `.synapse/oracles/`, so slices never import a test library.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
+
+Slice endpoints are addressed by `<domain>/<name>`: `POST /_synapse/rpc/tickets/create-ticket`. A bare
+slice name still works while it is unique across domains; when two domains own the same name the
+dispatcher answers **409** listing them instead of guessing. A slice that fails to import never
+disappears silently — it is listed in `/_synapse/api/health` under `loadErrors` and shown on the hub.
 
 ## 5. The splitter contract
 

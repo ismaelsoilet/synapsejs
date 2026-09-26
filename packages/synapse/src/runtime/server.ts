@@ -19,11 +19,31 @@ import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type
 export interface DiscoveredSlice {
   domain: string;
   name: string;
+  /** `<domain>/<name>`: what identifies a slice unambiguously. */
+  key: string;
   routePath: string;
   rpcPath: string;
   filePath: string;
   actionFn?: (payload: unknown, db: DatabaseClient, session?: SessionContext) => Promise<any>;
   componentFn?: React.ComponentType<any>;
+  /** Optional server-side data for the component: `export function <Name>Loader(context)`. */
+  loaderFn?: (context: SliceLoaderContext) => Promise<Record<string, unknown>>;
+}
+
+/**
+ * What a slice loader receives. The loader runs on the server, on every SSR
+ * request: it is how a component gets real data instead of hardcoded props.
+ */
+export interface SliceLoaderContext {
+  url: string;
+  params: Record<string, string>;
+  db: DatabaseClient;
+  session: SessionContext;
+}
+
+export interface SliceLoadError {
+  file: string;
+  message: string;
 }
 
 export class SynapseServer {
@@ -31,6 +51,7 @@ export class SynapseServer {
   private baseDir: string;
   private db: DatabaseClient;
   private discoveryError: { code: string; message: string; candidates: string[] } | null = null;
+  private loadErrors: SliceLoadError[] = [];
   public port: number;
 
   constructor(baseDir: string = process.cwd(), port: number = 3000) {
@@ -61,46 +82,60 @@ export class SynapseServer {
     const slicesDir = resolution.value.slicesDir;
     const files = findSliceFiles(slicesDir);
     this.slices.clear();
+    this.loadErrors = [];
 
     for (const file of files) {
       const rel = path.relative(slicesDir, file);
       const parts = rel.split(path.sep);
       const domain = parts[0] || 'general';
       const name = path.basename(file, '.slice.tsx');
+      const key = `${domain}/${name}`;
       const routePath = `/${domain}/${name}`;
-      const rpcPath = `/_synapse/rpc/${name}`;
+      const rpcPath = `/_synapse/rpc/${domain}/${name}`;
+
+      if (this.slices.has(key)) {
+        this.loadErrors.push({ file, message: `chave de fatia duplicada: ${key}` });
+        continue;
+      }
 
       try {
         const mod = await import(file);
         let actionFn: any = null;
         let componentFn: any = null;
+        let loaderFn: any = null;
 
-        for (const [key, val] of Object.entries(mod)) {
+        for (const [exportName, val] of Object.entries(mod)) {
           if (typeof val === 'function') {
-            if (key.endsWith('Action')) {
+            if (exportName.endsWith('Action')) {
               actionFn = val;
+            } else if (exportName.endsWith('Loader')) {
+              loaderFn = val;
             } else if (
-              key.endsWith('Trigger') ||
-              key.endsWith('View') ||
-              key.endsWith('Form') ||
-              key.endsWith('Component')
+              exportName.endsWith('Trigger') ||
+              exportName.endsWith('View') ||
+              exportName.endsWith('Form') ||
+              exportName.endsWith('Component')
             ) {
               componentFn = val;
             }
           }
         }
 
-        this.slices.set(name, {
+        this.slices.set(key, {
           domain,
           name,
+          key,
           routePath,
           rpcPath,
           filePath: file,
           actionFn,
-          componentFn
+          componentFn,
+          loaderFn
         });
       } catch (err) {
-        console.error(`[SynapseServer] Erro ao carregar fatia ${file}:`, err);
+        const message = err instanceof Error ? err.message : String(err);
+        this.loadErrors.push({ file: path.relative(this.baseDir, file), message });
+        console.error(`[SynapseServer] Falha ao carregar a fatia ${file}: ${message}`);
       }
     }
 
@@ -108,9 +143,55 @@ export class SynapseServer {
   }
 
   /**
+   * `<domain>/<name>` resolves directly. A bare name resolves only while it is
+   * unique across domains; ambiguity is an explicit conflict, never a guess.
+   */
+  private resolveSlice(
+    target: string
+  ): { ok: true; slice: DiscoveredSlice } | { ok: false; status: number; message: string } {
+    const direct = this.slices.get(target);
+    if (direct) {
+      return { ok: true, slice: direct };
+    }
+
+    const matches = [...this.slices.values()].filter((slice) => slice.name === target);
+    if (matches.length === 1) {
+      return { ok: true, slice: matches[0] };
+    }
+    if (matches.length > 1) {
+      return {
+        ok: false,
+        status: 409,
+        message:
+          `'${target}' é ambíguo entre ${matches.map((m) => m.key).join(', ')}. ` +
+          `Use /_synapse/rpc/<domain>/${target}.`
+      };
+    }
+
+    return { ok: false, status: 404, message: `Action para a fatia '${target}' não encontrada.` };
+  }
+
+  private sessionFrom(request: Request): SessionContext {
+    const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
+    const userIdHeader = request.headers.get('x-user-id');
+    const rolesHeader = request.headers.get('x-user-roles');
+
+    if (authHeader?.startsWith('Bearer ') || userIdHeader) {
+      const token = authHeader?.replace('Bearer ', '');
+      return createSession({
+        userId: userIdHeader || `user-${token?.slice(0, 8) || 'authenticated'}`,
+        roles: rolesHeader ? rolesHeader.split(',').map((role) => role.trim()) : ['user'],
+        token
+      });
+    }
+
+    return AnonymousSession();
+  }
+
+  /**
    * Generates the SSR HTML Shell with Inter font, Tailwind and client hydration
    */
-  private renderHtmlShell(title: string, contentHtml: string, sliceName: string): string {
+  private renderHtmlShell(title: string, contentHtml: string, sliceName: string, rpcPath: string): string {
     return `<!DOCTYPE html>
 <html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
 <head>
@@ -205,7 +286,7 @@ export class SynapseServer {
             if (token) rpcHeaders['Authorization'] = 'Bearer ' + token;
             if (roles) rpcHeaders['x-user-roles'] = roles;
 
-            const res = await fetch('/_synapse/rpc/${sliceName}', {
+            const res = await fetch('${rpcPath}', {
               method: 'POST',
               headers: rpcHeaders,
               body: JSON.stringify(payload)
@@ -315,6 +396,17 @@ export class SynapseServer {
       <p class="text-sm text-slate-400 mt-1">Roteamento autônomo baseado no sistema de arquivos (Zero-Wiring Routing via AST).</p>
     </div>
 
+    ${
+      this.loadErrors.length > 0
+        ? `<div class="mb-8 p-5 rounded-xl border border-rose-800 bg-rose-950/50">
+      <h3 class="text-rose-300 font-semibold mb-2">${this.loadErrors.length} fatia(s) falharam ao carregar</h3>
+      <ul class="text-xs font-mono text-rose-200 space-y-1">
+        ${this.loadErrors.map((error) => `<li>${error.file}: ${error.message}</li>`).join('')}
+      </ul>
+    </div>`
+        : ''
+    }
+
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       ${sliceList}
     </div>
@@ -367,6 +459,7 @@ export class SynapseServer {
             uptime: process.uptime(),
             slicesLoaded: this.slices.size,
             slicesResolutionError: this.discoveryError,
+            loadErrors: this.loadErrors,
             slices: Array.from(this.slices.values()).map((s) => ({
               domain: s.domain,
               name: s.name,
@@ -382,33 +475,24 @@ export class SynapseServer {
             return new Response('Method Not Allowed', { status: 405 });
           }
 
-          const sliceName = pathname.replace('/_synapse/rpc/', '');
-          const slice = this.slices.get(sliceName);
+          const target = pathname.replace('/_synapse/rpc/', '');
+          const resolved = this.resolveSlice(target);
 
-          if (!slice?.actionFn) {
+          if (!resolved.ok) {
+            return Response.json({ ok: false, error: resolved.message }, { status: resolved.status });
+          }
+
+          const slice = resolved.slice;
+          if (!slice.actionFn) {
             return Response.json(
-              { ok: false, error: `Action para a fatia '${sliceName}' não encontrada.` },
+              { ok: false, error: `A fatia '${slice.key}' não exporta nenhuma *Action.` },
               { status: 404 }
             );
           }
 
           try {
             const body = await req.json();
-
-            // Extract Auth Headers into SessionContext
-            const authHeader = req.headers.get('Authorization') || req.headers.get('authorization');
-            const userIdHeader = req.headers.get('x-user-id');
-            const rolesHeader = req.headers.get('x-user-roles');
-
-            let session = AnonymousSession();
-            if (authHeader?.startsWith('Bearer ') || userIdHeader) {
-              const token = authHeader?.replace('Bearer ', '');
-              session = createSession({
-                userId: userIdHeader || `user-${token?.slice(0, 8) || 'authenticated'}`,
-                roles: rolesHeader ? rolesHeader.split(',').map((r) => r.trim()) : ['user'],
-                token
-              });
-            }
+            const session = this.sessionFrom(req);
 
             const result = await slice.actionFn(body, this.db, session);
             return Response.json(result, {
@@ -422,20 +506,35 @@ export class SynapseServer {
         // 4. UI Route Dispatcher (GET /:domain/:sliceName)
         for (const slice of this.slices.values()) {
           if (pathname === slice.routePath) {
-            let contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
-            if (slice.componentFn) {
+            const session = this.sessionFrom(req);
+            const params = Object.fromEntries(url.searchParams.entries());
+            let props: Record<string, unknown> = { ...params };
+            let loaderError: string | null = null;
+
+            if (slice.loaderFn) {
               try {
-                contentHtml = renderToString(
-                  React.createElement(slice.componentFn, {
-                    customerId: 'cust-demo-1234567890'
-                  })
-                );
-              } catch (e: any) {
-                contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${e.message}</div>`;
+                const loaded = await slice.loaderFn({ url: url.toString(), params, db: this.db, session });
+                props = { ...props, ...loaded };
+              } catch (err) {
+                loaderError = err instanceof Error ? err.message : String(err);
+                console.error(`[SynapseServer] Loader de ${slice.key} falhou: ${loaderError}`);
               }
             }
 
-            const html = this.renderHtmlShell(slice.name, contentHtml, slice.name);
+            let contentHtml: string;
+            if (loaderError) {
+              contentHtml = `<div class="text-rose-400">Falha no loader de ${slice.key}: ${loaderError}</div>`;
+            } else if (slice.componentFn) {
+              try {
+                contentHtml = renderToString(React.createElement(slice.componentFn, props));
+              } catch (e: any) {
+                contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${e.message}</div>`;
+              }
+            } else {
+              contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
+            }
+
+            const html = this.renderHtmlShell(slice.name, contentHtml, slice.name, slice.rpcPath);
             return new Response(html, {
               headers: { 'Content-Type': 'text/html; charset=utf-8' }
             });
