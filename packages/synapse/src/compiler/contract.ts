@@ -48,6 +48,7 @@ export interface MachineContract {
     headers: string[];
     signed: string;
     anonymous: string;
+    login: string;
   };
   addressing: {
     page: string;
@@ -181,7 +182,9 @@ export function machineContract(): MachineContract {
       headers: ['Authorization: Bearer <token>', 'x-user-id', 'x-user-roles'],
       signed:
         'With SYNAPSE_SESSION_SECRET set, a bearer token must be a signed session (signSessionToken) and its claims win: role headers are ignored.',
-      anonymous: 'A request with none of them is anonymous: requireAuth returns Err("UNAUTHORIZED").'
+      anonymous: 'A request with none of them is anonymous: requireAuth returns Err("UNAUTHORIZED").',
+      login:
+        'There is no built-in login screen and no server-side session state. A login slice (synapse new-slice auth login --template=login) verifies the password with Bun.password.verify, signs the session with signSessionToken and returns the token; the browser stores it with storeSession(token, roles) and logs out with clearSession(). After that the token travels as Authorization: Bearer and the server authorizes from the signature.'
     },
     addressing: {
       page: 'GET /<domain>/<name>',

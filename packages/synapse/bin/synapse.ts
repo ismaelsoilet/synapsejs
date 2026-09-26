@@ -460,6 +460,12 @@ async function main() {
                 evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
               },
               {
+                feature: 'Login with Bun.password, signed token and cookie session (storeSession/clearSession)',
+                status: 'stable',
+                evidence:
+                  'bun run --cwd apps/crm synapse test (login oracle: the server accepts the issued token) + bun test packages/synapse/test/session-cookie.test.ts'
+              },
+              {
                 feature: 'Embedded SQLite engine (WAL, prepared-statement cache)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/sqlite-client.test.ts'

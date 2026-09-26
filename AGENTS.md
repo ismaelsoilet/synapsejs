@@ -187,9 +187,14 @@ A server action referenced by a component contributes **only its wire signature*
 - No incremental diagnostics daemon. `check --fast` was removed: measured **slower** than the full
   check (2.5s vs 1.9s) because the `.tsbuildinfo` cache was never read back across processes.
 - No production bundling step. `split` emits modules; feeding `Bun.build` is on the roadmap.
-- No auth/login flow in the example. RBAC is enforced, but credentials come from
-  `Authorization`/`x-user-id`/`x-user-roles` headers (or the `synapse_token` / `synapse_roles`
-  cookies the browser shell forwards).
+- No auth/login flow in the framework itself. RBAC is enforced and the signed-token primitive is
+  shipped, but the login is a slice: `synapse new-slice auth login --template=login` emits one that
+  verifies with `Bun.password.verify`, signs with `signSessionToken` and returns the token, which the
+  browser stores with `storeSession(token, roles)` and clears with `clearSession()` (both from the
+  package, both touching only `document.cookie`). The generated oracle proves the token the action
+  issues is accepted by `verifySessionToken`, the same function the server uses — `apps/crm` carries a
+  generated copy. Credentials otherwise come from `Authorization`/`x-user-id`/`x-user-roles` headers
+  (or the `synapse_token` / `synapse_roles` cookies the browser shell forwards).
 - **CI runs on push** (`.github/workflows/ci.yml`, three jobs: suite, PostgreSQL parity, publish
   rehearsal). The first real execution is green; before it, every result in this repo had been
   produced locally by hand.

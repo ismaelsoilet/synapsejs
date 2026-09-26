@@ -53,6 +53,15 @@ export {
   writeSplitArtifacts
 } from './compiler/slice-splitter';
 export type { SliceOracle, SliceOracleCase } from './core/oracle';
+export {
+  clearSession,
+  currentRoles,
+  DEFAULT_SESSION_MAX_AGE_SECONDS,
+  ROLES_COOKIE,
+  SESSION_COOKIE,
+  sessionCookie,
+  storeSession
+} from './core/session-cookie';
 // 5. Model Context Protocol (MCP) Server
 export { SynapseMcpServer } from './mcp/server';
 export * from './runtime/discovery-rules';

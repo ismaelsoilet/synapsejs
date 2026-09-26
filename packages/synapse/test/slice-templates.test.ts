@@ -21,7 +21,7 @@ function generate(template: SliceTemplate, name: string): { appDir: string; file
 }
 
 describe('slice templates', () => {
-  for (const template of ['list', 'update', 'delete'] as const) {
+  for (const template of ['list', 'update', 'delete', 'login'] as const) {
     it(`${template}: the generated slice compiles and leaks nothing`, () => {
       const { appDir, file } = generate(template, `${template}-coisa`);
 
@@ -65,8 +65,19 @@ describe('slice templates', () => {
     expect(source.indexOf('SELECT id FROM')).toBeLessThan(source.indexOf('DELETE FROM'));
   });
 
+  it('login verifies with Bun.password and signs the session instead of trusting a header', () => {
+    const source = generateOperationTemplate('auth', 'login', 'login');
+
+    expect(source).toContain('Bun.password.verify');
+    expect(source).toContain('signSessionToken');
+    expect(source).toContain('process.env.SYNAPSE_SESSION_SECRET');
+    expect(source).toContain("return Err('MISSING_SECRET')");
+    expect(source).toContain('storeSession');
+    expect(source).toContain('verifySessionToken');
+  });
+
   it('every template declares an oracle and a component', () => {
-    for (const template of ['list', 'update', 'delete'] as const) {
+    for (const template of ['list', 'update', 'delete', 'login'] as const) {
       const source = generateOperationTemplate('coisas', `${template}-coisa`, template);
 
       expect(source).toContain('export const sliceTests');

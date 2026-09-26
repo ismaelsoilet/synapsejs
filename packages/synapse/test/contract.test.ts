@@ -72,10 +72,12 @@ describe('machine contract', () => {
     expect(contract.results.httpStatus.FORBIDDEN).toBe('403');
     expect(contract.addressing.rpc).toContain('/_synapse/rpc/<domain>/<name>');
     expect(contract.sessions.headers.length).toBe(3);
+    expect(contract.sessions.login).toContain('storeSession');
+    expect(contract.sessions.login).toContain('clearSession');
   });
 
   it('lists the templates the scaffolder can emit', () => {
-    expect(contract.templates.available).toEqual(['create', 'list', 'update', 'delete', 'crud']);
+    expect(contract.templates.available).toEqual(['create', 'list', 'update', 'delete', 'login', 'crud']);
     expect(contract.templates.notes).toContain('allowlist');
   });
 

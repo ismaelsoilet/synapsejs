@@ -11,6 +11,11 @@
   filter, update is partial and builds its SET clause from a column allowlist, delete checks
   existence first. Each generated file passes the splitter gates in the test suite.
 - Documented trap: `fc.double` without `noNaN: true` produced a flaky oracle in `generate-invoice`.
+- Login as a slice, logout as a cookie: `--template=login` emits an action that verifies with
+  `Bun.password.verify` (with a decoy hash so a missing user costs the same time), signs with
+  `signSessionToken` and returns the token. The framework gained `storeSession` / `clearSession` /
+  `currentRoles` (browser only, `document.cookie` only). The oracle proves the token the action
+  issues is accepted by `verifySessionToken`, and `apps/crm` carries the generated slice.
 
 
 Todas as mudanças relevantes deste projeto. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
