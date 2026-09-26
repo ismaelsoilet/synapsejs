@@ -17,12 +17,14 @@ operacional para o primeiro publish, com o que já está verificado e o que depe
 - [x] Mapa do repo determinístico: regenerar não altera o arquivo commitado.
 - [x] Contrato público travado por teste (runtime + tipos).
 
-## O que só você pode fazer
+## Já feito
 
-- [ ] **`git push` para o GitHub.** O repositório não tem ref remota: nada nunca subiu e o CI nunca
-      executou. Todo verde registrado até aqui foi produzido localmente.
-- [ ] **Confirmar a primeira execução real do CI** (3 jobs: `test`, `postgres-parity`,
-      `publish-rehearsal`). Se algum falhar, é um bug de ambiente que eu não pude ver.
+- [x] **Push para o GitHub** (`ismaelsoilet/synapsejs`, privado) em 2026-09-26.
+- [x] **Primeira execução real do CI** — [run 36220544931](https://github.com/ismaelsoilet/synapsejs/actions/runs/36220544931):
+      `test` 1m11s ✓, `postgres-parity` 31s ✓, `publish-rehearsal` 28s ✓. Verde na primeira tentativa,
+      incluindo o serviço PostgreSQL e o ensaio de publicação dentro do runner.
+
+## O que só você pode fazer
 - [ ] **Congelar a API.** O que a 1.0 promete está listado em `AGENTS.md` §9 e travado pelo bloco
       "public contract" em `packages/synapse/test/machine-types.test.ts`. Congelar é uma decisão sua.
 - [ ] **Criar o token do npm** (`NPM_TOKEN`) como secret do repositório, com permissão de publish e
@@ -35,7 +37,7 @@ operacional para o primeiro publish, com o que já está verificado e o que depe
 ## Critérios para promover 0.6.0 → 1.0
 
 1. O ensaio de publicação passa **a partir do registry** (não só do tarball local).
-2. O CI rodou de verdade e ficou verde ao menos uma vez.
+2. ~~O CI rodou de verdade e ficou verde ao menos uma vez.~~ **Feito** — run 36220544931, 3 jobs verdes.
 3. Um estudo com implementadores **independentes** (o atual tem 1 executor, que sou eu, e 3 tarefas —
    ver `STUDY.md`) sustenta ou refuta a claim forte.
 4. A superfície de API está congelada por decisão explícita, não por decurso de prazo.

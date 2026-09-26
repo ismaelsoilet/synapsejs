@@ -34,6 +34,7 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16-alpine`) |
 | Lint e format com Biome | `bun run lint` — 0 erros; 17 warnings de `noExplicitAny`, todos fronteira dinâmica (postgres.js, MCP, SQL) |
 | Ensaio de publicação (o artefato que um estranho instalaria) | `bun run rehearse:publish` — acha bugs de empacotamento que nenhum outro gate vê |
+| CI no GitHub Actions (3 jobs: suíte, paridade PostgreSQL, ensaio) | [run 36220544931](https://github.com/ismaelsoilet/synapsejs/actions/runs/36220544931) — verde na primeira execução real |
 | Benchmark de superfície de contexto | `bun run bench` |
 
 ### Experimental
@@ -50,7 +51,6 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Bundling de produção | `split` emite módulos; alimentar `Bun.build` com dois targets não está implementado |
 | Fluxo de login no exemplo | O RBAC é aplicado, mas as credenciais vêm de headers ou cookies |
 | Estudo replicado com implementadores independentes | O piloto tem 1 executor (este agente) e 3 tarefas; ver `STUDY.md` |
-| Primeira execução real do CI | Os workflows existem, mas o repositório nunca foi enviado — todo verde até aqui foi local |
 
 ---
 

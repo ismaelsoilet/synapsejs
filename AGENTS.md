@@ -129,9 +129,11 @@ A server action referenced by a component contributes **only its wire signature*
 - No auth/login flow in the example. RBAC is enforced, but credentials come from
   `Authorization`/`x-user-id`/`x-user-roles` headers (or the `synapse_token` / `synapse_roles`
   cookies the browser shell forwards).
-- **No CI has ever executed.** The workflows exist, but the repository has no remote-tracking refs:
-  every green result recorded so far was produced locally, by hand. The first real workflow run is an
-  open item in `RELEASE-CHECKLIST.md`.
+- **CI runs on push** (`.github/workflows/ci.yml`, three jobs: suite, PostgreSQL parity, publish
+  rehearsal). The first real execution is green; before it, every result in this repo had been
+  produced locally by hand.
+- **The release workflow has never executed.** `release.yml` fires on a `v*` tag, and no tag has been
+  pushed, so `npm publish` has never run — that is the remaining unknown of the release path.
 - **Lint and format are enforced** (`bun run lint`, Biome at the repo root), with one deliberate
   warning kept: `noExplicitAny`, for the 17 dynamic boundaries (postgres.js options, MCP params,
   JSON-RPC payloads, the SQL boundary). `useNodejsImportProtocol` is off on purpose: bare specifiers
