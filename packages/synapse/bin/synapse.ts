@@ -350,7 +350,7 @@ async function main() {
               {
                 feature: 'Vertical slices (N = 1) with Locality of Behavior',
                 status: 'stable',
-                evidence: 'examples/enterprise-crm, templates/starter'
+                evidence: 'bun test packages/synapse/test/locality.test.ts'
               },
               {
                 feature: 'Result<T, E> control flow (no public throwing helper)',

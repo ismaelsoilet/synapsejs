@@ -19,7 +19,7 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 
 | Feature | Evidência |
 |---|---|
-| Fatias verticais (N = 1) com Locality of Behavior | `examples/enterprise-crm`, `packages/synapse/templates/starter` |
+| Fatias verticais (N = 1) com Locality of Behavior | `bun test packages/synapse/test/locality.test.ts` |
 | Controle de fluxo `Result<T, E>` sem helper público que lança | `bun test packages/synapse/test/machine-types.test.ts` |
 | Contratos de entrada JIT com TypeBox | `bun test packages/synapse/test/slice-contract.test.ts` |
 | Migrações declarativas de `sliceSchema` (AST, hash, idempotente) | `bun test packages/synapse/test/migration-runner.test.ts` |
