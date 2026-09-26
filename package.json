@@ -12,7 +12,8 @@
   "type": "module",
   "workspaces": [
     "packages/*",
-    "examples/*"
+    "examples/*",
+    "apps/*"
   ],
   "scripts": {
     "dev": "bun --cwd examples/enterprise-crm dev",
@@ -25,10 +26,11 @@
     "test:slices": "bun --cwd examples/enterprise-crm test",
     "test:helpdesk": "bun --cwd examples/helpdesk-slices test",
     "test:helpdesk-conventional": "bun --cwd examples/helpdesk-conventional test",
+    "test:crm": "bun --cwd apps/crm test",
     "test:postgres": "bun run packages/synapse/test/postgres-parity.ts",
     "test:e2e": "bun --cwd examples/enterprise-crm test:e2e",
-    "test:all": "bun test packages/synapse/test && bun --cwd examples/enterprise-crm test && bun --cwd examples/helpdesk-slices test && bun --cwd examples/helpdesk-conventional test && bun --cwd examples/enterprise-crm test:e2e",
-    "split": "bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",
+    "test:all": "bun test packages/synapse/test && bun --cwd apps/crm test && bun --cwd examples/enterprise-crm test && bun --cwd examples/helpdesk-slices test && bun --cwd examples/helpdesk-conventional test && bun --cwd examples/enterprise-crm test:e2e",
+    "split": "bun --cwd apps/crm split && bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",
     "bench": "bun run scripts/bench-context.ts",
     "new-slice": "bun --cwd examples/enterprise-crm new-slice",
     "build": "bun test packages/synapse/test && bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton && bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",

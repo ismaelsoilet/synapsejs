@@ -25,6 +25,7 @@
     "packages/synapse/src/**/*",
     "packages/synapse/bin/**/*",
     "packages/synapse/test/**/*",
+    "apps/crm/src/**/*",
     "examples/enterprise-crm/src/**/*",
     "examples/enterprise-crm/scripts/**/*",
     "examples/helpdesk-slices/src/**/*",
