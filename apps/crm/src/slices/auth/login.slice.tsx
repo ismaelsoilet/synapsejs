@@ -10,9 +10,9 @@ import {
   type Result,
   type SessionContext,
   signSessionToken,
-  storeSession,
   verifySessionToken
 } from 'synapsejs';
+import { storeSession } from 'synapsejs/client';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox)

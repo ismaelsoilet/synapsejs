@@ -1,5 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import * as fs from 'fs';
 import * as path from 'path';
+import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { signSessionToken } from '../src/core/session-token';
 import { formatLogLine, httpStatusForError, SynapseServer } from '../src/runtime/server';
 
@@ -116,6 +118,86 @@ describe('RPC dispatch', () => {
     });
 
     expect(response.status).toBe(404);
+  });
+});
+
+describe('uploads over HTTP', () => {
+  it('refuses an anonymous upload and stores one sent with a session', async () => {
+    const anonymous = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=nota.txt`, {
+      method: 'POST',
+      body: 'conteudo'
+    });
+
+    expect(anonymous.status).toBe(401);
+
+    const previous = process.env.SYNAPSE_SESSION_SECRET;
+    delete process.env.SYNAPSE_SESSION_SECRET;
+
+    const authorized = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=nota.txt`, {
+      method: 'POST',
+      headers: { 'x-user-id': 'u1' },
+      body: 'conteudo real'
+    });
+
+    if (previous !== undefined) {
+      process.env.SYNAPSE_SESSION_SECRET = previous;
+    }
+
+    expect(authorized.status).toBe(200);
+    const body = (await authorized.json()) as { path: string; bytes: number };
+    expect(body.bytes).toBe(13);
+    expect(body.path.startsWith('.synapse/uploads/tickets/')).toBe(true);
+
+    const stored = path.join(appDir, body.path);
+    expect(fs.readFileSync(stored, 'utf-8')).toBe('conteudo real');
+    fs.rmSync(stored, { force: true });
+  });
+
+  it('refuses a file over the limit and a name that tries to leave the directory', async () => {
+    const previousLimit = process.env.SYNAPSE_MAX_UPLOAD_BYTES;
+    process.env.SYNAPSE_MAX_UPLOAD_BYTES = '32';
+
+    const tooLarge = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=grande.bin`, {
+      method: 'POST',
+      headers: { 'x-user-id': 'u1' },
+      body: 'x'.repeat(4096)
+    });
+
+    const escaping = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=../../escapou.txt`, {
+      method: 'POST',
+      headers: { 'x-user-id': 'u1' },
+      body: 'x'
+    });
+
+    if (previousLimit === undefined) {
+      delete process.env.SYNAPSE_MAX_UPLOAD_BYTES;
+    } else {
+      process.env.SYNAPSE_MAX_UPLOAD_BYTES = previousLimit;
+    }
+
+    expect(tooLarge.status).toBe(413);
+    expect(escaping.status).toBe(400);
+    expect(fs.existsSync(path.join(appDir, 'escapou.txt'))).toBe(false);
+  });
+
+  it('answers 405 for a GET on the upload endpoint', async () => {
+    const response = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=a.txt`);
+
+    expect(response.status).toBe(405);
+  });
+});
+
+describe('pre-built client bundles', () => {
+  it('serves the bundle the build produced, without waiting for the bundler', async () => {
+    const report = await buildAllClientBundles(appDir);
+    expect(report.ok).toBe(true);
+
+    const html = await (await fetch(`${base}/tickets/view-tickets`)).text();
+    expect(html).toContain('/_synapse/client/tickets-view-tickets.js');
+
+    const bundle = await fetch(`${base}/_synapse/client/tickets-view-tickets.js`);
+    expect(bundle.status).toBe(200);
+    expect((await bundle.text()).length).toBeGreaterThan(1000);
   });
 });
 

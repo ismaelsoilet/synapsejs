@@ -21,6 +21,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
+import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
@@ -218,7 +219,7 @@ async function main() {
 
       if (template !== 'crud' && !SLICE_TEMPLATES.includes(template)) {
         process.stdout.write(
-          JSON.stringify(
+          `${JSON.stringify(
             {
               status: 'ERROR',
               operation: 'SCAFFOLD_SLICE',
@@ -228,7 +229,7 @@ async function main() {
             },
             null,
             2
-          ) + '\n'
+          )}\n`
         );
         process.exit(1);
       }
@@ -238,7 +239,7 @@ async function main() {
 
         if (!crud.ok) {
           process.stdout.write(
-            JSON.stringify(
+            `${JSON.stringify(
               {
                 status: 'ERROR',
                 operation: 'SCAFFOLD_CRUD',
@@ -247,13 +248,13 @@ async function main() {
               },
               null,
               2
-            ) + '\n'
+            )}\n`
           );
           process.exit(1);
         }
 
         process.stdout.write(
-          JSON.stringify(
+          `${JSON.stringify(
             {
               status: 'PASS',
               operation: 'SCAFFOLD_CRUD',
@@ -263,7 +264,7 @@ async function main() {
             },
             null,
             2
-          ) + '\n'
+          )}\n`
         );
         process.exit(0);
       }
@@ -304,10 +305,55 @@ async function main() {
       break;
     }
 
+    case 'build': {
+      // Pre-constroi os bundles de cliente que o runtime faria sob demanda no primeiro request.
+      const report = await buildAllClientBundles(root);
+
+      if (!report.ok) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'FAIL',
+              operation: 'BUILD_CLIENT_BUNDLES',
+              code: report.error.code,
+              message: report.error.message,
+              candidates: report.error.candidates
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
+      const failed = report.value.entries.filter((entry) => entry.status === 'FAIL');
+      const built = report.value.entries.filter((entry) => entry.status === 'PASS');
+      const skipped = report.value.entries.filter((entry) => entry.status === 'SKIP');
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: failed.length === 0 ? 'PASS' : 'FAIL',
+            operation: 'BUILD_CLIENT_BUNDLES',
+            built: built.length,
+            skipped: skipped.length,
+            failed: failed.length,
+            totalBytes: built.reduce((sum, entry) => sum + (entry.bytes ?? 0), 0),
+            manifest: path.relative(root, report.value.manifestFile),
+            slices: report.value.entries
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(failed.length === 0 ? 0 : 1);
+      break;
+    }
+
     case 'contract': {
       // O framework se descreve numa chamada: e o que o agente le em vez de adivinhar.
       const asMarkdown = process.argv.includes('--markdown');
-      process.stdout.write((asMarkdown ? renderContractMarkdown() : renderContractJson()) + '\n');
+      process.stdout.write(`${asMarkdown ? renderContractMarkdown() : renderContractJson()}\n`);
       process.exit(0);
       break;
     }
@@ -466,6 +512,16 @@ async function main() {
                   'bun run --cwd apps/crm synapse test (login oracle: the server accepts the issued token) + bun test packages/synapse/test/session-cookie.test.ts'
               },
               {
+                feature: 'Pre-built client bundles with a manifest (synapse build)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/client-bundler.test.ts'
+              },
+              {
+                feature: 'Uploads with session, size limit and traversal guard (/_synapse/files)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/uploads.test.ts'
+              },
+              {
                 feature: 'Embedded SQLite engine (WAL, prepared-statement cache)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/sqlite-client.test.ts'
@@ -524,6 +580,7 @@ async function main() {
               'mcp',
               'skeleton',
               'split',
+              'build',
               'test',
               'new-slice',
               'contract',

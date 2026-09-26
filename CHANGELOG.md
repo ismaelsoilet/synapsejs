@@ -11,6 +11,13 @@
   filter, update is partial and builds its SET clause from a column allowlist, delete checks
   existence first. Each generated file passes the splitter gates in the test suite.
 - Documented trap: `fc.double` without `noNaN: true` produced a flaky oracle in `generate-invoice`.
+- `synapse build` pre-builds the browser bundle of every slice that renders a component and writes
+  `.synapse/client/manifest.json`; the runtime serves the artifact straight from the manifest and only
+  rebuilds when the slice changes. A slice that cannot be imported is reported `FAIL` with its reason
+  instead of crashing the build, and a slice with no UI is `SKIP`, not a failure.
+- `POST /_synapse/files/<domain>/<name>?name=arquivo.pdf` accepts raw bytes: it requires a session,
+  refuses a name containing a directory (it never silently rewrites one) and stops reading the moment
+  the body passes `SYNAPSE_MAX_UPLOAD_BYTES` (5 MiB by default) instead of buffering it first.
 - Login as a slice, logout as a cookie: `--template=login` emits an action that verifies with
   `Bun.password.verify` (with a decoy hash so a missing user costs the same time), signs with
   `signSessionToken` and returns the token. The framework gained `storeSession` / `clearSession` /

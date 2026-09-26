@@ -38,8 +38,8 @@
     "cli": "bun run packages/synapse/bin/synapse.ts",
     "rehearse:publish": "bun run scripts/rehearse-publish.ts",
     "study": "bun run scripts/study/run-task.ts",
-    "lint": "bunx @biomejs/biome@latest check .",
-    "lint:fix": "bunx @biomejs/biome@latest check --write ."
+    "lint": "bunx @biomejs/biome@2.5.14 check .",
+    "lint:fix": "bunx @biomejs/biome@2.5.14 check --write ."
   },
   "dependencies": {
     "synapsejs": "workspace:*",

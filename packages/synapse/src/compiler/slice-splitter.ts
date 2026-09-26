@@ -63,7 +63,6 @@ export interface SplitVerification {
   leaks: string[];
 }
 
-const SERVER_ROOTS = [...SERVER_ROOT_SUFFIXES, SLICE_DDL_EXPORT];
 const CLIENT_ROOTS = [...COMPONENT_SUFFIXES];
 const TEST_ONLY_NAMES: readonly string[] = [...TEST_ONLY_EXPORTS];
 
@@ -394,6 +393,7 @@ function emitImportDeclaration(
   }
 
   const parts: string[] = [];
+  const defaultIsType = Boolean(clause.name) && !usedNames.has(clause.name?.text ?? '');
   if (clause.name && usedNames.has(clause.name.text)) {
     parts.push(clause.name.text);
   }
@@ -414,15 +414,25 @@ function emitImportDeclaration(
     }
   }
 
-  if (namedParts.length > 0) {
-    parts.push(`{ ${namedParts.join(', ')} }`);
+  // Se tudo que sobrou é tipo, o import inteiro vira `import type`: erra menos e deixa o
+  // gate do pacote distinguir valor de tipo sem adivinhar. Nesse caso o `type` de cada
+  // especificador sai, porque os dois juntos são erro de compilação (TS2206).
+  const allTypeOnly =
+    !defaultIsType &&
+    parts.length === 0 &&
+    namedParts.length > 0 &&
+    namedParts.every((part) => part.startsWith('type '));
+  const emittedNamed = allTypeOnly ? namedParts.map((part) => part.slice('type '.length)) : namedParts;
+
+  if (emittedNamed.length > 0) {
+    parts.push(`{ ${emittedNamed.join(', ')} }`);
   }
 
   if (parts.length === 0) {
     return null;
   }
 
-  const typePrefix = clause.isTypeOnly ? 'type ' : '';
+  const typePrefix = clause.isTypeOnly || allTypeOnly ? 'type ' : '';
   return `import ${typePrefix}${parts.join(', ')} from ${moduleSpecifier};`;
 }
 
@@ -740,6 +750,12 @@ export function verifySplit(result: SplitResult, outDir: string): SplitVerificat
 
   const clientArtifact = result.artifacts.find((artifact) => artifact.kind === 'client');
   if (clientArtifact) {
+    // Valor importado do índice do pacote arrasta sqlite/postgres para o browser:
+    // o bundle nem constrói. A entrada de cliente existe para isso.
+    if (/\bimport\s+(?!type\b)[^;]*from\s*['"]synapsejs['"]/.test(clientArtifact.code)) {
+      leaks.push('pacote-raiz-no-cliente');
+    }
+
     for (const { label, pattern } of SERVER_ONLY_PATTERNS) {
       if (pattern.test(clientArtifact.code)) {
         leaks.push(label);

@@ -71,6 +71,8 @@ describe('machine contract', () => {
     expect(contract.results.httpStatus.UNAUTHORIZED).toBe('401');
     expect(contract.results.httpStatus.FORBIDDEN).toBe('403');
     expect(contract.addressing.rpc).toContain('/_synapse/rpc/<domain>/<name>');
+    expect(contract.addressing.upload).toContain('/_synapse/files/<domain>/<name>');
+    expect(contract.gates.map((gate) => gate.command).join(' ')).toContain('synapse build');
     expect(contract.sessions.headers.length).toBe(3);
     expect(contract.sessions.login).toContain('storeSession');
     expect(contract.sessions.login).toContain('clearSession');

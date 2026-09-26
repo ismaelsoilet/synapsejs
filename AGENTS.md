@@ -186,7 +186,9 @@ A server action referenced by a component contributes **only its wire signature*
 
 - No incremental diagnostics daemon. `check --fast` was removed: measured **slower** than the full
   check (2.5s vs 1.9s) because the `.tsbuildinfo` cache was never read back across processes.
-- No production bundling step. `split` emits modules; feeding `Bun.build` is on the roadmap.
+- No production bundling of the *whole app* into one artifact: `synapse build` pre-builds one browser
+  bundle per slice (plus `.synapse/client/manifest.json`), which is what a deploy serves. There is no
+  asset hashing or CDN story beyond that.
 - No auth/login flow in the framework itself. RBAC is enforced and the signed-token primitive is
   shipped, but the login is a slice: `synapse new-slice auth login --template=login` emits one that
   verifies with `Bun.password.verify`, signs with `signSessionToken` and returns the token, which the
@@ -200,10 +202,13 @@ A server action referenced by a component contributes **only its wire signature*
   produced locally by hand.
 - **The release workflow has never executed.** `release.yml` fires on a `v*` tag, and no tag has been
   pushed, so `npm publish` has never run — that is the remaining unknown of the release path.
-- **Lint and format are enforced** (`bun run lint`, Biome at the repo root), with one deliberate
-  warning kept: `noExplicitAny`, for the 17 dynamic boundaries (postgres.js options, MCP params,
-  JSON-RPC payloads, the SQL boundary). `useNodejsImportProtocol` is off on purpose: bare specifiers
-  are the documented form in a Bun-only framework.
+- **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
+  floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
+  of the build now). 21 warnings are accepted: 19 `noExplicitAny` for the dynamic boundaries
+  (postgres.js options, MCP params, JSON-RPC payloads, the SQL boundary) and 2 `noUnusedImports` that
+  are a Biome 2.5.14 false positive — the specifier is a `type` inside a mixed import and the
+  typecheck proves it is used (`Cannot find name 'Static'` when removed). `useNodejsImportProtocol` is
+  off on purpose: bare specifiers are the documented form in a Bun-only framework.
 - The generated `.codebase/repo-map.d.ts` is a **signature digest, not compilable TypeScript**: it has
   no imports and the same name (`sliceSchema`, `<Name>InputSchema`) repeats across modules. Its own
   header says so.

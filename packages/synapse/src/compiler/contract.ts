@@ -53,6 +53,7 @@ export interface MachineContract {
   addressing: {
     page: string;
     rpc: string;
+    upload: string;
     ambiguity: string;
   };
   serverRendering: {
@@ -189,6 +190,8 @@ export function machineContract(): MachineContract {
     addressing: {
       page: 'GET /<domain>/<name>',
       rpc: 'POST /_synapse/rpc/<domain>/<name> with Content-Type: application/json',
+      upload:
+        'POST /_synapse/files/<domain>/<name>?name=arquivo.pdf sends raw bytes (multipart is not needed and not parsed). It requires a session, refuses a name containing a directory, and stops reading past SYNAPSE_MAX_UPLOAD_BYTES (5 MiB by default). It answers { ok, path, bytes } with a path relative to the app root; what the bytes mean is the slice contract to decide.',
       ambiguity:
         'A bare name resolves only while it is unique across domains; otherwise the dispatcher answers 409 listing the candidates.'
     },
@@ -213,7 +216,12 @@ export function machineContract(): MachineContract {
       { command: 'synapse test', proves: 'every named invariant, under bun:test, with per-case results' },
       { command: 'synapse migrate', proves: 'each DDL statement applied once, idempotently' },
       { command: 'synapse skeleton', proves: 'the repo map is regenerated deterministically' },
-      { command: 'synapse split', proves: 'the emitted modules compile and the client leaks no server code' }
+      { command: 'synapse split', proves: 'the emitted modules compile and the client leaks no server code' },
+      {
+        command: 'synapse build',
+        proves:
+          'every slice with a UI produces a browser bundle ahead of time, recorded in .synapse/client/manifest.json; a slice that fails to import is reported FAIL with its reason'
+      }
     ]
   };
 }

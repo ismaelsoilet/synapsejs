@@ -12,13 +12,19 @@ import * as fs from 'fs';
 import * as path from 'path';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
+import {
+  buildClientBundle,
+  type ClientManifest,
+  freshBundleFrom,
+  readClientManifest
+} from '../compiler/client-bundler';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
-import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../compiler/slice-splitter';
 import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
 import { verifySessionToken } from '../core/session-token';
-import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
+import { CLIENT_PROPS_GLOBAL, serializeClientProps } from './client-entry';
 import { isAction, isComponent, isLoader } from './discovery-rules';
+import { saveUpload } from './uploads';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -92,6 +98,7 @@ export class SynapseServer {
   private discoveryError: { code: string; message: string; candidates: string[] } | null = null;
   private loadErrors: SliceLoadError[] = [];
   private clientBundles = new Map<string, { url: string; builtFor: string }>();
+  private clientManifest: ClientManifest | null | undefined;
   public port: number;
 
   constructor(baseDir: string = process.cwd(), port: number = 3000) {
@@ -306,57 +313,37 @@ export class SynapseServer {
       return cached.url;
     }
 
-    const split = splitSlice(slice.filePath, this.baseDir);
-    if (!split.ok) {
-      console.error(`[SynapseServer] Nao foi possivel particionar ${slice.key}: ${split.error.message}`);
-      return null;
+    // `synapse build` já empacotou esta fatia e o arquivo não mudou desde então:
+    // o runtime serve o artefato pronto em vez de refazer o trabalho no primeiro request.
+    if (this.clientManifest === undefined) {
+      this.clientManifest = readClientManifest(this.baseDir);
     }
 
-    const outDir = artifactDirectory(this.baseDir, split.value.sliceName);
-    writeSplitArtifacts(split.value, outDir);
-
-    const clientArtifact = split.value.artifacts.find((artifact) => artifact.kind === 'client');
-    if (!clientArtifact) {
-      return null;
+    const prebuilt = freshBundleFrom(this.clientManifest, slice.key, Number(signature));
+    if (prebuilt) {
+      this.clientBundles.set(slice.key, { url: prebuilt, builtFor: signature });
+      return prebuilt;
     }
 
-    const entryDir = path.join(this.baseDir, '.synapse/client-entry');
-    fs.mkdirSync(entryDir, { recursive: true });
-    const entryPath = path.join(entryDir, `${slice.domain}-${slice.name}.tsx`);
-    const modulePath = path.relative(entryDir, path.join(outDir, clientArtifact.fileName)).split(path.sep).join('/');
-
-    fs.writeFileSync(
-      entryPath,
-      clientEntrySource({
-        componentName: slice.componentExport,
-        clientModulePath: `./${modulePath}`,
+    const built = await buildClientBundle(
+      {
+        key: slice.key,
+        name: slice.name,
+        domain: slice.domain,
+        filePath: slice.filePath,
         rpcPath: slice.rpcPath
-      }),
-      'utf-8'
+      },
+      this.baseDir
     );
 
-    // Em desenvolvimento o React completo da mensagens melhores; em produção o
-    // bundle é minificado e usa a build de produção (~4x menor).
-    const production = process.env.NODE_ENV === 'production';
-    const buildDir = path.join(this.baseDir, '.synapse/client');
-    const result = await Bun.build({
-      entrypoints: [entryPath],
-      target: 'browser',
-      outdir: buildDir,
-      naming: '[name].js',
-      minify: production,
-      define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
-    });
-
-    if (!result.success || !result.outputs[0]) {
-      console.error(`[SynapseServer] Falha ao empacotar o cliente de ${slice.key}`);
+    if (!built.ok) {
+      console.error(`[SynapseServer] Nao foi possivel empacotar ${slice.key}: ${built.error.message}`);
       return null;
     }
 
-    const url = `/_synapse/client/${path.basename(result.outputs[0].path)}`;
-    this.clientBundles.set(slice.key, { url, builtFor: signature });
+    this.clientBundles.set(slice.key, { url: built.value.url, builtFor: signature });
 
-    return url;
+    return built.value.url;
   }
 
   /**
@@ -641,7 +628,37 @@ export class SynapseServer {
           }
         }
 
-        // 4. Client bundles produced by the splitter
+        // 4. Uploads (o RPC é JSON de propósito; arquivo precisa de outra porta)
+        if (pathname.startsWith('/_synapse/files/')) {
+          const cors = this.corsHeaders(req);
+
+          if (req.method === 'OPTIONS') {
+            return new Response(null, { status: cors ? 204 : 404, headers: cors ?? undefined });
+          }
+
+          if (req.method !== 'POST') {
+            return new Response('Method Not Allowed', { status: 405, headers: cors ?? undefined });
+          }
+
+          const uploadTarget = pathname.replace('/_synapse/files/', '');
+          const resolvedUpload = this.resolveSlice(uploadTarget);
+
+          if (!resolvedUpload.ok) {
+            return Response.json({ ok: false, error: resolvedUpload.message }, { status: resolvedUpload.status });
+          }
+
+          const outcome = await saveUpload(req, {
+            baseDir: this.baseDir,
+            domain: resolvedUpload.slice.domain,
+            session: this.sessionFrom(req)
+          });
+
+          this.logRequest(req, pathname, outcome.status, startedAt);
+
+          return Response.json(outcome.body, { status: outcome.status, headers: cors ?? undefined });
+        }
+
+        // 5. Client bundles produced by the splitter
         if (pathname.startsWith('/_synapse/client/')) {
           const bundleFile = path.join(this.baseDir, '.synapse/client', path.basename(pathname));
           if (!fs.existsSync(bundleFile)) {

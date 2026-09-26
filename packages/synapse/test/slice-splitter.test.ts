@@ -127,6 +127,28 @@ describe('verifySplit gates', () => {
     expect(verification.status).toBe('PASS');
   });
 
+  it('fails the gate when the client imports a value from the package index', () => {
+    const result = splitOrFail('reports/package-root.slice.tsx');
+    const outDir = artifactDirectory(fixturesDir, result.sliceName);
+
+    writeSplitArtifacts(result, outDir);
+    const verification = verifySplit(result, outDir);
+
+    expect(verification.status).toBe('FAIL');
+    expect(verification.leaks).toContain('pacote-raiz-no-cliente');
+  });
+
+  it('accepts a client that imports from the client entry', () => {
+    const result = splitOrFail('clients/browser-helper.slice.tsx');
+    const outDir = artifactDirectory(fixturesDir, result.sliceName);
+
+    writeSplitArtifacts(result, outDir);
+    const verification = verifySplit(result, outDir);
+
+    expect(verification.diagnostics).toEqual([]);
+    expect(verification.leaks).toEqual([]);
+  });
+
   it('fails the leak gate when the client reaches into the database', () => {
     const result = splitOrFail('reports/leaky-report.slice.tsx');
     const outDir = artifactDirectory(fixturesDir, result.sliceName);
