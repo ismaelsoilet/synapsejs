@@ -57,6 +57,14 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run mcp` | stdio JSON-RPC | targets `examples/enterprise-crm` via `--cwd` |
 
+### Static files, CORS and logs
+
+`public/` is served when it exists, and only `public/` — the path is normalized and refused if it
+escapes the directory. Cross-origin is closed by default: `SYNAPSE_ALLOWED_ORIGINS` (comma separated,
+or `*`) is the only way to get CORS headers, and the RPC endpoint requires
+`Content-Type: application/json`, which a cross-origin HTML form cannot send. `SYNAPSE_LOG=json`
+writes one JSON line per request (`formatLogLine`). `synapse dev --watch` restarts on file changes.
+
 ### Evolving a schema
 
 `sliceSchema` is applied **statement by statement**, and each statement is recorded once in
@@ -119,7 +127,10 @@ dispatcher answers **409** listing them instead of guessing. A slice that fails 
 disappears silently — it is listed in `/_synapse/api/health` under `loadErrors` and shown on the hub.
 
 **Sessions come from any one of three headers:** `Authorization: Bearer <token>`, `x-user-id` or
-`x-user-roles`. A request carrying none of them is anonymous. The browser path is the cookie one: the
+`x-user-roles`. A request carrying none of them is anonymous. With `SYNAPSE_SESSION_SECRET` set, a
+bearer token must be a signed session (`signSessionToken` / `verifySessionToken`) and its claims win:
+the role headers are ignored, so they stop being forgeable. Without the secret the header behaviour
+above is what applies — convenient locally, not safe in production, and said out loud here. The browser path is the cookie one: the
 SSR shell reads `synapse_token` and `synapse_roles` and forwards them as those headers, so
 `document.cookie = 'synapse_roles=sales'` is enough to exercise a role-protected screen during
 development — and nothing more than that. There is no login flow; a real deployment puts a signed

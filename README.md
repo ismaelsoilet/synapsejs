@@ -24,6 +24,9 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Contratos de entrada JIT com TypeBox | `bun test packages/synapse/test/slice-contract.test.ts` |
 | Migrações declarativas de `sliceSchema` (AST, idempotente **por statement**) | `bun test packages/synapse/test/migration-runner.test.ts` |
 | Erro de domínio vira status HTTP coerente (401/403/404/409/422/500) | `bun test packages/synapse/test/runtime-server.test.ts` |
+| Hidratação React com bundle de cliente gerado pelo splitter | `bun test packages/synapse/test/runtime-server.test.ts` |
+| Sessão assinada (com segredo, papel de header deixa de valer) | `bun test packages/synapse/test/runtime-server.test.ts` |
+| CORS fechado por padrão, CSRF fechado por `Content-Type`, `public/` servido | `bun test packages/synapse/test/runtime-server.test.ts` |
 | SQLite embutido (WAL, cache de statement, leitura segura de CTE) | `bun test packages/synapse/test/sqlite-client.test.ts` |
 | RBAC explícito via `requireAuth(session, roles)` | `bun test packages/synapse/test/slice-contract.test.ts` + `bun run test:e2e` |
 | Roteamento zero-wiring, shell SSR e dispatcher RPC | `bun run test:e2e` |

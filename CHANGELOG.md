@@ -8,6 +8,22 @@ descrevem o que cada corte contém, não releases públicas. O primeiro `npm pub
 
 ## [Unreleased]
 
+### Adicionado
+
+- **Hidratação React de verdade.** O componente só rodava no servidor: o browser recebia HTML e um
+  script inline que sequestrava o formulário. Agora o servidor gera, por fatia, um bundle de browser a
+  partir do artefato do **splitter** (que deixa de ser gate decorativo e passa a ser o que mantém SQL
+  fora do cliente), hidrata o mesmo componente e liga `onSubmitAction` ao endpoint RPC. No servidor
+  essa prop é a própria action: o mesmo ponto de chamada vale dos dois lados.
+- `synapsejs/client`, um entry browser-safe (o pacote agora declara `exports`), para o cliente não
+  arrastar compilador, postgres e CLI para dentro do bundle.
+- `public/` servido (só `public/`, com o caminho normalizado), CORS fechado por padrão
+  (`SYNAPSE_ALLOWED_ORIGINS`), RPC exigindo `application/json` (o que fecha CSRF por construção) e
+  log estruturado opcional (`SYNAPSE_LOG=json`).
+- **Sessão assinada** (`signSessionToken`/`verifySessionToken`): com `SYNAPSE_SESSION_SECRET`, os papéis
+  vêm da assinatura e os headers de papel deixam de valer — antes qualquer cliente forjava `x-user-roles`.
+- `synapse dev --watch`.
+
 ### Corrigido
 
 - **Evolução de schema era um beco sem saída.** O runner re-executava *todos* os statements
