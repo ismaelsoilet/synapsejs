@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { signSessionToken } from '../src/core/session-token';
+import { CLIENT_ROOT_ID } from '../src/runtime/client-entry';
 import { formatLogLine, httpStatusForError, SynapseServer } from '../src/runtime/server';
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'runtime-app');
@@ -51,6 +52,8 @@ describe('client hydration', () => {
     pageHtml = await (await fetch(`${base}/tickets/view-tickets?marker=7`)).text();
 
     expect(pageHtml).toContain('globalThis.__SYNAPSE_PROPS__ = ');
+    // O id que a entrada de cliente procura tem que ser o id que o servidor renderiza.
+    expect(pageHtml).toContain(`id="${CLIENT_ROOT_ID}"`);
     expect(pageHtml).toContain('LOADER-TICKETS-7');
     expect(pageHtml).toMatch(
       /<script type="module" src="\/_synapse\/client\/[^"]+"[^>]*><\/script>| <script type="module"/

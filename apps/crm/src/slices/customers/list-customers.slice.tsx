@@ -1,3 +1,4 @@
+// biome-ignore lint/correctness/noUnusedImports: falso positivo do Biome 2.5.14 — `Static` e usado em tipo e o typecheck prova (`Cannot find name 'Static'` ao remover)
 import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import React, { useState } from 'react';

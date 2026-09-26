@@ -512,6 +512,11 @@ async function main() {
                   'bun run --cwd apps/crm synapse test (login oracle: the server accepts the issued token) + bun test packages/synapse/test/session-cookie.test.ts'
               },
               {
+                feature: 'Browser RPC transport that never throws (RPC_MALFORMED/RPC_UNREACHABLE as values)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/rpc-client.test.ts'
+              },
+              {
                 feature: 'Pre-built client bundles with a manifest (synapse build)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/client-bundler.test.ts'

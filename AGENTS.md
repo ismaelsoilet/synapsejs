@@ -205,9 +205,10 @@ A server action referenced by a component contributes **only its wire signature*
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
   of the build now). 21 warnings are accepted: 19 `noExplicitAny` for the dynamic boundaries
-  (postgres.js options, MCP params, JSON-RPC payloads, the SQL boundary) and 2 `noUnusedImports` that
-  are a Biome 2.5.14 false positive — the specifier is a `type` inside a mixed import and the
-  typecheck proves it is used (`Cannot find name 'Static'` when removed). `useNodejsImportProtocol` is
+  (postgres.js options, MCP params, JSON-RPC payloads, the SQL boundary) plus 2 `noUnusedImports`
+  that are a Biome 2.5.14 false positive (a `type` specifier inside a mixed import that the typecheck
+  proves is used — `Cannot find name 'Static'` when removed), silenced in place with a
+  `biome-ignore` that states the reason. `useNodejsImportProtocol` is
   off on purpose: bare specifiers are the documented form in a Bun-only framework.
 - The generated `.codebase/repo-map.d.ts` is a **signature digest, not compilable TypeScript**: it has
   no imports and the same name (`sliceSchema`, `<Name>InputSchema`) repeats across modules. Its own
