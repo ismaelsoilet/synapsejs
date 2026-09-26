@@ -75,7 +75,6 @@ try {
   );
 
   const checks = {
-    engineIsPostgres: true,
     migrationsFirstRunApplied: first.status === 'PASS' && first.appliedCount === 1,
     migrationsSecondRunSkipped: second.status === 'PASS' && second.skippedCount === 1,
     actionReturnedOk: created.ok === true,
