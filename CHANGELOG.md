@@ -8,7 +8,22 @@ descrevem o que cada corte contém, não releases públicas. O primeiro `npm pub
 
 ## [Unreleased]
 
-Nada pendente de merge. O próximo corte é decidido pelo checklist de release.
+### Corrigido
+
+- **Evolução de schema era um beco sem saída.** O runner re-executava *todos* os statements
+  quando o texto do DDL mudava, então um `ALTER TABLE` aplicado uma vez voltava a rodar na
+  próxima edição e falhava para sempre (`duplicate column name`). Cada statement agora é
+  registrado individualmente (`_synapse_migration_statements`) e só o que é novo roda:
+  adicionar uma coluna virou declarar o `ALTER` no `sliceSchema`. Um statement que falha não é
+  registrado, então corrigir e rodar de novo funciona.
+- **Todo erro de domínio respondia HTTP 400.** Um cliente não conseguia distinguir sessão
+  expirada (401) de proibido (403), de registro inexistente (404), de conflito (409) ou de
+  contrato inválido (422). O status agora é derivado do código de erro; códigos desconhecidos
+  seguem 400.
+- O gate de vazamento do splitter confundia a tag HTML `<select>` com um `SELECT` de SQL e
+  quebrava o build de qualquer app com dropdown.
+- Sessão só nascia com `Authorization` ou `x-user-id`: mandar apenas `x-user-roles` (o que o
+  fluxo de cookie do browser produz) virava sessão anônima em silêncio.
 
 ## [0.6.0] — release candidate
 

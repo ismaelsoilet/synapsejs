@@ -57,6 +57,25 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run mcp` | stdio JSON-RPC | targets `examples/enterprise-crm` via `--cwd` |
 
+### Evolving a schema
+
+`sliceSchema` is applied **statement by statement**, and each statement is recorded once in
+`_synapse_migration_statements`. Editing the DDL applies only what is new, so an `ALTER TABLE`
+runs exactly once even though the slice text changes:
+
+```ts
+export const sliceSchema = `
+  CREATE TABLE IF NOT EXISTS customers (...);
+  ALTER TABLE customers ADD COLUMN phone TEXT;   -- runs once, never again
+`;
+```
+
+A statement that fails is **not** recorded and the report is `FAIL` with its error, so fixing it
+and running again works; nothing fails silently. Caveat for existing databases: the first
+`migrate` after this change re-executes every statement once, because the previous tracking only
+stored a hash per slice. Idempotent DDL (`CREATE ... IF NOT EXISTS`) is unaffected; a
+non-idempotent statement that the old runner had already applied will fail once, loudly.
+
 ### Failure codes you must handle
 
 Discovery never silently succeeds. When nothing was verified, the command **fails**:

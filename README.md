@@ -22,7 +22,8 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Fatias verticais (N = 1) com Locality of Behavior | `bun test packages/synapse/test/locality.test.ts` |
 | Controle de fluxo `Result<T, E>` sem helper público que lança | `bun test packages/synapse/test/machine-types.test.ts` |
 | Contratos de entrada JIT com TypeBox | `bun test packages/synapse/test/slice-contract.test.ts` |
-| Migrações declarativas de `sliceSchema` (AST, hash, idempotente) | `bun test packages/synapse/test/migration-runner.test.ts` |
+| Migrações declarativas de `sliceSchema` (AST, idempotente **por statement**) | `bun test packages/synapse/test/migration-runner.test.ts` |
+| Erro de domínio vira status HTTP coerente (401/403/404/409/422/500) | `bun test packages/synapse/test/runtime-server.test.ts` |
 | SQLite embutido (WAL, cache de statement, leitura segura de CTE) | `bun test packages/synapse/test/sqlite-client.test.ts` |
 | RBAC explícito via `requireAuth(session, roles)` | `bun test packages/synapse/test/slice-contract.test.ts` + `bun run test:e2e` |
 | Roteamento zero-wiring, shell SSR e dispatcher RPC | `bun run test:e2e` |

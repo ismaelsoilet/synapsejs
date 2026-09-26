@@ -365,9 +365,14 @@ async function main() {
                 evidence: 'bun test packages/synapse/test/slice-contract.test.ts'
               },
               {
-                feature: 'Declarative sliceSchema migrations via AST (hash + idempotent)',
+                feature: 'Declarative sliceSchema migrations, applied once per statement',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/migration-runner.test.ts'
+              },
+              {
+                feature: 'Domain errors map to HTTP status (401/403/404/409/422/500)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
               },
               {
                 feature: 'Embedded SQLite engine (WAL, prepared-statement cache)',
