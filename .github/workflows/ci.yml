@@ -80,3 +80,22 @@ jobs:
         run: bun run test:postgres
         env:
           TEST_DATABASE_URL: postgres://pg:pg@localhost:5432/synapse
+
+  publish-rehearsal:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Pack, Install Outside The Monorepo And Exercise Every Entry Point
+        run: bun run rehearse:publish
+

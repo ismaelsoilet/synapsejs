@@ -33,7 +33,8 @@
     "new-slice": "bun --cwd examples/enterprise-crm new-slice",
     "build": "bun test packages/synapse/test && bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton && bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",
     "new": "bun run packages/synapse/bin/synapse.ts new",
-    "cli": "bun run packages/synapse/bin/synapse.ts"
+    "cli": "bun run packages/synapse/bin/synapse.ts",
+    "rehearse:publish": "bun run scripts/rehearse-publish.ts"
   },
   "dependencies": {
     "synapsejs": "workspace:*",

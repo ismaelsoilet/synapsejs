@@ -303,8 +303,11 @@ async function main() {
           if (['node_modules', '.git', '.synapse', 'dist', '.cache', '.tsbuildinfo'].includes(entry.name)) {
             continue;
           }
+          // O template publica o arquivo como `gitignore` porque empacotadores
+          // descartam `.gitignore`; aqui ele volta ao nome que o usuário espera.
+          const destinationName = entry.name === 'gitignore' ? '.gitignore' : entry.name;
           const s = path.join(src, entry.name);
-          const d = path.join(dest, entry.name);
+          const d = path.join(dest, destinationName);
           if (entry.isDirectory()) {
             copyRecursive(s, d);
           } else {
