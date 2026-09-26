@@ -14,6 +14,8 @@ import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
+import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../compiler/slice-splitter';
+import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
 import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
 
 export interface DiscoveredSlice {
@@ -26,6 +28,8 @@ export interface DiscoveredSlice {
   filePath: string;
   actionFn?: (payload: unknown, db: DatabaseClient, session?: SessionContext) => Promise<any>;
   componentFn?: React.ComponentType<any>;
+  /** Export name of the component, so the generated client entry can import it. */
+  componentExport?: string;
   /** Optional server-side data for the component: `export function <Name>Loader(context)`. */
   loaderFn?: (context: SliceLoaderContext) => Promise<Record<string, unknown>>;
 }
@@ -80,6 +84,7 @@ export class SynapseServer {
   private db: DatabaseClient;
   private discoveryError: { code: string; message: string; candidates: string[] } | null = null;
   private loadErrors: SliceLoadError[] = [];
+  private clientBundles = new Map<string, { url: string; builtFor: string }>();
   public port: number;
 
   constructor(baseDir: string = process.cwd(), port: number = 3000) {
@@ -130,6 +135,7 @@ export class SynapseServer {
         const mod = await import(file);
         let actionFn: any = null;
         let componentFn: any = null;
+        let componentExport: string | undefined;
         let loaderFn: any = null;
 
         for (const [exportName, val] of Object.entries(mod)) {
@@ -145,6 +151,7 @@ export class SynapseServer {
               exportName.endsWith('Component')
             ) {
               componentFn = val;
+              componentExport = exportName;
             }
           }
         }
@@ -158,6 +165,7 @@ export class SynapseServer {
           filePath: file,
           actionFn,
           componentFn,
+          componentExport,
           loaderFn
         });
       } catch (err) {
@@ -220,9 +228,82 @@ export class SynapseServer {
   }
 
   /**
+   * Builds the browser bundle for a slice from the splitter's client artifact.
+   *
+   * The splitter is what keeps database code out of the browser: only its
+   * `client.tsx` (UI plus RPC stubs) is bundled, with the generated entry that
+   * hydrates the component and wires `onSubmitAction` to the slice endpoint.
+   * Cached per mtime, so editing a slice rebuilds it on the next request.
+   */
+  private async ensureClientBundle(slice: DiscoveredSlice): Promise<string | null> {
+    if (!slice.componentExport) {
+      return null;
+    }
+
+    const signature = String(fs.statSync(slice.filePath).mtimeMs);
+    const cached = this.clientBundles.get(slice.key);
+    if (cached?.builtFor === signature) {
+      return cached.url;
+    }
+
+    const split = splitSlice(slice.filePath, this.baseDir);
+    if (!split.ok) {
+      console.error(`[SynapseServer] Nao foi possivel particionar ${slice.key}: ${split.error.message}`);
+      return null;
+    }
+
+    const outDir = artifactDirectory(this.baseDir, split.value.sliceName);
+    writeSplitArtifacts(split.value, outDir);
+
+    const clientArtifact = split.value.artifacts.find((artifact) => artifact.kind === 'client');
+    if (!clientArtifact) {
+      return null;
+    }
+
+    const entryDir = path.join(this.baseDir, '.synapse/client-entry');
+    fs.mkdirSync(entryDir, { recursive: true });
+    const entryPath = path.join(entryDir, `${slice.domain}-${slice.name}.tsx`);
+    const modulePath = path.relative(entryDir, path.join(outDir, clientArtifact.fileName)).split(path.sep).join('/');
+
+    fs.writeFileSync(
+      entryPath,
+      clientEntrySource({
+        componentName: slice.componentExport,
+        clientModulePath: `./${modulePath}`,
+        rpcPath: slice.rpcPath
+      }),
+      'utf-8'
+    );
+
+    const buildDir = path.join(this.baseDir, '.synapse/client');
+    const result = await Bun.build({
+      entrypoints: [entryPath],
+      target: 'browser',
+      outdir: buildDir,
+      naming: '[name].js'
+    });
+
+    if (!result.success || !result.outputs[0]) {
+      console.error(`[SynapseServer] Falha ao empacotar o cliente de ${slice.key}`);
+      return null;
+    }
+
+    const url = `/_synapse/client/${path.basename(result.outputs[0].path)}`;
+    this.clientBundles.set(slice.key, { url, builtFor: signature });
+
+    return url;
+  }
+
+  /**
    * Generates the SSR HTML Shell with Inter font, Tailwind and client hydration
    */
-  private renderHtmlShell(title: string, contentHtml: string, sliceName: string, rpcPath: string): string {
+  private renderHtmlShell(
+    title: string,
+    contentHtml: string,
+    sliceName: string,
+    propsJson: string,
+    clientUrl: string | null
+  ): string {
     return `<!DOCTYPE html>
 <html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
 <head>
@@ -273,83 +354,9 @@ export class SynapseServer {
       ${contentHtml}
     </div>
 
-    <!-- Client Hydration & Transparent RPC Script -->
-    <script>
-      (function() {
-        const form = document.querySelector('form');
-        if (!form) return;
-
-        form.addEventListener('submit', async function(e) {
-          e.preventDefault();
-          const submitBtn = form.querySelector('button[type="submit"]');
-          const originalText = submitBtn ? submitBtn.innerText : 'Enviar';
-          if (submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerText = 'Processando via RPC...';
-          }
-
-          const formData = new FormData(form);
-          const payload = {};
-          formData.forEach((value, key) => {
-            if (!isNaN(value) && value !== '') {
-              payload[key] = value.includes('.') ? parseFloat(value) : parseInt(value, 10);
-            } else {
-              payload[key] = value;
-            }
-          });
-
-          // Ensure customerId fallback if required
-          if (!payload.customerId) {
-            payload.customerId = 'cust-demo-1234567890';
-          }
-
-          try {
-            // Credenciais do browser são repassadas por cookie para as Server Actions
-            // que exigem SessionContext (ex.: definir synapse_token e synapse_roles).
-            const readCookie = (name) => {
-              const entry = document.cookie.split('; ').find((c) => c.startsWith(name + '='));
-              return entry ? decodeURIComponent(entry.slice(name.length + 1)) : null;
-            };
-
-            const rpcHeaders = { 'Content-Type': 'application/json' };
-            const token = readCookie('synapse_token');
-            const roles = readCookie('synapse_roles');
-            if (token) rpcHeaders['Authorization'] = 'Bearer ' + token;
-            if (roles) rpcHeaders['x-user-roles'] = roles;
-
-            const res = await fetch('${rpcPath}', {
-              method: 'POST',
-              headers: rpcHeaders,
-              body: JSON.stringify(payload)
-            });
-            const data = await res.json();
-
-            let feedbackBox = document.getElementById('synapse-feedback');
-            if (!feedbackBox) {
-              feedbackBox = document.createElement('div');
-              feedbackBox.id = 'synapse-feedback';
-              feedbackBox.className = 'mt-4 p-4 rounded-lg font-mono text-sm border';
-              form.parentNode.appendChild(feedbackBox);
-            }
-
-            if (data.ok) {
-              feedbackBox.className = 'mt-4 p-4 rounded-lg font-mono text-sm border bg-emerald-950/60 border-emerald-800 text-emerald-300';
-              feedbackBox.innerHTML = '<strong>Sucesso (Ok):</strong> ' + JSON.stringify(data.value, null, 2);
-            } else {
-              feedbackBox.className = 'mt-4 p-4 rounded-lg font-mono text-sm border bg-rose-950/60 border-rose-800 text-rose-300';
-              feedbackBox.innerHTML = '<strong>Erro (Err):</strong> ' + JSON.stringify(data.error, null, 2);
-            }
-          } catch (err) {
-            alert('Falha na requisição RPC: ' + err.message);
-          } finally {
-            if (submitBtn) {
-              submitBtn.disabled = false;
-              submitBtn.innerText = originalText;
-            }
-          }
-        });
-      })();
-    </script>
+    <!-- Props de hidratacao e a entrada de cliente gerada -->
+    <script>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
+    ${clientUrl ? `<script type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
   </main>
 
   <!-- Footer -->
@@ -534,30 +541,50 @@ export class SynapseServer {
           }
         }
 
-        // 4. UI Route Dispatcher (GET /:domain/:sliceName)
+        // 4. Client bundles produced by the splitter
+        if (pathname.startsWith('/_synapse/client/')) {
+          const bundleFile = path.join(this.baseDir, '.synapse/client', path.basename(pathname));
+          if (!fs.existsSync(bundleFile)) {
+            return new Response('Client bundle not found', { status: 404 });
+          }
+          return new Response(Bun.file(bundleFile), {
+            headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+          });
+        }
+
+        // 5. UI Route Dispatcher (GET /:domain/:sliceName)
         for (const slice of this.slices.values()) {
           if (pathname === slice.routePath) {
             const session = this.sessionFrom(req);
             const params = Object.fromEntries(url.searchParams.entries());
-            let props: Record<string, unknown> = { ...params };
+            const dataProps: Record<string, unknown> = { ...params };
             let loaderError: string | null = null;
 
             if (slice.loaderFn) {
               try {
                 const loaded = await slice.loaderFn({ url: url.toString(), params, db: this.db, session });
-                props = { ...props, ...loaded };
+                Object.assign(dataProps, loaded);
               } catch (err) {
                 loaderError = err instanceof Error ? err.message : String(err);
                 console.error(`[SynapseServer] Loader de ${slice.key} falhou: ${loaderError}`);
               }
             }
 
+            const clientUrl = loaderError ? null : await this.ensureClientBundle(slice);
+
+            const renderProps: Record<string, unknown> = {
+              ...dataProps,
+              ...(slice.actionFn
+                ? { onSubmitAction: (payload: unknown) => slice.actionFn?.(payload, this.db, session) }
+                : {})
+            };
+
             let contentHtml: string;
             if (loaderError) {
               contentHtml = `<div class="text-rose-400">Falha no loader de ${slice.key}: ${loaderError}</div>`;
             } else if (slice.componentFn) {
               try {
-                contentHtml = renderToString(React.createElement(slice.componentFn, props));
+                contentHtml = renderToString(React.createElement(slice.componentFn, renderProps));
               } catch (e: any) {
                 contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${e.message}</div>`;
               }
@@ -565,7 +592,13 @@ export class SynapseServer {
               contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
             }
 
-            const html = this.renderHtmlShell(slice.name, contentHtml, slice.name, slice.rpcPath);
+            const html = this.renderHtmlShell(
+        slice.name,
+        contentHtml,
+        slice.name,
+        serializeClientProps(dataProps),
+        clientUrl
+      );
             return new Response(html, {
               headers: { 'Content-Type': 'text/html; charset=utf-8' }
             });

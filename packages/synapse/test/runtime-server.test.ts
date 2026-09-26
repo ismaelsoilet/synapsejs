@@ -41,6 +41,42 @@ describe('slice loaders', () => {
   });
 });
 
+describe('client hydration', () => {
+  let pageHtml = '';
+
+  it('serves props for hydration and the generated client entry', async () => {
+    pageHtml = await (await fetch(`${base}/tickets/view-tickets?marker=7`)).text();
+
+    expect(pageHtml).toContain('globalThis.__SYNAPSE_PROPS__ = ');
+    expect(pageHtml).toContain('LOADER-TICKETS-7');
+    expect(pageHtml).toMatch(/<script type="module" src="\/_synapse\/client\/[^"]+"[^>]*><\/script>| <script type="module"/);
+  });
+
+  it('no longer ships the inline form script that competed with React', () => {
+    expect(pageHtml).not.toContain('addEventListener');
+  });
+
+  it('serves a real bundle for the slice', async () => {
+    const match = pageHtml.match(/src="(\/_synapse\/client\/[^"]+)"/);
+    expect(match).not.toBeNull();
+
+    const bundleUrl = (match as RegExpMatchArray)[1];
+    const response = await fetch(`${base}${bundleUrl}`);
+    const code = await response.text();
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('javascript');
+    expect(code).toContain('hydrateRoot');
+    expect(code).toContain('sem dados do loader');
+    expect(code).not.toContain('SELECT');
+  });
+
+  it('answers 404 for a bundle that does not exist', async () => {
+    const response = await fetch(`${base}/_synapse/client/nao-existe.js`);
+    expect(response.status).toBe(404);
+  });
+});
+
 describe('RPC dispatch', () => {
   it('resolves a slice by <domain>/<name>', async () => {
     const response = await fetch(`${base}/_synapse/rpc/tickets/view-tickets`, {

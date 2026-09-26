@@ -646,7 +646,7 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
 
   const clientSharedImport =
     sharedEntries.length > 0 ? `import { ${sharedEntries.map((e) => e.key).join(', ')} } from './shared';` : '';
-  const clientRpcImport = stubbedKeys.length > 0 ? `import { rpcCall } from 'synapsejs';` : '';
+  const clientRpcImport = stubbedKeys.length > 0 ? `import { rpcCall } from 'synapsejs/client';` : '';
 
   artifacts.push({
     kind: 'client',

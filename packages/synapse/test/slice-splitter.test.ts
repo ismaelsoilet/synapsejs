@@ -59,7 +59,7 @@ describe('splitSlice', () => {
     const result = splitOrFail('orders/create-order.slice.tsx');
     const client = artifact(result, 'client');
 
-    expect(client).toContain(`import { rpcCall } from 'synapsejs';`);
+    expect(client).toContain(`import { rpcCall } from 'synapsejs/client';`);
     expect(client).toContain(`rpcCall<OrderOutput>("/_synapse/rpc/create-order", payload)`);
     expect(client).not.toContain('Value.Check');
   });
