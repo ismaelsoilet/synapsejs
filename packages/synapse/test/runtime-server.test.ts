@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import * as path from 'path';
-import { httpStatusForError, SynapseServer, formatLogLine } from '../src/runtime/server';
+import { signSessionToken } from '../src/core/session-token';
+import { formatLogLine, httpStatusForError, SynapseServer } from '../src/runtime/server';
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'runtime-app');
 
@@ -225,5 +226,37 @@ describe('HTTP status reflects the domain error', () => {
     for (const [code, expected] of cases) {
       expect(httpStatusForError(code)).toBe(expected);
     }
+  });
+});
+
+describe('signed sessions', () => {
+  it('derives the session from a signed token instead of a forgeable header', async () => {
+    process.env.SYNAPSE_SESSION_SECRET = 'segredo-de-teste';
+    const token = signSessionToken({ userId: 'u-assinado', roles: ['financeiro'] }, 'segredo-de-teste');
+
+    const signed = await (
+      await fetch(`${base}/tickets/view-tickets`, {
+        headers: { Authorization: `Bearer ${token}`, 'x-user-roles': 'sales' }
+      })
+    ).text();
+
+    delete process.env.SYNAPSE_SESSION_SECRET;
+
+    // O papel vem do token, não do header que o cliente escreveu.
+    expect(signed).toContain('LOADER-TICKETS-default-financeiro');
+  });
+
+  it('treats a tampered or forged token as anonymous', async () => {
+    process.env.SYNAPSE_SESSION_SECRET = 'segredo-de-teste';
+
+    const forged = await (
+      await fetch(`${base}/tickets/view-tickets`, {
+        headers: { Authorization: 'Bearer abc.def', 'x-user-roles': 'sales' }
+      })
+    ).text();
+
+    delete process.env.SYNAPSE_SESSION_SECRET;
+
+    expect(forged).toContain('LOADER-TICKETS-default-anonimo');
   });
 });

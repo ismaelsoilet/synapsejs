@@ -35,6 +35,16 @@ const root = process.cwd();
 async function main() {
   switch (command) {
     case 'dev': {
+      const watch = process.argv.includes('--watch');
+
+      if (watch && !process.env.SYNAPSE_WATCH_CHILD) {
+        const child = Bun.spawn(
+          [process.execPath, '--watch', ...process.argv.slice(1).filter((arg) => arg !== '--watch')],
+          { stdio: ['inherit', 'inherit', 'inherit'], env: { ...process.env, SYNAPSE_WATCH_CHILD: '1' } }
+        );
+        process.exit(await child.exited);
+      }
+
       const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
       const server = new SynapseServer(root, port);
       await server.discoverSlices();
@@ -371,6 +381,16 @@ async function main() {
               },
               {
                 feature: 'Domain errors map to HTTP status (401/403/404/409/422/500)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
+              },
+              {
+                feature: 'React hydration from a client bundle the splitter produces',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
+              },
+              {
+                feature: 'Signed sessions (SYNAPSE_SESSION_SECRET) and static files from public/',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
               },

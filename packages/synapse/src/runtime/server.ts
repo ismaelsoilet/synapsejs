@@ -16,6 +16,7 @@ import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../compiler/slice-splitter';
 import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
+import { verifySessionToken } from '../core/session-token';
 import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
 
 export interface DiscoveredSlice {
@@ -260,6 +261,19 @@ export class SynapseServer {
     const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
     const userIdHeader = request.headers.get('x-user-id');
     const rolesHeader = request.headers.get('x-user-roles');
+
+    // Com um segredo configurado, a sessão vem da assinatura: um header de papel,
+    // que qualquer cliente escreve, deixa de valer. Sem segredo vale o modo de
+    // desenvolvimento (headers), que é conveniente e inseguro em produção.
+    const secret = process.env.SYNAPSE_SESSION_SECRET;
+    const bearer = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : undefined;
+
+    if (secret && bearer) {
+      const verified = verifySessionToken(bearer, secret);
+      return verified.ok
+        ? createSession({ userId: verified.value.userId, roles: verified.value.roles, token: bearer })
+        : AnonymousSession();
+    }
 
     // Qualquer um dos três headers identifica uma sessão. Antes, mandar apenas
     // `x-user-roles` (o que o cookie do browser produz) caía em sessão anônima em
