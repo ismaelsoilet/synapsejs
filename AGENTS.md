@@ -120,6 +120,18 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
    generated wrapper under `.synapse/oracles/`, so slices never import a test library.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
+A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
+`fc.double`: a NaN the schema rejects becomes a failing property that reports nothing wrong with the
+code — the exact flake `generate-invoice` had.
+
+### Authoring a slice without guessing
+
+`synapse contract` prints the whole authoring contract as JSON (the MCP tool `synapse_contract` does
+the same), and `synapse new-slice <domain> <name> --template=list|update|delete|crud` emits the shape
+instead of leaving it to be invented: `list` paginates with a parameterized filter, `update` is
+partial and builds its SET clause from a column allowlist, `delete` checks existence first. The
+suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
+contract, so the description cannot drift from behavior.
 
 Slice endpoints are addressed by `<domain>/<name>`: `POST /_synapse/rpc/tickets/create-ticket`. A bare
 slice name still works while it is unique across domains; when two domains own the same name the

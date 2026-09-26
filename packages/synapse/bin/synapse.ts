@@ -24,9 +24,10 @@ import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
 import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
-import { scaffoldSlice } from '../src/compiler/scaffolder';
+import { scaffoldCrud, scaffoldSlice } from '../src/compiler/scaffolder';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
+import { SLICE_TEMPLATES, type SliceTemplate } from '../src/compiler/slice-templates';
 import { SynapseMcpServer } from '../src/mcp/server';
 import { SynapseServer } from '../src/runtime/server';
 
@@ -212,7 +213,62 @@ async function main() {
         process.exit(1);
       }
 
-      const created = scaffoldSlice(domain, name, root);
+      const templateArg = process.argv.find((arg) => arg.startsWith('--template='))?.split('=')[1];
+      const template = (templateArg ?? 'create') as SliceTemplate | 'crud';
+
+      if (template !== 'crud' && !SLICE_TEMPLATES.includes(template)) {
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'ERROR',
+              operation: 'SCAFFOLD_SLICE',
+              code: 'UNKNOWN_TEMPLATE',
+              message: `Template desconhecido: ${template}`,
+              templates: [...SLICE_TEMPLATES, 'crud']
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(1);
+      }
+
+      if (template === 'crud') {
+        const crud = scaffoldCrud(domain, name, root);
+
+        if (!crud.ok) {
+          process.stdout.write(
+            JSON.stringify(
+              {
+                status: 'ERROR',
+                operation: 'SCAFFOLD_CRUD',
+                code: crud.error.code,
+                message: crud.error.message
+              },
+              null,
+              2
+            ) + '\n'
+          );
+          process.exit(1);
+        }
+
+        process.stdout.write(
+          JSON.stringify(
+            {
+              status: 'PASS',
+              operation: 'SCAFFOLD_CRUD',
+              domain,
+              resource: name,
+              createdPaths: crud.value.map((file) => path.relative(root, file))
+            },
+            null,
+            2
+          ) + '\n'
+        );
+        process.exit(0);
+      }
+
+      const created = scaffoldSlice(domain, name, root, template);
 
       if (!created.ok) {
         process.stderr.write(

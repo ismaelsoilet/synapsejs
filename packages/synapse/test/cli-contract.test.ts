@@ -227,6 +227,41 @@ describe('synapse contract', () => {
   });
 });
 
+describe('synapse new-slice --template', () => {
+  it('generates a paginated list slice instead of a create slice', async () => {
+    const app = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-template-'));
+    fs.mkdirSync(path.join(app, 'src', 'slices', 'coisas'), { recursive: true });
+
+    const result = await runCli(['new-slice', 'coisas', 'listar-coisa', '--template=list'], app);
+
+    expect(result.exitCode).toBe(0);
+    const source = fs.readFileSync(path.join(app, result.json?.createdPath as string), 'utf-8');
+    expect(source).toContain('LIMIT $2 OFFSET $3');
+    expect(source).toContain('export const sliceTests');
+  });
+
+  it('refuses an unknown template with a machine-readable error', async () => {
+    const app = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-template-'));
+    fs.mkdirSync(path.join(app, 'src', 'slices', 'coisas'), { recursive: true });
+
+    const result = await runCli(['new-slice', 'coisas', 'x', '--template=banana'], app);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('UNKNOWN_TEMPLATE');
+    expect(result.json?.templates).toContain('crud');
+  });
+
+  it('generates the four crud slices in one call', async () => {
+    const app = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-template-'));
+    fs.mkdirSync(path.join(app, 'src', 'slices', 'coisas'), { recursive: true });
+
+    const result = await runCli(['new-slice', 'coisas', 'coisa', '--template=crud'], app);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.json?.createdPaths.length).toBe(4);
+  });
+});
+
 describe('synapse info', () => {
   it('reports every feature with a status and verifiable evidence', async () => {
     const result = await runCli(['info']);

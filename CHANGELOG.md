@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — machine-native surface
+
+- `synapse contract` and the MCP tool `synapse_contract`: the framework describes itself in one
+  call — every slice export with suffix and signature, the Result/HTTP mapping, session rules,
+  addressing, SSR behavior, the gates, the templates, and a copyable example. The suffix rules
+  moved to `runtime/discovery-rules.ts` so runtime, splitter and contract read the same constants
+  and cannot drift.
+- `synapse new-slice --template=create|list|update|delete|crud`: list paginates with a parameterized
+  filter, update is partial and builds its SET clause from a column allowlist, delete checks
+  existence first. Each generated file passes the splitter gates in the test suite.
+- Documented trap: `fc.double` without `noNaN: true` produced a flaky oracle in `generate-invoice`.
+
+
 Todas as mudanças relevantes deste projeto. Formato: [Keep a Changelog](https://keepachangelog.com/pt-BR/1.1.0/).
 
 **Nada foi publicado no npm ainda.** O `synapsejs` existe apenas neste repositório; as versões abaixo

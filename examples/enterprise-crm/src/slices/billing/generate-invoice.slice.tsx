@@ -209,7 +209,7 @@ export const sliceTests = {
         fc.assert(
           fc.asyncProperty(
             fc.integer({ min: -50000, max: 0 }),
-            fc.double({ min: 0.31, max: 2.0 }),
+            fc.double({ min: 0.31, max: 2.0, noNaN: true, noDefaultInfinity: true }),
             async (negativeAmount, invalidTax) => {
               const mockDb = new MockDatabaseClient();
               const result = await createInvoiceAction(
@@ -237,7 +237,7 @@ export const sliceTests = {
         fc.assert(
           fc.asyncProperty(
             fc.integer({ min: 100, max: 1000000 }),
-            fc.double({ min: 0.0, max: 0.3 }),
+            fc.double({ min: 0.0, max: 0.3, noNaN: true, noDefaultInfinity: true }),
             async (amountCents, taxRate) => {
               const mockDb = new MockDatabaseClient();
               mockDb

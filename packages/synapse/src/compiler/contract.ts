@@ -19,6 +19,7 @@ import {
   SLICE_ORACLE_EXPORT
 } from '../runtime/discovery-rules';
 import { SLICE_EXTENSION } from './slice-discovery';
+import { SLICE_TEMPLATES } from './slice-templates';
 
 export interface SliceContractExport {
   name: string;
@@ -57,6 +58,11 @@ export interface MachineContract {
     props: string;
     hydration: string;
     isolation: string;
+  };
+  templates: {
+    command: string;
+    available: string[];
+    notes: string;
   };
   gates: Array<{ command: string; proves: string }>;
 }
@@ -115,7 +121,7 @@ export function machineContract(): MachineContract {
           kind: 'oracle',
           signature: '{ description?: string, cases: Array<{ name: string, run: () => unknown | Promise<unknown> }> }',
           notes:
-            'Assert domain behavior, not the validation library. Executed by `synapse test` under bun:test; dropped from both runtime bundles by the splitter.'
+            'Assert domain behavior, not the validation library. Executed by `synapse test` under bun:test; dropped from both runtime bundles by the splitter. When a generator produces floats, pass noNaN: true and noDefaultInfinity: true to fc.double: a NaN that the schema rejects makes a property return false, which is a flake rather than a finding.'
         }
       ],
       example: [
@@ -189,6 +195,12 @@ export function machineContract(): MachineContract {
         'The server builds a browser bundle per slice from the splitter output, hydrates the component and wires onSubmitAction to the RPC endpoint. The same props are serialized into the page.',
       isolation:
         'A client bundle never contains SQL, db access, process.env or Bun globals; the splitter gates fail the build if it does.'
+    },
+    templates: {
+      command: 'synapse new-slice <domain> <name> --template=<template>',
+      available: [...SLICE_TEMPLATES, 'crud'],
+      notes:
+        'create is the default. crud generates create-<name>, list-<name>, update-<name> and delete-<name> for one resource. list paginates (LIMIT/OFFSET plus COUNT) with a parameterized filter; update is partial and builds its SET clause from a column allowlist, never from the payload; delete checks existence first. Every generated file already carries an oracle.'
     },
     gates: [
       {

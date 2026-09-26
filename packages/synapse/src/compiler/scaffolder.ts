@@ -9,6 +9,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { Err, Ok, type Result } from '../core/machine-types';
 import { resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
+import { generateOperationTemplate, type SliceTemplate } from './slice-templates';
 
 export function toPascalCase(str: string): string {
   return str
@@ -286,7 +287,8 @@ function resolveScaffoldTarget(baseDir: string): Result<string, ScaffoldError> {
 export function scaffoldSlice(
   domain: string,
   sliceName: string,
-  baseDir: string = process.cwd()
+  baseDir: string = process.cwd(),
+  template: SliceTemplate = 'create'
 ): Result<string, ScaffoldError> {
   const target = resolveScaffoldTarget(baseDir);
 
@@ -307,7 +309,11 @@ export function scaffoldSlice(
 
   try {
     fs.mkdirSync(targetDir, { recursive: true });
-    fs.writeFileSync(targetFile, generateSliceTemplate(domain, sliceName), 'utf-8');
+    const content =
+      template === 'create'
+        ? generateSliceTemplate(domain, sliceName)
+        : generateOperationTemplate(domain, sliceName, template);
+    fs.writeFileSync(targetFile, content, 'utf-8');
   } catch (err) {
     return Err({
       code: 'WRITE_FAILED',
@@ -317,6 +323,34 @@ export function scaffoldSlice(
   }
 
   return Ok(targetFile);
+}
+
+/**
+ * The set an agent would otherwise invent: the four operations of one resource,
+ * each in its own file, all in the same shape as the rest of the framework.
+ */
+export function scaffoldCrud(
+  domain: string,
+  resource: string,
+  baseDir: string = process.cwd()
+): Result<string[], ScaffoldError> {
+  const created: string[] = [];
+
+  for (const template of ['create', 'list', 'update', 'delete'] as const) {
+    const result = scaffoldSlice(domain, `${template}-${resource}`, baseDir, template);
+
+    if (!result.ok) {
+      return Err({
+        code: result.error.code,
+        message: `${template}: ${result.error.message}`,
+        candidates: result.error.candidates
+      });
+    }
+
+    created.push(result.value);
+  }
+
+  return Ok(created);
 }
 
 if (import.meta.main) {

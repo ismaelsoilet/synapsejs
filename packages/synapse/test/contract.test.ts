@@ -74,6 +74,11 @@ describe('machine contract', () => {
     expect(contract.sessions.headers.length).toBe(3);
   });
 
+  it('lists the templates the scaffolder can emit', () => {
+    expect(contract.templates.available).toEqual(['create', 'list', 'update', 'delete', 'crud']);
+    expect(contract.templates.notes).toContain('allowlist');
+  });
+
   it('renders a markdown view with the same tables', () => {
     const markdown = renderContractMarkdown();
 
