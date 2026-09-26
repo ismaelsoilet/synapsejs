@@ -156,13 +156,19 @@ export function measureAppSurface(appRoot: string): AppSurface {
 
   const config = JSON.parse(fs.readFileSync(configPath, 'utf-8')) as BenchConfig;
   const project = loadProject(appRoot);
+  const features = Object.entries(config.features ?? {}).map(([feature, entries]) =>
+    measureFeature(appRoot, feature, entries, project)
+  );
+
+  // A benchmark that measured nothing must not look like a result.
+  if (features.length === 0) {
+    throw new Error(`bench.config.json em ${appRoot} não declara nenhuma feature.`);
+  }
 
   return {
     app: path.basename(appRoot),
     root: path.relative(process.cwd(), appRoot) || '.',
-    features: Object.entries(config.features).map(([feature, entries]) =>
-      measureFeature(appRoot, feature, entries, project)
-    )
+    features
   };
 }
 

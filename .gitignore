@@ -6,3 +6,4 @@ dist/
 .commandcode/
 *.tsbuildinfo
 
+/.codebase/

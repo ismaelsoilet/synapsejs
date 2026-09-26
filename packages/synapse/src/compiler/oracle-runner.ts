@@ -140,8 +140,10 @@ export function oracleWrapperSource(importPath: string, sliceName: string): stri
     `    return;`,
     `  }`,
     ``,
-    `  it('declares at least one case', () => {`,
-    `    expect(oracle.cases ?? oracle.run).toBeDefined();`,
+    `  it('declares at least one invariant', () => {`,
+    `    const hasCases = Array.isArray(oracle.cases) && oracle.cases.length > 0;`,
+    `    const hasRun = typeof oracle.run === 'function';`,
+    `    expect(hasCases || hasRun).toBe(true);`,
     `  });`,
     `});`,
     ``

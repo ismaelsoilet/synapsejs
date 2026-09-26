@@ -55,4 +55,15 @@ describe('measureAppSurface', () => {
   it('refuses an app without a bench config', () => {
     expect(() => measureAppSurface(sandbox)).toThrow(/bench.config.json/);
   });
+
+  it('refuses a config that declares no feature', () => {
+    fs.writeFileSync(
+      path.join(sandbox, 'tsconfig.json'),
+      JSON.stringify({ compilerOptions: { strict: true }, include: ['src/**/*'] }),
+      'utf-8'
+    );
+    fs.writeFileSync(path.join(sandbox, 'bench.config.json'), JSON.stringify({ features: {} }), 'utf-8');
+
+    expect(() => measureAppSurface(sandbox)).toThrow(/nenhuma feature/);
+  });
 });

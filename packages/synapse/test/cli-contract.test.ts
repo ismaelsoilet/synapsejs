@@ -87,6 +87,23 @@ describe('synapse test', () => {
     ]);
   });
 
+  it('fails when a slice declares an empty case list', async () => {
+    const sliceDir = path.join(sandbox, 'src', 'slices', 'demo');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'empty.slice.tsx'),
+      ['export const sliceTests = { description: "sem invariantes", cases: [] };', ''].join('\n'),
+      'utf-8'
+    );
+
+    const result = await runCli(['test']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.status).toBe('FAIL');
+    expect(result.json?.results[0].passed).toBe(false);
+    expect(result.json?.results[0].cases[0].passed).toBe(false);
+  });
+
   it('fails, names the broken invariant and surfaces its message', async () => {
     const sliceDir = path.join(sandbox, 'src', 'slices', 'demo');
     fs.mkdirSync(sliceDir, { recursive: true });
@@ -179,7 +196,7 @@ describe('synapse new', () => {
     const pkg = JSON.parse(manifest);
 
     expect(pkg.name).toBe('my-app');
-    expect(pkg.dependencies.synapsejs).toBe('^0.4.0');
+    expect(pkg.dependencies.synapsejs).toBe('^0.5.0');
     expect(manifest).not.toContain('workspace:*');
     expect(pkg.engines.bun).toBeDefined();
 

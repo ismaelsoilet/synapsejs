@@ -31,7 +31,7 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Skeletonizer para `.codebase/repo-map.d.ts` (tipado, sem `any`) | `bun test packages/synapse/test/repo-map.test.ts` |
 | Servidor MCP stdio (5 ferramentas) | `bun test packages/synapse/test/mcp-server.test.ts` |
 | Invariantes das fatias sob `bun:test`, com relatório por invariante | `bun test packages/synapse/test/oracle-runner.test.ts` + `bun run test:helpdesk` |
-| Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16`) |
+| Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16-alpine`) |
 | Benchmark de superfície de contexto | `bun run bench` |
 
 ### Experimental
@@ -150,12 +150,12 @@ splitter se recusam a reportar sucesso quando nada foi verificado.
 
 | Medição | Valor |
 |---|---|
-| `bun run check` (monorepo inteiro, 4 apps) | ~2s |
+| `bun run check` (monorepo inteiro, 4 apps) | ~3s nesta máquina (varia) |
 | `bun run check --fast` | removido — 2.5s (mais lento que o check completo) |
 | Repo map do app de exemplo | ~1005 tokens (orçamento 3000) |
-| Suíte do framework | 102 testes, 12 arquivos |
+| Suíte do framework | 108 testes, 13 arquivos |
 | Suíte e2e | 12 checagens (SSR, RPC, RBAC, idempotência) |
-| Paridade PostgreSQL | verificada contra `postgres:16` (migração, DDL, round-trip de action) |
+| Paridade PostgreSQL | verificada contra `postgres:16-alpine` (migração, DDL, round-trip de action) |
 
 ## Superfície de contexto (o que o agente precisa ler)
 
@@ -165,21 +165,25 @@ As mesmas duas features implementadas em duas stacks — `bun run bench`:
 |---|---|---|---|---|---|
 | helpdesk-slices | abrir chamado | 1 | 1.6k | 20 | 28.6k |
 | helpdesk-slices | atribuir chamado | 1 | 1.4k | 20 | 28.4k |
-| helpdesk-conventional | abrir chamado | 4 | 1.4k | 4 | 1.4k |
-| helpdesk-conventional | atribuir chamado | 4 | 1.4k | 4 | 1.4k |
+| helpdesk-conventional | abrir chamado | 5 | 1.8k | 5 | 1.8k |
+| helpdesk-conventional | atribuir chamado | 5 | 1.8k | 5 | 1.8k |
 
-Contagens de arquivo são exatas e estáveis; tokens são arredondados porque derivam a cada mudança de
-código (`bun run bench` imprime os valores do commit atual).
+O fecho é a entrada declarada em `bench.config.json` mais tudo que ela importa. A UI do app
+convencional é declarada explicitamente porque quem a liga é o bundler, não um `import` — no app de
+fatias ela está no mesmo arquivo por construção. Contagens de arquivo são exatas e estáveis; tokens
+são arredondados porque derivam a cada mudança de código (`bun run bench` imprime os do commit atual).
 
-**O que isso mostra:** a convenção de fatia reduz de **4 arquivos para 1** o que precisa ser
+**O que isso mostra:** a convenção de fatia reduz de **5 arquivos para 1** o que precisa ser
 coordenado para mudar uma feature. É a claim de Locality of Behavior, medida em vez de afirmada.
 
-**O que isso não mostra:** não é "menos contexto". Em bytes estimados o arquivo único fica **maior**
-(≈1.6k vs ≈1.4k), porque carrega contrato, DDL, action, UI e oráculo juntos. E o `total` da stack de
-fatias inclui o código do framework alcançado pelo mapeamento `paths` (≈28k tokens) — custo pago
-**uma vez** e compartilhado por todas as features, não por feature. Os dois números são reportados
-justamente porque a fronteira do fecho muda a resposta; `node_modules` e `.d.ts` ficam de fora dos
-dois lados, e tokens são estimados como bytes/4.
+**O que isso não mostra:** a vantagem em **tokens** é pequena e depende do critério (≈1.6k vs ≈1.8k,
+dentro de ±15% — e o arquivo único carrega contrato, DDL, action, UI e oráculo juntos, então sua
+vantagem aqui vem de não repetir imports e boilerplate entre camadas, não de ser menor por natureza).
+A coluna `total` da stack de fatias é o **barrel do framework** alcançado pelo mapeamento `paths`
+(≈28k tokens) — um superconjunto do que a feature precisa, pago **uma vez** e compartilhado por todas
+as features; a coluna `total` do app convencional são seus próprios arquivos, porque suas dependências
+moram em `node_modules`. As duas colunas não são custo-por-feature comparável, e é por isso que ambos
+os números aparecem. `node_modules` e `.d.ts` ficam de fora dos dois lados; tokens são bytes/4.
 
 **O que continua não medido:** se menos arquivos melhora o resultado de um agente. Isso é
 comportamental e exige um protocolo com agente real — o harness mede superfície de contexto, não
