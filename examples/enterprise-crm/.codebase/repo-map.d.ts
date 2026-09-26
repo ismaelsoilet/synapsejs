@@ -18,11 +18,16 @@ export type InvoiceOutput = Result<
 
 export declare function createInvoiceAction(payload: unknown, db: DatabaseClient, session: SessionContext): Promise<InvoiceOutput>;
 export interface InvoiceTriggerProps {
-  customerId: string;
+  /** Vem do loader abaixo, ou da query string, ou do formulário. */
+  customerId?: string;
   onSubmitAction?: (payload: unknown) => Promise<InvoiceOutput>;
 }
 
-export declare function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerProps): Element;
+export declare function GenerateInvoiceLoader(context: {
+  db: DatabaseClient;
+  session: SessionContext;
+}): Promise<{ customerId?: string }>;
+export declare function InvoiceTrigger({ customerId = 'cust-sem-selecao', onSubmitAction }: InvoiceTriggerProps): Element;
 
 // ============================================================================
 // MODULE: src/slices/customers/create-customer.slice.tsx

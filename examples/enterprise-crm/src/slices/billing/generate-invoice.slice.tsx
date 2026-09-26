@@ -105,11 +105,31 @@ export async function createInvoiceAction(
 // 4. VISUALIZAÇÃO INTERATIVA DA UI (React Component Embutido)
 // ============================================================================
 export interface InvoiceTriggerProps {
-  customerId: string;
+  /** Vem do loader abaixo, ou da query string, ou do formulário. */
+  customerId?: string;
   onSubmitAction?: (payload: unknown) => Promise<InvoiceOutput>;
 }
 
-export function InvoiceTrigger({ customerId, onSubmitAction }: InvoiceTriggerProps) {
+/**
+ * Dados reais no SSR: o primeiro cliente do banco alimenta o formulário.
+ * Sem loader, o componente renderizaria com um id inventado — que é exatamente
+ * o tipo de coisa que quebra na primeira tela de um app de verdade.
+ */
+export async function GenerateInvoiceLoader(context: {
+  db: DatabaseClient;
+  session: SessionContext;
+}): Promise<{ customerId?: string }> {
+  const auth = requireAuth(context.session, ['billing']);
+  if (!auth.ok) {
+    return {};
+  }
+
+  const customers = await context.db.query<{ id: string }>(`SELECT id FROM customers ORDER BY created_at DESC LIMIT 1`);
+
+  return customers.length > 0 ? { customerId: customers[0].id } : {};
+}
+
+export function InvoiceTrigger({ customerId = 'cust-sem-selecao', onSubmitAction }: InvoiceTriggerProps) {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
