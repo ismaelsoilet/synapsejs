@@ -13,8 +13,25 @@
         "synapsejs": "workspace:*",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "@types/node": "^26.6.2",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "^5.8.2",
+      },
+    },
+    "apps/crm": {
+      "name": "crm-app",
+      "version": "0.1.0",
+      "dependencies": {
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+        "synapsejs": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
         "typescript": "^5.8.2",
@@ -31,7 +48,7 @@
         "synapsejs": "workspace:*",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
         "typescript": "^5.8.2",
@@ -46,7 +63,7 @@
         "react-dom": "^19.0.0",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
         "typescript": "^5.8.2",
@@ -63,7 +80,7 @@
         "synapsejs": "workspace:*",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
         "typescript": "^5.8.2",
@@ -71,7 +88,7 @@
     },
     "packages/synapse": {
       "name": "synapsejs",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "bin": {
         "synapse": "./bin/synapse.ts",
       },
@@ -84,7 +101,7 @@
         "typescript": "^5.8.2",
       },
       "devDependencies": {
-        "@types/bun": "latest",
+        "@types/bun": "^1.4.2",
         "@types/react": "^19.0.10",
         "@types/react-dom": "^19.0.4",
       },
@@ -102,6 +119,8 @@
     "@types/react-dom": ["@types/react-dom@19.3.0", "", { "peerDependencies": { "@types/react": "^19.3.0" } }, "sha512-ZI7bU42mZXXKHn/qNLEw2IrbiINU7X5+vfgdixBHkCNpYWXjKgfQ/P+uyGb5CjOLB9UcnTeg3rylQtV2hym44Q=="],
 
     "bun-types": ["bun-types@1.4.2", "", { "dependencies": { "@types/node": "*" } }, "sha512-bxV1FgK7yBIzjRe5zBozIM4Bem11ZJcCXSrjWRG3YWLt8yFDePu4cLjpebO8OvPeIE9trbyPF4fuj3Cia4Fj3w=="],
+
+    "crm-app": ["crm-app@workspace:apps/crm"],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
 
