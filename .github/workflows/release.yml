@@ -1,0 +1,63 @@
+name: Release
+
+# Publica por tag, nunca por push em main: o número da versão é uma decisão explícita.
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node (for npm publish)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install Dependencies
+        run: bun install
+
+      - name: Tag Must Match The Package Version
+        run: |
+          TAG="${GITHUB_REF_NAME#v}"
+          PKG=$(node -p "require('./packages/synapse/package.json').version")
+          if [ "$TAG" != "$PKG" ]; then
+            echo "tag $TAG != package.json $PKG — abortando"
+            exit 1
+          fi
+          echo "versão conferida: $PKG"
+
+      - name: Framework Test Suite
+        run: bun test packages/synapse/test
+
+      - name: Typecheck
+        run: bun run check
+
+      - name: Split Gates
+        run: bun run split
+
+      - name: Oracles, Adoption App And E2E
+        run: bun run test:all
+
+      - name: Publish Rehearsal (the artifact a stranger would install)
+        run: bun run rehearse:publish
+
+      - name: Publish To npm
+        run: npm publish --access public --provenance
+        working-directory: packages/synapse
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

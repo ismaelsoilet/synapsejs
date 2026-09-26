@@ -128,6 +128,16 @@ A server action referenced by a component contributes **only its wire signature*
 - No auth/login flow in the example. RBAC is enforced, but credentials come from
   `Authorization`/`x-user-id`/`x-user-roles` headers (or the `synapse_token` / `synapse_roles`
   cookies the browser shell forwards).
+- **No CI has ever executed.** The workflows exist, but the repository has no remote-tracking refs:
+  every green result recorded so far was produced locally, by hand. The first real workflow run is an
+  open item in `RELEASE-CHECKLIST.md`.
+- **No linter or formatter is configured.** A Biome measurement at 0.6.0 found **167 errors, 90
+  warnings and 90 infos across 108 files** (mostly `organizeImports`, `useImportType`, missing label
+  association in the example UIs, and `useNodejsImportProtocol`). Adding the gate before fixing the
+  findings would be a gate that ignores everything, so this is a declared gap with its number.
+- The generated `.codebase/repo-map.d.ts` is a **signature digest, not compilable TypeScript**: it has
+  no imports and the same name (`sliceSchema`, `<Name>InputSchema`) repeats across modules. Its own
+  header says so.
 - No CI for publishing. `packages/synapse` ships TS source (`main: src/index.ts`) and requires Bun.
 
 ## 8. Verifying a change
@@ -147,3 +157,16 @@ TEST_DATABASE_URL=postgres://... bun run test:postgres   # parity against a real
 If you touched discovery, migrations, the scaffolder or the splitter, also run the negative cases:
 a directory with no slices must produce `FAIL`/`NO_SLICES_DIR`, and
 `packages/synapse/test/fixtures/slices/reports/leaky-report.slice.tsx` must trip the leak gate.
+
+## 9. Versioning and compatibility
+
+- **0.x:** a minor bump may break. Every break is listed in `CHANGELOG.md`; nothing has been
+  published to npm yet, so no external contract exists.
+- **1.0 will freeze three surfaces:** the CLI command names and their JSON field names, the slice
+  contract exports (`<Name>InputSchema`, `sliceSchema`, `<name>Action`, `<Name>Trigger|View|Form|Component`,
+  `sliceTests` with named cases), and the package entry exports asserted by
+  `packages/synapse/test/machine-types.test.ts` (the "public contract" block).
+- Removing a public export requires one minor release of deprecation first.
+- Publishing happens only through `.github/workflows/release.yml`, on a `v*` tag whose version matches
+  `packages/synapse/package.json`. The pipeline runs every gate plus the publish rehearsal before
+  `npm publish`.

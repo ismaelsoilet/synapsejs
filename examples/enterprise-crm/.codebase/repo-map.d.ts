@@ -1,6 +1,8 @@
 // [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]
 // STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.
 // Regenerate with 'synapse skeleton' — output is deterministic and committed.
+// NOT COMPILABLE: this is a signature digest for LLM context, not a .d.ts module.
+// It carries no imports and names repeat across modules by design.
 
 // ============================================================================
 // MODULE: src/slices/billing/generate-invoice.slice.tsx

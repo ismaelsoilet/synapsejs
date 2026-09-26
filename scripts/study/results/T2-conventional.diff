@@ -1,0 +1,87 @@
+diff --git a/examples/helpdesk-conventional/src/db/tickets.ts b/examples/helpdesk-conventional/src/db/tickets.ts
+index 45a9380..77c6100 100644
+--- a/examples/helpdesk-conventional/src/db/tickets.ts
++++ b/examples/helpdesk-conventional/src/db/tickets.ts
+@@ -10,6 +10,9 @@ export const TICKETS_DDL = `
+     status TEXT NOT NULL DEFAULT 'OPEN',
+     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+   );
++
++  CREATE UNIQUE INDEX IF NOT EXISTS tickets_subject_requester
++    ON tickets (subject, requester_email);
+ `;
+ 
+ export function openDatabase(filePath = ':memory:'): Database {
+@@ -36,6 +39,20 @@ export function findTicketById(db: Database, id: string): { id: string } | null
+   return db.query<{ id: string }, [string]>(`SELECT id FROM tickets WHERE id = $1`).get(id) ?? null;
+ }
+ 
++export function findTicketBySubjectAndRequester(
++  db: Database,
++  subject: string,
++  requesterEmail: string
++): { id: string } | null {
++  return (
++    db
++      .query<{ id: string }, [string, string]>(
++        `SELECT id FROM tickets WHERE subject = $1 AND requester_email = $2`
++      )
++      .get(subject, requesterEmail) ?? null
++  );
++}
++
+ export function updateTicketAssignee(db: Database, id: string, assignee: string): void {
+   db.query(`UPDATE tickets SET assignee = $1, status = $2 WHERE id = $3`).run(assignee, 'ASSIGNED', id);
+ }
+diff --git a/examples/helpdesk-conventional/src/services/ticket-service.ts b/examples/helpdesk-conventional/src/services/ticket-service.ts
+index 4c58712..8be3421 100644
+--- a/examples/helpdesk-conventional/src/services/ticket-service.ts
++++ b/examples/helpdesk-conventional/src/services/ticket-service.ts
+@@ -1,6 +1,6 @@
+ import { Value } from '@sinclair/typebox/value';
+ import type { Database } from 'bun:sqlite';
+-import { findTicketById, insertTicket, updateTicketAssignee } from '../db/tickets';
++import { findTicketById, findTicketBySubjectAndRequester, insertTicket, updateTicketAssignee } from '../db/tickets';
+ import { AssignTicketSchema, CreateTicketSchema, type Ticket } from '../schemas/ticket';
+ 
+ export type ServiceResult<T, E extends string> = { ok: true; value: T } | { ok: false; error: E };
+@@ -15,7 +15,10 @@ export function createTicket(
+   payload: unknown,
+   db: Database,
+   session?: Session
+-): ServiceResult<{ ticketId: string; status: 'OPEN' }, 'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA'> {
++): ServiceResult<
++  { ticketId: string; status: 'OPEN' },
++  'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA' | 'DUPLICATE_TICKET'
++> {
+   if (!session) {
+     return { ok: false, error: 'UNAUTHORIZED' };
+   }
+@@ -27,6 +30,10 @@ export function createTicket(
+   }
+ 
+   const input = payload as { subject: string; priority: number; requesterEmail: string };
++  if (findTicketBySubjectAndRequester(db, input.subject, input.requesterEmail)) {
++    return { ok: false, error: 'DUPLICATE_TICKET' };
++  }
++
+   const ticketId = crypto.randomUUID();
+   insertTicket(db, { id: ticketId, ...input });
+ 
+diff --git a/examples/helpdesk-conventional/tests/ticket-service.test.ts b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+index acf5aa4..b5cc4f2 100644
+--- a/examples/helpdesk-conventional/tests/ticket-service.test.ts
++++ b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+@@ -30,6 +30,12 @@ describe('createTicket', () => {
+     });
+   });
+ 
++  it('refuses a duplicate subject and requester', () => {
++    createTicket(validTicket, db, support);
++
++    expect(createTicket(validTicket, db, support)).toEqual({ ok: false, error: 'DUPLICATE_TICKET' });
++  });
++
+   it('creates an open ticket', () => {
+     const result = createTicket(validTicket, db, support);
+ 

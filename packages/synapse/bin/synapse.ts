@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 /**
- * SynapseJS - Agent CLI v0.5.0
+ * SynapseJS - Agent CLI v0.6.0
  * 
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  * 
@@ -314,7 +314,7 @@ async function main() {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
-              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^0.5.0"');
+              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^0.6.0"');
             }
             fs.writeFileSync(d, content, 'utf-8');
           }
@@ -345,7 +345,7 @@ async function main() {
         JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '0.5.0',
+            version: '0.6.0',
             runtime: 'Bun + Bun.serve',
             database: 'Embedded SQLite (WAL) and PostgreSQL, both verified',
             protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],

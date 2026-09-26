@@ -1,0 +1,45 @@
+diff --git a/examples/helpdesk-conventional/src/services/ticket-service.ts b/examples/helpdesk-conventional/src/services/ticket-service.ts
+index 4c58712..7f4f01e 100644
+--- a/examples/helpdesk-conventional/src/services/ticket-service.ts
++++ b/examples/helpdesk-conventional/src/services/ticket-service.ts
+@@ -15,7 +15,10 @@ export function createTicket(
+   payload: unknown,
+   db: Database,
+   session?: Session
+-): ServiceResult<{ ticketId: string; status: 'OPEN' }, 'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA'> {
++): ServiceResult<
++  { ticketId: string; status: 'OPEN' },
++  'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA' | 'INVALID_PRIORITY'
++> {
+   if (!session) {
+     return { ok: false, error: 'UNAUTHORIZED' };
+   }
+@@ -27,6 +30,10 @@ export function createTicket(
+   }
+ 
+   const input = payload as { subject: string; priority: number; requesterEmail: string };
++  if (input.priority > 3) {
++    return { ok: false, error: 'INVALID_PRIORITY' };
++  }
++
+   const ticketId = crypto.randomUUID();
+   insertTicket(db, { id: ticketId, ...input });
+ 
+diff --git a/examples/helpdesk-conventional/tests/ticket-service.test.ts b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+index acf5aa4..11059ab 100644
+--- a/examples/helpdesk-conventional/tests/ticket-service.test.ts
++++ b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+@@ -30,6 +30,13 @@ describe('createTicket', () => {
+     });
+   });
+ 
++  it('rejects a priority above 3 with INVALID_PRIORITY', () => {
++    expect(createTicket({ ...validTicket, priority: 4 }, db, support)).toEqual({
++      ok: false,
++      error: 'INVALID_PRIORITY'
++    });
++  });
++
+   it('creates an open ticket', () => {
+     const result = createTicket(validTicket, db, support);
+ 

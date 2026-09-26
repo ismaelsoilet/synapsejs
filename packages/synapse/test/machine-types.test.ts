@@ -1,6 +1,32 @@
 import { describe, expect, it } from 'bun:test';
 import { Err, None, Ok, Some, isErr, isOk, map, mapErr, unwrapOr } from '../src/core/machine-types';
 import * as publicEntry from '../src/index';
+import type {
+  DatabaseClient,
+  DiagnosticReport,
+  MigrationReport,
+  OracleReport,
+  ScaffoldError,
+  SessionContext,
+  SlicesDirError,
+  SplitResult
+} from '../src/index';
+
+// Type-only exports are part of the documented contract too. `bun test` transpiles
+// without typechecking, so this tuple is what makes a removed type break a gate:
+// `bun run check` typechecks this file.
+type TypeOnlyContract = [
+  DatabaseClient,
+  SessionContext,
+  SplitResult,
+  MigrationReport,
+  OracleReport,
+  DiagnosticReport,
+  ScaffoldError,
+  SlicesDirError
+];
+const typeOnlyContract: TypeOnlyContract | null = null;
+void typeOnlyContract;
 
 describe('Result<T, E>', () => {
   it('builds Ok and Err values', () => {
@@ -50,5 +76,29 @@ describe('public surface', () => {
     for (const name of ['Ok', 'Err', 'isOk', 'isErr', 'map', 'mapErr', 'unwrapOr', 'Some', 'None']) {
       expect(name in publicEntry).toBe(true);
     }
+  });
+});
+
+
+describe('public contract (decision recorded in packages/synapse/README.md)', () => {
+  it('keeps every export the documented contract promises', () => {
+    const contract = [
+      'Ok', 'Err', 'isOk', 'isErr', 'map', 'mapErr', 'unwrapOr', 'Some', 'None',
+      'Type', 'Value', 'fc',
+      'MockDatabaseClient', 'SqliteDatabaseClient', 'PostgresDatabaseClient',
+      'getDatabase', 'resetDatabaseInstance',
+      'AnonymousSession', 'createSession', 'requireAuth', 'hasRole', 'hasAnyRole',
+      'rpcCall', 'rpcTransportFailure',
+      'resolveSlicesDir', 'findSliceFiles', 'runSliceMigrations', 'runSliceOracles',
+      'splitSlice', 'verifySplit', 'scaffoldSlice', 'compressRepositoryAST',
+      'runMachineVerifications', 'SynapseServer', 'SynapseMcpServer'
+    ];
+
+    const missing = contract.filter((name) => !(name in publicEntry));
+    expect(missing).toEqual([]);
+  });
+
+  it('does not ship a throwing unwrap helper', () => {
+    expect('unwrap' in publicEntry).toBe(false);
   });
 });

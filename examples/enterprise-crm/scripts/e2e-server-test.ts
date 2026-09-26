@@ -1,5 +1,5 @@
 /**
- * SynapseJS v0.5.0 - Live E2E HTTP, SSR, RPC, Auth & Database Integration Test Suite
+ * SynapseJS v0.6.0 - Live E2E HTTP, SSR, RPC, Auth & Database Integration Test Suite
  */
 
 import { SynapseServer } from 'synapsejs';
@@ -83,7 +83,7 @@ async function runE2ETests() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        name: 'Cliente E2E v0.5.0',
+        name: 'Cliente E2E v0.6.0',
         email,
         taxId
       })

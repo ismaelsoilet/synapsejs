@@ -33,6 +33,14 @@ full check), production bundling via `Bun.build`, auth/login flow in the example
 The repository README carries a measured context-surface benchmark of the same two features
 implemented with and without the slice convention, including what the numbers do not show.
 
+## API stability
+
+`fc` and `MockDatabaseClient` are deliberate parts of the contract, not accidents: slices declare their
+invariants with `fc`, and the oracles use the mock. Both are asserted by
+`packages/synapse/test/machine-types.test.ts` ("public contract"), together with every other export this
+README lists. The same block is the list of what 1.0 will freeze. In 0.x a minor bump may still break;
+every break is in [CHANGELOG.md](../CHANGELOG.md).
+
 ## Quick start
 
 ```bash

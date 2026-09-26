@@ -363,7 +363,7 @@ export class SynapseServer {
           return Response.json({
             status: 'OK',
             framework: 'SynapseJS',
-            version: '0.5.0',
+            version: '0.6.0',
             uptime: process.uptime(),
             slicesLoaded: this.slices.size,
             slicesResolutionError: this.discoveryError,

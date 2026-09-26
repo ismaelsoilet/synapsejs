@@ -47,6 +47,9 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Daemon de diagnósticos incrementais | `check --fast` foi **removido** na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s), porque o cache `.tsbuildinfo` nunca era lido de volta entre processos |
 | Bundling de produção | `split` emite módulos; alimentar `Bun.build` com dois targets não está implementado |
 | Fluxo de login no exemplo | O RBAC é aplicado, mas as credenciais vêm de headers ou cookies |
+| Lint/format automatizado | Não configurado. Medição do Biome em 0.6.0: **167 erros / 90 warnings / 90 infos** em 108 arquivos |
+| Primeira execução real do CI | Os workflows existem, mas o repositório nunca foi enviado — todo verde até aqui foi local |
+| Estudo com implementadores independentes | O piloto tem 1 executor (este agente) e 3 tarefas; ver `STUDY.md` |
 
 ---
 
@@ -153,7 +156,7 @@ splitter se recusam a reportar sucesso quando nada foi verificado.
 | `bun run check` (monorepo inteiro, 4 apps) | ~3s nesta máquina (varia) |
 | `bun run check --fast` | removido — 2.5s (mais lento que o check completo) |
 | Repo map do app de exemplo | ~1005 tokens (orçamento 3000) |
-| Suíte do framework | 108 testes, 13 arquivos |
+| Suíte do framework | 110 testes, 13 arquivos |
 | Suíte e2e | 12 checagens (SSR, RPC, RBAC, idempotência) |
 | Paridade PostgreSQL | verificada contra `postgres:16-alpine` (migração, DDL, round-trip de action) |
 

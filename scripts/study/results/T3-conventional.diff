@@ -1,0 +1,165 @@
+diff --git a/examples/helpdesk-conventional/src/db/tickets.ts b/examples/helpdesk-conventional/src/db/tickets.ts
+index 45a9380..2611be6 100644
+--- a/examples/helpdesk-conventional/src/db/tickets.ts
++++ b/examples/helpdesk-conventional/src/db/tickets.ts
+@@ -39,3 +39,11 @@ export function findTicketById(db: Database, id: string): { id: string } | null
+ export function updateTicketAssignee(db: Database, id: string, assignee: string): void {
+   db.query(`UPDATE tickets SET assignee = $1, status = $2 WHERE id = $3`).run(assignee, 'ASSIGNED', id);
+ }
++
++export function findTicketStatusById(db: Database, id: string): { status: string } | null {
++  return db.query<{ status: string }, [string]>(`SELECT status FROM tickets WHERE id = $1`).get(id) ?? null;
++}
++
++export function closeTicketRecord(db: Database, id: string): void {
++  db.query(`UPDATE tickets SET status = $1 WHERE id = $2`).run('CLOSED', id);
++}
+diff --git a/examples/helpdesk-conventional/src/schemas/ticket.ts b/examples/helpdesk-conventional/src/schemas/ticket.ts
+index 25bb861..b4bcfd3 100644
+--- a/examples/helpdesk-conventional/src/schemas/ticket.ts
++++ b/examples/helpdesk-conventional/src/schemas/ticket.ts
+@@ -19,11 +19,16 @@ export const AssignTicketSchema = Type.Object({
+ });
+ export type AssignTicketInput = Static<typeof AssignTicketSchema>;
+ 
++export const CloseTicketSchema = Type.Object({
++  ticketId: Type.String({ minLength: 10 })
++});
++export type CloseTicketInput = Static<typeof CloseTicketSchema>;
++
+ export type Ticket = {
+   id: string;
+   subject: string;
+   priority: number;
+   requesterEmail: string;
+   assignee: string | null;
+-  status: 'OPEN' | 'ASSIGNED';
++  status: 'OPEN' | 'ASSIGNED' | 'CLOSED';
+ };
+diff --git a/examples/helpdesk-conventional/src/server.ts b/examples/helpdesk-conventional/src/server.ts
+index 145afa8..f132370 100644
+--- a/examples/helpdesk-conventional/src/server.ts
++++ b/examples/helpdesk-conventional/src/server.ts
+@@ -1,5 +1,6 @@
+ import { openDatabase } from './db/tickets';
+ import { handleAssignTicket } from './routes/assign-ticket';
++import { handleCloseTicket } from './routes/close-ticket';
+ import { handleCreateTicket } from './routes/create-ticket';
+ import { listTickets } from './services/ticket-service';
+ 
+@@ -16,6 +17,9 @@ const server = Bun.serve({
+     if (request.method === 'POST' && url.pathname === '/tickets/assign') {
+       return handleAssignTicket(request, db);
+     }
++    if (request.method === 'POST' && url.pathname === '/tickets/close') {
++      return handleCloseTicket(request, db);
++    }
+     if (request.method === 'GET' && url.pathname === '/tickets') {
+       return Response.json({ tickets: listTickets(db) });
+     }
+diff --git a/examples/helpdesk-conventional/src/services/ticket-service.ts b/examples/helpdesk-conventional/src/services/ticket-service.ts
+index 4c58712..3b533f2 100644
+--- a/examples/helpdesk-conventional/src/services/ticket-service.ts
++++ b/examples/helpdesk-conventional/src/services/ticket-service.ts
+@@ -1,7 +1,13 @@
+ import { Value } from '@sinclair/typebox/value';
+ import type { Database } from 'bun:sqlite';
+-import { findTicketById, insertTicket, updateTicketAssignee } from '../db/tickets';
+-import { AssignTicketSchema, CreateTicketSchema, type Ticket } from '../schemas/ticket';
++import {
++  closeTicketRecord,
++  findTicketById,
++  findTicketStatusById,
++  insertTicket,
++  updateTicketAssignee
++} from '../db/tickets';
++import { AssignTicketSchema, CloseTicketSchema, CreateTicketSchema, type Ticket } from '../schemas/ticket';
+ 
+ export type ServiceResult<T, E extends string> = { ok: true; value: T } | { ok: false; error: E };
+ 
+@@ -57,6 +63,37 @@ export function assignTicket(
+   return { ok: true, value: { ticketId: input.ticketId, assignee: input.assignee, status: 'ASSIGNED' } };
+ }
+ 
++export function closeTicket(
++  payload: unknown,
++  db: Database,
++  session?: Session
++): ServiceResult<
++  { ticketId: string; status: 'CLOSED' },
++  'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA' | 'TICKET_NOT_FOUND' | 'ALREADY_CLOSED'
++> {
++  if (!session) {
++    return { ok: false, error: 'UNAUTHORIZED' };
++  }
++  if (!isSupport(session)) {
++    return { ok: false, error: 'FORBIDDEN' };
++  }
++  if (!Value.Check(CloseTicketSchema, payload)) {
++    return { ok: false, error: 'INVALID_SCHEMA' };
++  }
++
++  const input = payload as { ticketId: string };
++  const existing = findTicketStatusById(db, input.ticketId);
++  if (!existing) {
++    return { ok: false, error: 'TICKET_NOT_FOUND' };
++  }
++  if (existing.status === 'CLOSED') {
++    return { ok: false, error: 'ALREADY_CLOSED' };
++  }
++
++  closeTicketRecord(db, input.ticketId);
++  return { ok: true, value: { ticketId: input.ticketId, status: 'CLOSED' } };
++}
++
+ export function listTickets(db: Database): Ticket[] {
+   return db
+     .query<
+diff --git a/examples/helpdesk-conventional/tests/ticket-service.test.ts b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+index acf5aa4..aac4a11 100644
+--- a/examples/helpdesk-conventional/tests/ticket-service.test.ts
++++ b/examples/helpdesk-conventional/tests/ticket-service.test.ts
+@@ -1,7 +1,7 @@
+ import { beforeEach, describe, expect, it } from 'bun:test';
+ import type { Database } from 'bun:sqlite';
+ import { openDatabase } from '../src/db/tickets';
+-import { assignTicket, createTicket, listTickets } from '../src/services/ticket-service';
++import { assignTicket, closeTicket, createTicket, listTickets } from '../src/services/ticket-service';
+ 
+ const support = { userId: 'u1', roles: ['support'] };
+ const viewer = { userId: 'u2', roles: ['viewer'] };
+@@ -39,6 +39,34 @@ describe('createTicket', () => {
+   });
+ });
+ 
++describe('closeTicket', () => {
++  it('rejects callers without a session', () => {
++    expect(closeTicket({ ticketId: 'ticket-000000001' }, db)).toEqual({ ok: false, error: 'UNAUTHORIZED' });
++  });
++
++  it('reports an unknown ticket', () => {
++    expect(closeTicket({ ticketId: 'ticket-inexistente-1' }, db, support)).toEqual({
++      ok: false,
++      error: 'TICKET_NOT_FOUND'
++    });
++  });
++
++  it('closes an open ticket and refuses to close it twice', () => {
++    const created = createTicket(validTicket, db, support);
++    if (!created.ok) {
++      throw new Error('fixture inválida');
++    }
++
++    const closed = closeTicket({ ticketId: created.value.ticketId }, db, support);
++    expect(closed.ok).toBe(true);
++
++    expect(closeTicket({ ticketId: created.value.ticketId }, db, support)).toEqual({
++      ok: false,
++      error: 'ALREADY_CLOSED'
++    });
++  });
++});
++
+ describe('assignTicket', () => {
+   it('reports an unknown ticket', () => {
+     expect(assignTicket({ ticketId: 'ticket-inexistente-1', assignee: 'Ana' }, db, support)).toEqual({

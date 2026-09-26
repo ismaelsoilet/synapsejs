@@ -59,7 +59,9 @@ export function compressRepositoryAST(baseDir: string, outputFile: string, graph
 
   let manifest = `// [SYNAPSE-JS AUTO-GENERATED SKELETON MAP]\n`;
   manifest += `// STRICT CONTRACTS, ALGEBRAIC TYPES AND FUNCTION SIGNATURES ONLY.\n`;
-  manifest += `// Regenerate with 'synapse skeleton' — output is deterministic and committed.\n\n`;
+  manifest += `// Regenerate with 'synapse skeleton' — output is deterministic and committed.\n`;
+  manifest += `// NOT COMPILABLE: this is a signature digest for LLM context, not a .d.ts module.\n`;
+  manifest += `// It carries no imports and names repeat across modules by design.\n\n`;
 
   const architectureGraph: SliceMetadata[] = [];
 

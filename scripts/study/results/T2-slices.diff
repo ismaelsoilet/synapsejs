@@ -1,0 +1,53 @@
+diff --git a/examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx b/examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx
+index 7d03428..c8d45b8 100644
+--- a/examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx
++++ b/examples/helpdesk-slices/src/slices/tickets/create-ticket.slice.tsx
+@@ -41,7 +41,7 @@ export const sliceSchema = `
+ // ============================================================================
+ export type TicketOutput = Result<
+   { ticketId: string; status: 'OPEN' },
+-  'INVALID_SCHEMA' | 'NO_DATABASE' | 'UNAUTHORIZED' | 'FORBIDDEN'
++  'INVALID_SCHEMA' | 'DUPLICATE_TICKET' | 'NO_DATABASE' | 'UNAUTHORIZED' | 'FORBIDDEN'
+ >;
+ 
+ // ============================================================================
+@@ -66,6 +66,15 @@ export async function createTicketAction(
+   }
+ 
+   const input = payload as TicketInput;
++
++  const duplicate = await db.query<{ id: string }>(
++    `SELECT id FROM tickets WHERE subject = $1 AND requester_email = $2`,
++    [input.subject, input.requesterEmail]
++  );
++  if (duplicate.length > 0) {
++    return Err('DUPLICATE_TICKET');
++  }
++
+   const ticketId = crypto.randomUUID();
+ 
+   await db.query(
+@@ -134,6 +143,23 @@ export const sliceTests = {
+         );
+       }
+     },
++    {
++      name: 'mesmo assunto e solicitante retorna DUPLICATE_TICKET',
++      run: async () => {
++        const session = createSession({ userId: 'pbt', roles: ['support'] });
++        const db = new MockDatabaseClient().onQuery(/SELECT id FROM tickets WHERE subject/, () => [{ id: 't-1' }]);
++
++        const result = await createTicketAction(
++          { subject: 'Impressora não imprime', priority: 2, requesterEmail: 'a@b.com' },
++          db,
++          session
++        );
++
++        if (result.ok || result.error !== 'DUPLICATE_TICKET') {
++          throw new Error(`Invariante violada: esperava DUPLICATE_TICKET, obteve ${JSON.stringify(result)}`);
++        }
++      }
++    },
+     {
+       name: 'chamado válido abre com status OPEN',
+       run: async () => {
