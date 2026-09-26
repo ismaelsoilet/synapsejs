@@ -80,6 +80,8 @@ describe('machine contract', () => {
 
   it('lists the templates the scaffolder can emit', () => {
     expect(contract.templates.available).toEqual(['create', 'list', 'update', 'delete', 'login', 'crud']);
+    expect(contract.shared.location).toBe('src/shared/<name>.ts');
+    expect(contract.shared.atomicity).toContain('mock');
     expect(contract.templates.notes).toContain('allowlist');
   });
 

@@ -61,6 +61,11 @@ export interface MachineContract {
     hydration: string;
     isolation: string;
   };
+  shared: {
+    location: string;
+    rule: string;
+    atomicity: string;
+  };
   templates: {
     command: string;
     available: string[];
@@ -201,6 +206,12 @@ export function machineContract(): MachineContract {
         'The server builds a browser bundle per slice from the splitter output, hydrates the component and wires onSubmitAction to the RPC endpoint. The same props are serialized into the page.',
       isolation:
         'A client bundle never contains SQL, db access, process.env or Bun globals; the splitter gates fail the build if it does.'
+    },
+    shared: {
+      location: 'src/shared/<name>.ts',
+      rule: 'A slice never imports another slice — the splitter fails with SLICE_IMPORTS_SLICE, transitively, and says so. What two features must do together lives in src/shared/, receives the DatabaseClient by parameter and is called from both slices. A shared module may throw; the action that calls it converts the failure into Err, so the no-throw contract of an action survives a transaction.',
+      atomicity:
+        'db.transaction(fn) is the boundary: the statements inside commit together or roll back together. The mock database does not roll back, so atomicity must be proven against a real engine (SQLite in the suite, PostgreSQL via test:postgres) — never with the mock.'
     },
     templates: {
       command: 'synapse new-slice <domain> <name> --template=<template>',

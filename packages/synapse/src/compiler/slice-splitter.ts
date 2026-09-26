@@ -41,7 +41,7 @@ export interface SplitResult {
   artifacts: SplitArtifact[];
 }
 
-export type SplitErrorCode = 'SLICE_NOT_FOUND' | 'NO_ROOTS' | 'UNPARSED';
+export type SplitErrorCode = 'SLICE_NOT_FOUND' | 'SLICE_IMPORTS_SLICE' | 'NO_ROOTS' | 'UNPARSED';
 
 export interface SplitError {
   code: SplitErrorCode;
@@ -511,6 +511,60 @@ export function artifactDirectory(baseDir: string, sliceName: string): string {
   return path.join(baseDir, '.synapse', 'dist', sliceName);
 }
 
+/**
+ * Uma fatia não importa outra. O que é comum vira um módulo em `src/shared/` que recebe o
+ * `db` por parâmetro — a varredura é transitiva porque um helper pode, sem querer, trazer a
+ * outra fatia de volta para o bundle errado.
+ */
+function findSliceImport(
+  program: ts.Program,
+  root: ts.SourceFile,
+  options: ts.CompilerOptions,
+  host: ts.ModuleResolutionHost
+): string | null {
+  const seen = new Set<string>([path.normalize(root.fileName)]);
+  const queue: ts.SourceFile[] = [root];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) {
+      continue;
+    }
+
+    for (const statement of current.statements) {
+      if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+        continue;
+      }
+
+      const resolved = ts.resolveModuleName(
+        statement.moduleSpecifier.text,
+        current.fileName,
+        options,
+        host
+      ).resolvedModule;
+      if (!resolved) {
+        continue;
+      }
+
+      const target = path.normalize(resolved.resolvedFileName);
+      if (target.endsWith('.slice.tsx')) {
+        return target;
+      }
+      if (seen.has(target)) {
+        continue;
+      }
+
+      const next = program.getSourceFile(resolved.resolvedFileName);
+      if (next) {
+        seen.add(target);
+        queue.push(next);
+      }
+    }
+  }
+
+  return null;
+}
+
 export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd()): Result<SplitResult, SplitError> {
   if (!fs.existsSync(sliceFilePath)) {
     return Err({
@@ -530,6 +584,18 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
       code: 'UNPARSED',
       message: `Não foi possível ler a AST de ${sliceFilePath}`,
       candidates: [sliceFilePath]
+    });
+  }
+
+  const illegalImport = findSliceImport(program, sourceFile, options, host);
+  if (illegalImport) {
+    return Err({
+      code: 'SLICE_IMPORTS_SLICE',
+      message:
+        `Uma fatia não importa outra: ${path.basename(sliceFilePath)} alcança ` +
+        `${path.relative(process.cwd(), illegalImport)}. Mova o código comum para ` +
+        'src/shared/<nome>.ts, receba o db por parâmetro e chame de dentro das duas fatias.',
+      candidates: [illegalImport]
     });
   }
 

@@ -133,6 +133,12 @@ partial and builds its SET clause from a column allowlist, `delete` checks exist
 suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
 contract, so the description cannot drift from behavior.
 
+**A slice never imports another slice.** `SLICE_IMPORTS_SLICE` fails the split when it happens,
+transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by
+parameter and opens `db.transaction` itself. A shared module may throw; the action that calls it
+turns the failure into `Err`, so the no-throw contract of an action survives a transaction. The mock
+database does not roll back — atomicity is proven against a real engine, never with the mock.
+
 Slice endpoints are addressed by `<domain>/<name>`: `POST /_synapse/rpc/tickets/create-ticket`. A bare
 slice name still works while it is unique across domains; when two domains own the same name the
 dispatcher answers **409** listing them instead of guessing. A slice that fails to import never

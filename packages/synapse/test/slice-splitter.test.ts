@@ -127,6 +127,19 @@ describe('verifySplit gates', () => {
     expect(verification.status).toBe('PASS');
   });
 
+  it('refuses a slice that imports another slice and points at src/shared', () => {
+    const result = splitSlice(
+      path.join(fixturesDir, 'slices', 'orders', 'imports-slice.slice.tsx'),
+      path.join(fixturesDir, 'slices')
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('SLICE_IMPORTS_SLICE');
+      expect(result.error.message).toContain('src/shared/');
+    }
+  });
+
   it('fails the gate when the client imports a value from the package index', () => {
     const result = splitOrFail('reports/package-root.slice.tsx');
     const outDir = artifactDirectory(fixturesDir, result.sliceName);

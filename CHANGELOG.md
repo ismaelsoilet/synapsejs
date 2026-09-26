@@ -2,6 +2,12 @@
 
 ## 0.7.0 — machine-native surface
 
+- `src/shared/` is the sanctioned path for work two features must do together: a plain module that
+  receives the `DatabaseClient` by parameter and opens `db.transaction` itself. A slice that imports
+  another slice now fails with `SLICE_IMPORTS_SLICE`, transitively, and the message says where to put
+  the code instead. The suite proves rollback with a real SQLite database (two tables, two features,
+  nothing half-written); the mock database does not roll back and the contract says so.
+
 - `synapse contract` and the MCP tool `synapse_contract`: the framework describes itself in one
   call — every slice export with suffix and signature, the Result/HTTP mapping, session rules,
   addressing, SSR behavior, the gates, the templates, and a copyable example. The suffix rules
