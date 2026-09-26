@@ -176,10 +176,13 @@ export class SynapseServer {
     const userIdHeader = request.headers.get('x-user-id');
     const rolesHeader = request.headers.get('x-user-roles');
 
-    if (authHeader?.startsWith('Bearer ') || userIdHeader) {
-      const token = authHeader?.replace('Bearer ', '');
+    // Qualquer um dos três headers identifica uma sessão. Antes, mandar apenas
+    // `x-user-roles` (o que o cookie do browser produz) caía em sessão anônima em
+    // silêncio e toda action respondia UNAUTHORIZED sem explicação.
+    if (authHeader || userIdHeader || rolesHeader) {
+      const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : undefined;
       return createSession({
-        userId: userIdHeader || `user-${token?.slice(0, 8) || 'authenticated'}`,
+        userId: userIdHeader || `user-${token?.slice(0, 8) || 'header'}`,
         roles: rolesHeader ? rolesHeader.split(',').map((role) => role.trim()) : ['user'],
         token
       });

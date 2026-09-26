@@ -78,6 +78,22 @@ describe('RPC dispatch', () => {
   });
 });
 
+describe('session from headers', () => {
+  it('accepts a session identified only by x-user-roles', async () => {
+    const html = await (
+      await fetch(`${base}/tickets/view-tickets`, { headers: { 'x-user-roles': 'sales,support' } })
+    ).text();
+
+    expect(html).toContain('LOADER-TICKETS-default-sales,support');
+  });
+
+  it('treats a request without any header as anonymous', async () => {
+    const html = await (await fetch(`${base}/tickets/view-tickets`)).text();
+
+    expect(html).toContain('LOADER-TICKETS-default-anonimo');
+  });
+});
+
 describe('discovery failures are visible', () => {
   it('reports the slice that failed to load in /health', async () => {
     const payload = (await (await fetch(`${base}/_synapse/api/health`)).json()) as {

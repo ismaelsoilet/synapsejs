@@ -12,7 +12,8 @@ export async function ViewTicketsLoader(context: SliceLoaderContext) {
   if (context.params.fail === '1') {
     throw new Error('loader falhou de proposito');
   }
-  return { marker: `LOADER-TICKETS-${context.params.marker ?? 'default'}` };
+  const roles = context.session.isAuthenticated ? context.session.roles.join(',') : 'anonimo';
+  return { marker: `LOADER-TICKETS-${context.params.marker ?? 'default'}-${roles}` };
 }
 
 export function ViewTicketsView({ marker }: { marker?: string }) {

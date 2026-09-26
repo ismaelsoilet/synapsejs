@@ -99,6 +99,13 @@ slice name still works while it is unique across domains; when two domains own t
 dispatcher answers **409** listing them instead of guessing. A slice that fails to import never
 disappears silently — it is listed in `/_synapse/api/health` under `loadErrors` and shown on the hub.
 
+**Sessions come from any one of three headers:** `Authorization: Bearer <token>`, `x-user-id` or
+`x-user-roles`. A request carrying none of them is anonymous. The browser path is the cookie one: the
+SSR shell reads `synapse_token` and `synapse_roles` and forwards them as those headers, so
+`document.cookie = 'synapse_roles=sales'` is enough to exercise a role-protected screen during
+development — and nothing more than that. There is no login flow; a real deployment puts a signed
+session behind the same headers.
+
 ## 5. The splitter contract
 
 `synapse split` partitions each slice by **reachability resolved through the type checker**:
