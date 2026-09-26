@@ -32,6 +32,8 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Servidor MCP stdio (5 ferramentas) | `bun test packages/synapse/test/mcp-server.test.ts` |
 | Invariantes das fatias sob `bun:test`, com relatório por invariante | `bun test packages/synapse/test/oracle-runner.test.ts` + `bun run test:helpdesk` |
 | Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16-alpine`) |
+| Lint e format com Biome | `bun run lint` — 0 erros; 17 warnings de `noExplicitAny`, todos fronteira dinâmica (postgres.js, MCP, SQL) |
+| Ensaio de publicação (o artefato que um estranho instalaria) | `bun run rehearse:publish` — acha bugs de empacotamento que nenhum outro gate vê |
 | Benchmark de superfície de contexto | `bun run bench` |
 
 ### Experimental
@@ -47,9 +49,8 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Daemon de diagnósticos incrementais | `check --fast` foi **removido** na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s), porque o cache `.tsbuildinfo` nunca era lido de volta entre processos |
 | Bundling de produção | `split` emite módulos; alimentar `Bun.build` com dois targets não está implementado |
 | Fluxo de login no exemplo | O RBAC é aplicado, mas as credenciais vêm de headers ou cookies |
-| Lint/format automatizado | Não configurado. Medição do Biome em 0.6.0: **167 erros / 90 warnings / 90 infos** em 108 arquivos |
+| Estudo replicado com implementadores independentes | O piloto tem 1 executor (este agente) e 3 tarefas; ver `STUDY.md` |
 | Primeira execução real do CI | Os workflows existem, mas o repositório nunca foi enviado — todo verde até aqui foi local |
-| Estudo com implementadores independentes | O piloto tem 1 executor (este agente) e 3 tarefas; ver `STUDY.md` |
 
 ---
 

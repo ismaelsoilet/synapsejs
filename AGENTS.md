@@ -44,6 +44,7 @@ failures only, so a machine consumer can always parse stdout.
 
 | Command | Success | What to read |
 |---|---|---|
+| `bun run lint` | exit 0 | Biome; 17 `noExplicitAny` warnings are accepted |
 | `bun run test` | exit 0 | `bun test` output (framework suite) |
 | `bun run check` | `{"status":"PASS","errorCount":0,...}` | `issues[]` with `{file,line,column,errorCode,message}` |
 | `bun run skeleton` | `{"status":"PASS","totalModules":N,...}` | writes `.codebase/repo-map.d.ts`; `EMPTY_REPO_MAP` when nothing mapped |
@@ -131,10 +132,10 @@ A server action referenced by a component contributes **only its wire signature*
 - **No CI has ever executed.** The workflows exist, but the repository has no remote-tracking refs:
   every green result recorded so far was produced locally, by hand. The first real workflow run is an
   open item in `RELEASE-CHECKLIST.md`.
-- **No linter or formatter is configured.** A Biome measurement at 0.6.0 found **167 errors, 90
-  warnings and 90 infos across 108 files** (mostly `organizeImports`, `useImportType`, missing label
-  association in the example UIs, and `useNodejsImportProtocol`). Adding the gate before fixing the
-  findings would be a gate that ignores everything, so this is a declared gap with its number.
+- **Lint and format are enforced** (`bun run lint`, Biome at the repo root), with one deliberate
+  warning kept: `noExplicitAny`, for the 17 dynamic boundaries (postgres.js options, MCP params,
+  JSON-RPC payloads, the SQL boundary). `useNodejsImportProtocol` is off on purpose: bare specifiers
+  are the documented form in a Bun-only framework.
 - The generated `.codebase/repo-map.d.ts` is a **signature digest, not compilable TypeScript**: it has
   no imports and the same name (`sliceSchema`, `<Name>InputSchema`) repeats across modules. Its own
   header says so.
@@ -144,6 +145,7 @@ A server action referenced by a component contributes **only its wire signature*
 
 ```bash
 bun install
+bun run lint                        # Biome: 0 errors, 17 accepted `any` warnings
 bun test packages/synapse/test      # framework suite
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
