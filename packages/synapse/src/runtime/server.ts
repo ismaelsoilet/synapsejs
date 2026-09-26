@@ -46,6 +46,34 @@ export interface SliceLoadError {
   message: string;
 }
 
+/**
+ * Domain error codes are the contract; the HTTP status is a transport detail
+ * derived from them. Before this, every failure was 400, so a client could not
+ * tell an expired session (401) from a missing row (404) or a duplicate (409).
+ * Unknown codes keep 400: the domain, not the transport, decides.
+ */
+const ERROR_STATUS: Array<{ pattern: RegExp; status: number }> = [
+  { pattern: /^UNAUTHORIZED$/, status: 401 },
+  { pattern: /^FORBIDDEN$/, status: 403 },
+  { pattern: /_NOT_FOUND$/, status: 404 },
+  { pattern: /^(DUPLICATE_|ALREADY_|CONFLICT)/, status: 409 },
+  { pattern: /^(INVALID_|MALFORMED)/, status: 422 },
+  { pattern: /^(NO_DATABASE|PERSISTENCE_FAILED)/, status: 500 },
+  { pattern: /_FAILED$/, status: 500 }
+];
+
+export function httpStatusForError(error: unknown): number {
+  const code = typeof error === 'string' ? error : '';
+
+  for (const entry of ERROR_STATUS) {
+    if (entry.pattern.test(code)) {
+      return entry.status;
+    }
+  }
+
+  return 400;
+}
+
 export class SynapseServer {
   private slices: Map<string, DiscoveredSlice> = new Map();
   private baseDir: string;
@@ -499,7 +527,7 @@ export class SynapseServer {
 
             const result = await slice.actionFn(body, this.db, session);
             return Response.json(result, {
-              status: result.ok ? 200 : 400
+              status: result.ok ? 200 : httpStatusForError(result.error)
             });
           } catch (err: any) {
             return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });

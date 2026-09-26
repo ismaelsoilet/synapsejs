@@ -92,6 +92,83 @@ describe('runSliceMigrations', () => {
     expect(await db.query(`SELECT name FROM sqlite_master WHERE name = 'products'`)).toEqual([{ name: 'products' }]);
   });
 
+  it('runs an ALTER TABLE once and never again', async () => {
+    writeSlice(
+      sandbox,
+      'add-phone',
+      `CREATE TABLE IF NOT EXISTS contacts (id TEXT PRIMARY KEY);
+       ALTER TABLE contacts ADD COLUMN phone TEXT;`
+    );
+
+    const first = await runSliceMigrations(sandbox, db);
+    expect(first.status).toBe('PASS');
+    expect(first.statementsApplied).toBe(2);
+
+    await db.query(`INSERT INTO contacts (id, phone) VALUES ($1, $2)`, ['c-1', '5555']);
+
+    const second = await runSliceMigrations(sandbox, db);
+    expect(second.status).toBe('PASS');
+    expect(second.statementsApplied).toBe(0);
+    expect(second.skippedCount).toBe(1);
+  });
+
+  it('applies only the new statement when the DDL grows', async () => {
+    writeSlice(
+      sandbox,
+      'add-columns',
+      `CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY);
+       ALTER TABLE clients ADD COLUMN phone TEXT;`
+    );
+    await runSliceMigrations(sandbox, db);
+
+    // Segunda edição do DDL: o ALTER já aplicado não pode rodar de novo
+    // ("duplicate column name"), só o novo.
+    writeSlice(
+      sandbox,
+      'add-columns',
+      `CREATE TABLE IF NOT EXISTS clients (id TEXT PRIMARY KEY);
+       ALTER TABLE clients ADD COLUMN phone TEXT;
+       ALTER TABLE clients ADD COLUMN city TEXT;`
+    );
+
+    const report = await runSliceMigrations(sandbox, db);
+
+    expect(report.status).toBe('PASS');
+    expect(report.statementsApplied).toBe(1);
+    expect(report.migrations[0].status).toBe('APPLIED');
+
+    await db.query(`INSERT INTO clients (id, phone, city) VALUES ($1, $2, $3)`, ['cl-1', '5555', 'Recife']);
+    expect(await db.query(`SELECT city FROM clients`)).toEqual([{ city: 'Recife' }]);
+  });
+
+  it('does not record a statement that failed, so a fix can run', async () => {
+    writeSlice(sandbox, 'broken-ddl', `CREATE TABLE IF NOT EXISTS broken (id TEXT PRIMARY KEY);`);
+    const first = await runSliceMigrations(sandbox, db);
+    expect(first.status).toBe('PASS');
+
+    writeSlice(
+      sandbox,
+      'broken-ddl',
+      `CREATE TABLE IF NOT EXISTS broken (id TEXT PRIMARY KEY);
+       ALTER TABLE tabela_que_nao_existe ADD COLUMN nope TEXT;`
+    );
+    const failed = await runSliceMigrations(sandbox, db);
+    expect(failed.status).toBe('FAIL');
+    expect(failed.migrations[0].statementsApplied).toBe(0);
+
+    writeSlice(
+      sandbox,
+      'broken-ddl',
+      `CREATE TABLE IF NOT EXISTS broken (id TEXT PRIMARY KEY);
+       ALTER TABLE broken ADD COLUMN fixed TEXT;`
+    );
+    const fixed = await runSliceMigrations(sandbox, db);
+
+    // Só o statement que falhou fica pendente: o CREATE já registrado não roda de novo.
+    expect(fixed.status).toBe('PASS');
+    expect(fixed.statementsApplied).toBe(1);
+  });
+
   it('fails loudly when no slices directory exists instead of reporting PASS', async () => {
     const empty = path.join(sandbox, 'no-slices');
     fs.mkdirSync(empty, { recursive: true });

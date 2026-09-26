@@ -201,8 +201,8 @@ async function runE2ETests() {
     if (anonymousData.ok || anonymousData.error !== 'UNAUTHORIZED') {
       throw new Error(`Falha no RBAC: esperava UNAUTHORIZED sem credenciais, obteve ${JSON.stringify(anonymousData)}`);
     }
-    if (anonymousRes.status !== 400) {
-      throw new Error(`Falha no RBAC: esperava HTTP 400, obteve ${anonymousRes.status}`);
+    if (anonymousRes.status !== 401) {
+      throw new Error(`Falha no RBAC: esperava HTTP 401 (não autorizado), obteve ${anonymousRes.status}`);
     }
 
     // 12. RBAC: sessão autenticada sem o papel exigido recebe FORBIDDEN

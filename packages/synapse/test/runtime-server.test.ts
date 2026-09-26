@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import * as path from 'path';
-import { SynapseServer } from '../src/runtime/server';
+import { httpStatusForError, SynapseServer } from '../src/runtime/server';
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'runtime-app');
 
@@ -112,5 +112,29 @@ describe('discovery failures are visible', () => {
 
     expect(html).toContain('falharam ao carregar');
     expect(html).toContain('cannot-load.slice.tsx');
+  });
+});
+
+describe('HTTP status reflects the domain error', () => {
+  it('maps the well-known domain codes and keeps 400 for the rest', () => {
+    const cases: Array<[unknown, number]> = [
+      ['UNAUTHORIZED', 401],
+      ['FORBIDDEN', 403],
+      ['TICKET_NOT_FOUND', 404],
+      ['CUSTOMER_NOT_FOUND', 404],
+      ['DUPLICATE_EMAIL', 409],
+      ['DUPLICATE_TICKET', 409],
+      ['ALREADY_CLOSED', 409],
+      ['INVALID_SCHEMA', 422],
+      ['INVALID_PRIORITY', 422],
+      ['NO_DATABASE', 500],
+      ['PERSISTENCE_FAILED', 500],
+      ['SOMETHING_ELSE', 400],
+      [undefined, 400]
+    ];
+
+    for (const [code, expected] of cases) {
+      expect(httpStatusForError(code)).toBe(expected);
+    }
   });
 });

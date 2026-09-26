@@ -17,6 +17,8 @@ export interface MigrationResult {
   slice: string;
   filePath: string;
   status: 'APPLIED' | 'SKIPPED' | 'FAILED';
+  /** Statements actually executed in this run (0 for a skipped slice). */
+  statementsApplied: number;
   error?: string;
 }
 
@@ -25,10 +27,24 @@ export interface MigrationReport {
   totalDiscovered: number;
   appliedCount: number;
   skippedCount: number;
+  statementsApplied: number;
   migrations: MigrationResult[];
   code?: SlicesDirErrorCode;
   message?: string;
   candidates?: string[];
+}
+
+function hashStatement(statement: string): string {
+  const hasher = new Bun.CryptoHasher('sha256');
+  hasher.update(statement);
+  return hasher.digest('hex');
+}
+
+function splitStatements(ddl: string): string[] {
+  return ddl
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
 }
 
 function extractSliceSchema(sourceFile: ts.SourceFile): string | null {
@@ -78,6 +94,19 @@ export async function runSliceMigrations(
     );
   `);
 
+  // Progresso por statement, não por fatia: sem isso, um `ALTER TABLE` registrado
+  // uma vez volta a rodar na próxima edição do DDL e falha para sempre
+  // ("duplicate column name"). Com o histórico por statement, cada um roda uma
+  // única vez e evoluir o schema passa a ser só declarar a mudança.
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS _synapse_migration_statements (
+      slice_name TEXT NOT NULL,
+      statement_hash TEXT NOT NULL,
+      applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (slice_name, statement_hash)
+    );
+  `);
+
   const resolution = resolveSlicesDir(baseDir);
   if (!resolution.ok) {
     return {
@@ -85,6 +114,7 @@ export async function runSliceMigrations(
       totalDiscovered: 0,
       appliedCount: 0,
       skippedCount: 0,
+      statementsApplied: 0,
       migrations: [],
       code: resolution.error.code,
       message: resolution.error.message,
@@ -96,6 +126,7 @@ export async function runSliceMigrations(
   const migrations: MigrationResult[] = [];
   let appliedCount = 0;
   let skippedCount = 0;
+  let statementsAppliedTotal = 0;
   let hasFailure = false;
 
   for (const filePath of sliceFiles) {
@@ -109,37 +140,39 @@ export async function runSliceMigrations(
       continue;
     }
 
-    // Hash schema to detect modifications
-    const hasher = new Bun.CryptoHasher('sha256');
-    hasher.update(ddlContent);
-    const hash = hasher.digest('hex');
+    const hash = hashStatement(ddlContent);
+    const statements = splitStatements(ddlContent);
+    const withHashes = statements.map((statement) => ({ statement, hash: hashStatement(statement) }));
 
-    // Check if already applied
-    const existing = await db.query<{ schema_hash: string }>(
-      `SELECT schema_hash FROM _synapse_migrations WHERE slice_name = $1`,
+    const applied = await db.query<{ statement_hash: string }>(
+      `SELECT statement_hash FROM _synapse_migration_statements WHERE slice_name = $1`,
       [sliceName]
     );
+    const appliedHashes = new Set(applied.map((row) => row.statement_hash));
+    const pending = withHashes.filter((entry) => !appliedHashes.has(entry.hash));
 
-    if (existing.length > 0 && existing[0].schema_hash === hash) {
+    if (pending.length === 0) {
       skippedCount++;
       migrations.push({
         slice: sliceName,
         filePath: path.relative(baseDir, filePath),
-        status: 'SKIPPED'
+        status: 'SKIPPED',
+        statementsApplied: 0
       });
       continue;
     }
 
-    // Split statements and execute sequentially
     try {
-      const statements = ddlContent
-        .split(';')
-        .map((s: string) => s.trim())
-        .filter((s: string) => s.length > 0);
-
       await db.transaction(async (tx) => {
-        for (const stmt of statements) {
-          await tx.query(stmt);
+        for (const entry of pending) {
+          await tx.query(entry.statement);
+        }
+        for (const entry of pending) {
+          await tx.query(
+            `INSERT INTO _synapse_migration_statements (slice_name, statement_hash) VALUES ($1, $2)
+             ON CONFLICT(slice_name, statement_hash) DO NOTHING`,
+            [sliceName, entry.hash]
+          );
         }
         await tx.query(
           `INSERT INTO _synapse_migrations (slice_name, schema_hash) VALUES ($1, $2)
@@ -149,10 +182,12 @@ export async function runSliceMigrations(
       });
 
       appliedCount++;
+      statementsAppliedTotal += pending.length;
       migrations.push({
         slice: sliceName,
         filePath: path.relative(baseDir, filePath),
-        status: 'APPLIED'
+        status: 'APPLIED',
+        statementsApplied: pending.length
       });
     } catch (err: any) {
       hasFailure = true;
@@ -160,6 +195,7 @@ export async function runSliceMigrations(
         slice: sliceName,
         filePath: path.relative(baseDir, filePath),
         status: 'FAILED',
+        statementsApplied: 0,
         error: err.message
       });
     }
@@ -170,6 +206,7 @@ export async function runSliceMigrations(
     totalDiscovered: migrations.length,
     appliedCount,
     skippedCount,
+    statementsApplied: statementsAppliedTotal,
     migrations
   };
 }
