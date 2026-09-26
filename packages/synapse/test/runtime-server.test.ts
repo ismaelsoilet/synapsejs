@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
 import * as path from 'path';
-import { httpStatusForError, SynapseServer } from '../src/runtime/server';
+import { httpStatusForError, SynapseServer, formatLogLine } from '../src/runtime/server';
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'runtime-app');
 
@@ -49,7 +49,9 @@ describe('client hydration', () => {
 
     expect(pageHtml).toContain('globalThis.__SYNAPSE_PROPS__ = ');
     expect(pageHtml).toContain('LOADER-TICKETS-7');
-    expect(pageHtml).toMatch(/<script type="module" src="\/_synapse\/client\/[^"]+"[^>]*><\/script>| <script type="module"/);
+    expect(pageHtml).toMatch(
+      /<script type="module" src="\/_synapse\/client\/[^"]+"[^>]*><\/script>| <script type="module"/
+    );
   });
 
   it('no longer ships the inline form script that competed with React', () => {
@@ -127,6 +129,57 @@ describe('session from headers', () => {
     const html = await (await fetch(`${base}/tickets/view-tickets`)).text();
 
     expect(html).toContain('LOADER-TICKETS-default-anonimo');
+  });
+});
+
+describe('static files, CORS and CSRF', () => {
+  it('serves a file from the app public directory', async () => {
+    const response = await fetch(`${base}/hello.txt`);
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain('ola do public');
+  });
+
+  it('does not serve files outside public', async () => {
+    const response = await fetch(`${base}/..%2Fpackage.json`);
+    expect(response.status).toBe(404);
+  });
+
+  it('rejects an RPC call that is not JSON, which is what blocks cross-site form posts', async () => {
+    const response = await fetch(`${base}/_synapse/rpc/tickets/view-tickets`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: 'a=1'
+    });
+
+    expect(response.status).toBe(415);
+  });
+
+  it('answers a preflight only for an allowed origin', async () => {
+    const denied = await fetch(`${base}/_synapse/rpc/tickets/view-tickets`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://outro.example' }
+    });
+    expect(denied.status).toBe(404);
+
+    process.env.SYNAPSE_ALLOWED_ORIGINS = 'https://app.example';
+    const allowed = await fetch(`${base}/_synapse/rpc/tickets/view-tickets`, {
+      method: 'OPTIONS',
+      headers: { Origin: 'https://app.example' }
+    });
+    delete process.env.SYNAPSE_ALLOWED_ORIGINS;
+
+    expect(allowed.status).toBe(204);
+    expect(allowed.headers.get('access-control-allow-origin')).toBe('https://app.example');
+  });
+
+  it('formats a request log line as a single JSON object', () => {
+    const line = formatLogLine({ method: 'GET', path: '/x', status: 200, ms: 3 });
+    const parsed = JSON.parse(line) as Record<string, unknown>;
+
+    expect(parsed.method).toBe('GET');
+    expect(parsed.status).toBe(200);
+    expect(typeof parsed.ts).toBe('string');
   });
 });
 

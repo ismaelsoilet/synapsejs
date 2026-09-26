@@ -15,8 +15,8 @@ import { renderToString } from 'react-dom/server';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../compiler/slice-splitter';
-import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
 import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
+import { CLIENT_PROPS_GLOBAL, clientEntrySource, serializeClientProps } from './client-entry';
 
 export interface DiscoveredSlice {
   domain: string;
@@ -76,6 +76,11 @@ export function httpStatusForError(error: unknown): number {
   }
 
   return 400;
+}
+
+/** One JSON line per request when SYNAPSE_LOG=json, so an app can be observed. */
+export function formatLogLine(entry: { method: string; path: string; status: number; ms: number }): string {
+  return JSON.stringify({ ts: new Date().toISOString(), ...entry });
 }
 
 export class SynapseServer {
@@ -205,6 +210,50 @@ export class SynapseServer {
     }
 
     return { ok: false, status: 404, message: `Action para a fatia '${target}' não encontrada.` };
+  }
+
+  /**
+   * Cross-origin policy: same-origin by default. An app serving its UI from
+   * another origin lists them in SYNAPSE_ALLOWED_ORIGINS; anything else gets no
+   * CORS headers, so the browser blocks it.
+   */
+  private corsHeaders(request: Request): Record<string, string> | null {
+    const origin = request.headers.get('origin');
+    if (!origin) {
+      return null;
+    }
+
+    const allowed = (process.env.SYNAPSE_ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    if (!allowed.includes(origin) && !allowed.includes('*')) {
+      return null;
+    }
+
+    return {
+      'Access-Control-Allow-Origin': origin,
+      'Access-Control-Allow-Headers': 'content-type, authorization, x-user-id, x-user-roles',
+      'Access-Control-Allow-Methods': 'POST, OPTIONS',
+      Vary: 'Origin'
+    };
+  }
+
+  /** One JSON line per request when SYNAPSE_LOG=json, so an app can be observed. */
+  private logRequest(request: Request, pathname: string, status: number, startedAt: number): void {
+    if (process.env.SYNAPSE_LOG !== 'json') {
+      return;
+    }
+
+    process.stdout.write(
+      `${formatLogLine({
+        method: request.method,
+        path: pathname,
+        status,
+        ms: Math.round(performance.now() - startedAt)
+      })}\n`
+    );
   }
 
   private sessionFrom(request: Request): SessionContext {
@@ -469,6 +518,25 @@ export class SynapseServer {
       fetch: async (req: Request) => {
         const url = new URL(req.url);
         const pathname = url.pathname;
+        const startedAt = performance.now();
+
+        // Arquivos estáticos primeiro: `public/` e do app, e o que existe em disco ganha.
+        if (!pathname.startsWith('/_synapse/') && pathname !== '/') {
+          const publicDir = path.join(this.baseDir, 'public');
+          const relative = pathname.replace(/^\/+/, '');
+          const candidate = path.join(publicDir, relative);
+
+          if (
+            relative.length > 0 &&
+            candidate.startsWith(publicDir) &&
+            fs.existsSync(candidate) &&
+            fs.statSync(candidate).isFile()
+          ) {
+            const served = new Response(Bun.file(candidate));
+            this.logRequest(req, pathname, served.status, startedAt);
+            return served;
+          }
+        }
 
         // 1. Dashboard Hub
         if (pathname === '/' || pathname === '/index.html') {
@@ -509,8 +577,23 @@ export class SynapseServer {
 
         // 3. RPC Actions Dispatcher (POST /_synapse/rpc/:sliceName)
         if (pathname.startsWith('/_synapse/rpc/')) {
+          const cors = this.corsHeaders(req);
+
+          if (req.method === 'OPTIONS') {
+            return new Response(null, { status: cors ? 204 : 404, headers: cors ?? undefined });
+          }
+
           if (req.method !== 'POST') {
-            return new Response('Method Not Allowed', { status: 405 });
+            return new Response('Method Not Allowed', { status: 405, headers: cors ?? undefined });
+          }
+
+          // CSRF: um formulario de outra origem so consegue mandar
+          // urlencoded/plain/text, nunca application/json.
+          if (!(req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
+            return Response.json(
+              { ok: false, error: 'Requisicao RPC exige Content-Type: application/json.' },
+              { status: 415, headers: cors ?? undefined }
+            );
           }
 
           const target = pathname.replace('/_synapse/rpc/', '');
@@ -533,9 +616,10 @@ export class SynapseServer {
             const session = this.sessionFrom(req);
 
             const result = await slice.actionFn(body, this.db, session);
-            return Response.json(result, {
-              status: result.ok ? 200 : httpStatusForError(result.error)
-            });
+            const status = result.ok ? 200 : httpStatusForError(result.error);
+            this.logRequest(req, pathname, status, startedAt);
+
+            return Response.json(result, { status, headers: cors ?? undefined });
           } catch (err: any) {
             return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });
           }
@@ -592,19 +676,22 @@ export class SynapseServer {
               contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
             }
 
+            this.logRequest(req, pathname, 200, startedAt);
+
             const html = this.renderHtmlShell(
-        slice.name,
-        contentHtml,
-        slice.name,
-        serializeClientProps(dataProps),
-        clientUrl
-      );
+              slice.name,
+              contentHtml,
+              slice.name,
+              serializeClientProps(dataProps),
+              clientUrl
+            );
             return new Response(html, {
               headers: { 'Content-Type': 'text/html; charset=utf-8' }
             });
           }
         }
 
+        this.logRequest(req, pathname, 404, startedAt);
         return new Response('404 Not Found in SynapseJS Router', { status: 404 });
       }
     });
