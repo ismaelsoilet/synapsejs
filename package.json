@@ -16,6 +16,7 @@
     "apps/*"
   ],
   "scripts": {
+    "postinstall": "node -e \"const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }\"",
     "dev": "bun --cwd examples/enterprise-crm dev",
     "check": "bun run packages/synapse/bin/synapse.ts check",
     "check:template": "bun --cwd packages/synapse/templates/starter check",

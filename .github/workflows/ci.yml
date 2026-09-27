@@ -12,7 +12,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -20,7 +20,9 @@ jobs:
           bun-version: latest
 
       - name: Install Dependencies
-        run: bun install
+        run: |
+          bun install
+          node -e "const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }"
 
       - name: Lint And Format Check
         run: bun run lint
@@ -69,7 +71,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -77,7 +79,9 @@ jobs:
           bun-version: latest
 
       - name: Install Dependencies
-        run: bun install
+        run: |
+          bun install
+          node -e "const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }"
 
       - name: PostgreSQL Parity (migrations, DDL, action round-trip)
         run: bun run test:postgres
@@ -89,7 +93,7 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -97,7 +101,9 @@ jobs:
           bun-version: latest
 
       - name: Install Dependencies
-        run: bun install
+        run: |
+          bun install
+          node -e "const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }"
 
       - name: Pack, Install Outside The Monorepo And Exercise Every Entry Point
         run: bun run rehearse:publish
