@@ -71,7 +71,7 @@ function fieldsListTemplate(names: TemplateNames, fieldsSpec: string): string {
   const tableColumns = generateTableColumnsCode(fields);
 
   return `${imports(true)}
-import { DataTable, Card, Pagination } from 'synapsejs';
+import { DataTable, Card, Pagination } from 'synapsejs/client';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox) — filtro e paginação tipados
@@ -200,7 +200,7 @@ export const sliceTests = {
     {
       name: 'sem conexão de banco retorna NO_DATABASE',
       run: async () => {
-        const session = createSession('user-1', ['reader']);
+        const session = createSession({ userId: 'user-1', roles: ['reader'] });
         const result = await ${names.actionName}({}, undefined, session);
         if (result.ok || result.error !== 'NO_DATABASE') {
           throw new Error('esperava NO_DATABASE');

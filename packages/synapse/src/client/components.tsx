@@ -112,28 +112,36 @@ export function Card({ title, subtitle, actions, children, className = '' }: Car
 // 4. PAGINATION COMPONENT
 // ============================================================================
 export interface PaginationProps {
-  currentPage: number;
-  totalPages: number;
-  onPageChange: (page: number) => void;
+  currentPage?: number;
+  totalPages?: number;
+  total?: number;
+  limit?: number;
+  offset?: number;
+  onPageChange?: (page: number) => void;
   className?: string;
 }
 
-export function Pagination({ currentPage, totalPages, onPageChange, className = '' }: PaginationProps) {
-  if (totalPages <= 1) return null;
+export function Pagination({
+  currentPage,
+  totalPages,
+  total,
+  limit,
+  offset,
+  onPageChange,
+  className = ''
+}: PaginationProps) {
+  const current = currentPage ?? (limit && offset !== undefined ? Math.floor(offset / limit) + 1 : 1);
+  const pages = totalPages ?? (total !== undefined && limit ? Math.max(1, Math.ceil(total / limit)) : 1);
+  if (pages <= 1) return null;
 
   return (
     <div className={`flex items-center justify-between pt-4 text-xs text-slate-400 ${className}`}>
-      <span>{`Página ${currentPage} de ${totalPages}`}</span>
+      <span>{`Página ${current} de ${pages}`}</span>
       <div className="flex gap-1.5">
-        <Button size="sm" variant="secondary" disabled={currentPage <= 1} onClick={() => onPageChange(currentPage - 1)}>
+        <Button size="sm" variant="secondary" disabled={current <= 1} onClick={() => onPageChange?.(current - 1)}>
           Anterior
         </Button>
-        <Button
-          size="sm"
-          variant="secondary"
-          disabled={currentPage >= totalPages}
-          onClick={() => onPageChange(currentPage + 1)}
-        >
+        <Button size="sm" variant="secondary" disabled={current >= pages} onClick={() => onPageChange?.(current + 1)}>
           Próxima
         </Button>
       </div>
@@ -147,7 +155,8 @@ export function Pagination({ currentPage, totalPages, onPageChange, className = 
 // biome-ignore lint/suspicious/noExplicitAny: generic boundary for arbitrary row objects
 export interface Column<T = any> {
   key: keyof T | string;
-  label: string;
+  label?: string;
+  header?: string;
   sortable?: boolean;
   // biome-ignore lint/suspicious/noExplicitAny: render callback accepts any cell value
   render?: (value: any, row: T) => ReactNode;
@@ -260,7 +269,7 @@ export function DataTable<T extends Record<string, any>>({
                     className={`px-4 py-3 ${col.sortable ? 'cursor-pointer select-none hover:text-slate-200' : ''}`}
                   >
                     <div className="flex items-center gap-1">
-                      <span>{col.label}</span>
+                      <span>{col.label ?? col.header ?? keyStr}</span>
                       {col.sortable && sortKey === keyStr && <span>{sortDir === 'asc' ? '▲' : '▼'}</span>}
                     </div>
                   </th>
