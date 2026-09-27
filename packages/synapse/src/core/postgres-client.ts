@@ -6,13 +6,13 @@
  */
 
 import postgres from 'postgres';
-import type { DatabaseClient } from './database-client';
+import { compileTaggedSql, type DatabaseClient } from './database-client';
 
 export class PostgresDatabaseClient implements DatabaseClient {
-  private sql: postgres.Sql;
+  private client: postgres.Sql;
 
   constructor(connectionString: string, options?: postgres.Options<any>) {
-    this.sql = postgres(connectionString, {
+    this.client = postgres(connectionString, {
       max: options?.max || 10,
       idle_timeout: options?.idle_timeout || 30,
       // Notices are noise for a machine consumer: `stdout` must carry only the
@@ -24,7 +24,7 @@ export class PostgresDatabaseClient implements DatabaseClient {
 
   async query<T = unknown>(queryStr: string, params: unknown[] = []): Promise<T[]> {
     // postgres.js unsafe executes raw SQL with parameter bindings
-    const result = await this.sql.unsafe(queryStr, params as any[]);
+    const result = await this.client.unsafe(queryStr, params as any[]);
     return result as unknown as T[];
   }
 
@@ -33,8 +33,18 @@ export class PostgresDatabaseClient implements DatabaseClient {
     return results.length > 0 ? results[0] : null;
   }
 
+  async sql<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.query<T>(text, params);
+  }
+
+  async sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.queryOne<T>(text, params);
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
-    const res = await this.sql.begin(async (sqlTx) => {
+    const res = await this.client.begin(async (sqlTx) => {
       const txClient: DatabaseClient = {
         query: async <U = unknown>(q: string, p: unknown[] = []) => {
           const res = await sqlTx.unsafe(q, p as any[]);
@@ -42,6 +52,16 @@ export class PostgresDatabaseClient implements DatabaseClient {
         },
         queryOne: async <U = unknown>(q: string, p: unknown[] = []) => {
           const res = await sqlTx.unsafe(q, p as any[]);
+          return (res[0] ?? null) as U | null;
+        },
+        sql: async <U = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => {
+          const { text, params } = compileTaggedSql(strings, ...values);
+          const res = await sqlTx.unsafe(text, params as any[]);
+          return res as unknown as U[];
+        },
+        sqlOne: async <U = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => {
+          const { text, params } = compileTaggedSql(strings, ...values);
+          const res = await sqlTx.unsafe(text, params as any[]);
           return (res[0] ?? null) as U | null;
         },
         transaction: async <U>(subOp: (nestedTx: DatabaseClient) => Promise<U>) => {
@@ -54,6 +74,6 @@ export class PostgresDatabaseClient implements DatabaseClient {
   }
 
   async close(): Promise<void> {
-    await this.sql.end();
+    await this.client.end();
   }
 }

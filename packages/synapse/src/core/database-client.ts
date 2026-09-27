@@ -10,6 +10,24 @@ export interface QueryResult<T = unknown> {
   rowCount: number;
 }
 
+export function compileTaggedSql(
+  strings: TemplateStringsArray,
+  ...values: unknown[]
+): { text: string; params: unknown[] } {
+  let text = '';
+  const params: unknown[] = [];
+
+  for (let i = 0; i < strings.length; i++) {
+    text += strings[i];
+    if (i < values.length) {
+      params.push(values[i]);
+      text += `$${params.length}`;
+    }
+  }
+
+  return { text, params };
+}
+
 export interface DatabaseClient {
   /**
    * Execute parameterized SQL query with explicit generic return type.
@@ -22,9 +40,24 @@ export interface DatabaseClient {
   queryOne<T = unknown>(sql: string, params?: unknown[]): Promise<T | null>;
 
   /**
+   * Execute Tagged Template Literal SQL query with auto-parameterization.
+   */
+  sql<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]>;
+
+  /**
+   * Execute Tagged Template Literal SQL query returning first row or null.
+   */
+  sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null>;
+
+  /**
    * Execute command inside a database transaction boundary.
    */
   transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T>;
+
+  /**
+   * Closes active connections or statement pools.
+   */
+  close?(): void | Promise<void>;
 }
 
 /**
@@ -72,7 +105,19 @@ export class MockDatabaseClient implements DatabaseClient {
     return results.length > 0 ? results[0] : null;
   }
 
+  async sql<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.query<T>(text, params);
+  }
+
+  async sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.queryOne<T>(text, params);
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
     return operation(this);
   }
+
+  close(): void {}
 }

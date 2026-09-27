@@ -16,6 +16,7 @@ export interface ClientEntryOptions {
   clientModulePath: string;
   rpcPath: string;
   rootId?: string;
+  actionPropNames?: string[];
 }
 
 export const CLIENT_ROOT_ID = 'synapse-root';
@@ -23,6 +24,10 @@ export const CLIENT_PROPS_GLOBAL = '__SYNAPSE_PROPS__';
 
 export function clientEntrySource(options: ClientEntryOptions): string {
   const rootId = options.rootId ?? CLIENT_ROOT_ID;
+  const propNames = options.actionPropNames ?? ['onSubmitAction', 'action'];
+  const actionWires = propNames
+    .map((name) => `      ${name}: (payload: unknown) => rpcCall(${JSON.stringify(options.rpcPath)}, payload)`)
+    .join(',\n');
 
   return [
     `// [SYNAPSE-JS GENERATED CLIENT ENTRY] hydrates the slice in the browser`,
@@ -40,7 +45,7 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     `    root,`,
     `    React.createElement(${options.componentName}, {`,
     `      ...props,`,
-    `      onSubmitAction: (payload: unknown) => rpcCall(${JSON.stringify(options.rpcPath)}, payload)`,
+    `${actionWires}`,
     `    })`,
     `  );`,
     `}`,

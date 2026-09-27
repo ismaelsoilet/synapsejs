@@ -20,11 +20,32 @@ import {
 } from '../compiler/client-bundler';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
-import { AnonymousSession, createSession, type DatabaseClient, getDatabase, type SessionContext } from '../core/index';
+import {
+  type ActionContext,
+  AnonymousSession,
+  createActionContext,
+  createDefaultLogger,
+  createSession,
+  type DatabaseClient,
+  getDatabase,
+  loadSynapseConfig,
+  resetDatabaseInstance,
+  type SessionContext,
+  type SynapseConfig
+} from '../core/index';
+import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { verifySessionToken } from '../core/session-token';
-import { CLIENT_PROPS_GLOBAL, serializeClientProps } from './client-entry';
-import { isAction, isComponent, isLoader } from './discovery-rules';
+import { serializeClientProps } from './client-entry';
+import { isAction, isComponent, isJob, isLoader, isWebhook } from './discovery-rules';
+import { QueueEngine } from './queue-engine';
 import { saveUpload } from './uploads';
+
+export interface WebhookEvent<TJson = unknown> {
+  readonly rawBody: Uint8Array;
+  readonly bodyText: string;
+  readonly json: TJson;
+  readonly headers: Headers;
+}
 
 export interface DiscoveredSlice {
   domain: string;
@@ -33,13 +54,16 @@ export interface DiscoveredSlice {
   key: string;
   routePath: string;
   rpcPath: string;
+  webhookPath: string;
   filePath: string;
-  actionFn?: (payload: unknown, db: DatabaseClient, session?: SessionContext) => Promise<any>;
+  actionFn?: (payload: unknown, dbOrCtx?: any, session?: SessionContext, extraCtx?: ActionContext) => Promise<any>;
   componentFn?: React.ComponentType<any>;
   /** Export name of the component, so the generated client entry can import it. */
   componentExport?: string;
   /** Optional server-side data for the component: `export function <Name>Loader(context)`. */
   loaderFn?: (context: SliceLoaderContext) => Promise<Record<string, unknown>>;
+  /** Optional Webhook handler receiving rawBody and ActionContext */
+  webhookFn?: (event: WebhookEvent, ctx: ActionContext) => Promise<any>;
 }
 
 /**
@@ -51,6 +75,8 @@ export interface SliceLoaderContext {
   params: Record<string, string>;
   db: DatabaseClient;
   session: SessionContext;
+  ctx?: ActionContext;
+  services?: Record<string, unknown>;
 }
 
 export interface SliceLoadError {
@@ -74,6 +100,46 @@ const ERROR_STATUS: Array<{ pattern: RegExp; status: number }> = [
   { pattern: /_FAILED$/, status: 500 }
 ];
 
+export const TURBO_ROUTER_SCRIPT = `(function() {
+  if (window.__synapseNavInstalled) return;
+  window.__synapseNavInstalled = true;
+
+  async function navigate(href, push) {
+    try {
+      const res = await fetch(href, { headers: { 'X-Synapse-Morph': 'true' } });
+      if (!res.ok) { window.location.href = href; return; }
+      const html = await res.text();
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const newRoot = doc.querySelector('#synapse-root');
+      const curRoot = document.querySelector('#synapse-root');
+      if (newRoot && curRoot) {
+        curRoot.innerHTML = newRoot.innerHTML;
+        document.title = doc.title;
+        if (push) history.pushState({}, '', href);
+        window.dispatchEvent(new CustomEvent('synapse:morphed', { detail: { url: href } }));
+      } else {
+        window.location.href = href;
+      }
+    } catch {
+      window.location.href = href;
+    }
+  }
+
+  document.addEventListener('click', function(e) {
+    var a = e.target.closest('a');
+    if (!a || !a.href || a.target || a.hasAttribute('download')) return;
+    var url = new URL(a.href, location.origin);
+    if (url.origin !== location.origin) return;
+    if (url.pathname.startsWith('/_synapse/')) return;
+    e.preventDefault();
+    navigate(url.href, true);
+  });
+
+  window.addEventListener('popstate', function() {
+    navigate(location.href, false);
+  });
+})();`;
+
 export function httpStatusForError(error: unknown): number {
   const code = typeof error === 'string' ? error : '';
 
@@ -86,8 +152,50 @@ export function httpStatusForError(error: unknown): number {
   return 400;
 }
 
+/** Escapes special HTML characters to prevent Reflected/Stored XSS. */
+export function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/** Parses Cookie request header safely into key-value pairs. */
+export function parseCookies(header: string | null | undefined): Record<string, string> {
+  if (!header) {
+    return {};
+  }
+  const cookies: Record<string, string> = {};
+  for (const pair of header.split(';')) {
+    const trimmed = pair.trim();
+    if (!trimmed) {
+      continue;
+    }
+    const eqIdx = trimmed.indexOf('=');
+    if (eqIdx > 0) {
+      const key = trimmed.slice(0, eqIdx).trim();
+      const rawVal = trimmed.slice(eqIdx + 1).trim();
+      try {
+        cookies[key] = decodeURIComponent(rawVal);
+      } catch {
+        cookies[key] = rawVal;
+      }
+    }
+  }
+  return cookies;
+}
+
 /** One JSON line per request when SYNAPSE_LOG=json, so an app can be observed. */
-export function formatLogLine(entry: { method: string; path: string; status: number; ms: number }): string {
+export function formatLogLine(entry: {
+  method: string;
+  path: string;
+  status: number;
+  ms: number;
+  userId?: string | null;
+  roles?: string[];
+}): string {
   return JSON.stringify({ ts: new Date().toISOString(), ...entry });
 }
 
@@ -99,12 +207,77 @@ export class SynapseServer {
   private loadErrors: SliceLoadError[] = [];
   private clientBundles = new Map<string, { url: string; builtFor: string }>();
   private clientManifest: ClientManifest | null | undefined;
+  private httpServer: ReturnType<typeof Bun.serve> | null = null;
+  private config: SynapseConfig = {};
+  private queueEngine: QueueEngine;
+  private layoutComponent: React.ComponentType<any> | null = null;
+  private metrics = {
+    startTime: Date.now(),
+    totalRequests: 0,
+    statusCodes: {} as Record<number, number>,
+    rpcSuccessCount: 0,
+    rpcErrorCount: 0,
+    ssrRenderCount: 0,
+    staticFileCount: 0
+  };
   public port: number;
 
-  constructor(baseDir: string = process.cwd(), port: number = 3000) {
+  constructor(baseDir: string = process.cwd(), port: number = 3000, db?: DatabaseClient) {
     this.baseDir = baseDir;
     this.port = port;
-    this.db = getDatabase();
+    this.db = db || getDatabase();
+    this.queueEngine = new QueueEngine({
+      dbPath: path.join(this.baseDir, '.synapse/queue.sqlite'),
+      logger: createDefaultLogger('QueueEngine')
+    });
+  }
+
+  /**
+   * Gracefully shuts down the HTTP server and closes database connections.
+   */
+  async stop(): Promise<void> {
+    if (this.httpServer) {
+      this.httpServer.stop(true);
+      this.httpServer = null;
+    }
+    this.queueEngine.close();
+    await this.db.close?.();
+    resetDatabaseInstance();
+  }
+
+  get database(): DatabaseClient {
+    return this.db;
+  }
+
+  get queue(): QueueEngine {
+    return this.queueEngine;
+  }
+
+  get serverMetrics() {
+    return {
+      startTime: this.metrics.startTime,
+      totalRequests: this.metrics.totalRequests,
+      statusCodes: { ...this.metrics.statusCodes },
+      rpcSuccessCount: this.metrics.rpcSuccessCount,
+      rpcErrorCount: this.metrics.rpcErrorCount,
+      ssrRenderCount: this.metrics.ssrRenderCount,
+      staticFileCount: this.metrics.staticFileCount
+    };
+  }
+
+  get serverConfig(): SynapseConfig {
+    return this.config;
+  }
+
+  private createActionContext(sliceName: string, session: SessionContext): ActionContext {
+    return createActionContext({
+      db: this.db,
+      session,
+      tenantId: session.tenantId,
+      services: (this.config.services as Record<string, unknown>) || {},
+      logger: createDefaultLogger(sliceName),
+      enqueue: (jobOrName, payload, options) => this.queueEngine.enqueue(jobOrName, payload, options)
+    });
   }
 
   /**
@@ -130,6 +303,21 @@ export class SynapseServer {
     const files = findSliceFiles(slicesDir);
     this.slices.clear();
     this.loadErrors = [];
+    this.layoutComponent = null;
+
+    // Detect optional root layout (_layout.tsx or layout.tsx)
+    const layoutCandidates = [path.join(slicesDir, '_layout.tsx'), path.join(slicesDir, 'layout.tsx')];
+    for (const cand of layoutCandidates) {
+      if (fs.existsSync(cand)) {
+        try {
+          const layoutMod = await import(cand);
+          this.layoutComponent = layoutMod.default || layoutMod.Layout || null;
+          break;
+        } catch (e) {
+          console.error(`[SynapseServer] Falha ao carregar layout ${cand}:`, e);
+        }
+      }
+    }
 
     for (const file of files) {
       const rel = path.relative(slicesDir, file);
@@ -151,8 +339,18 @@ export class SynapseServer {
         let componentFn: any = null;
         let componentExport: string | undefined;
         let loaderFn: any = null;
+        let webhookFn: any = null;
 
         for (const [exportName, val] of Object.entries(mod)) {
+          if (
+            isJob(exportName) &&
+            val &&
+            typeof val === 'object' &&
+            'name' in (val as Record<string, unknown>) &&
+            'handler' in (val as Record<string, unknown>)
+          ) {
+            this.queueEngine.registerJob(val as any);
+          }
           if (typeof val !== 'function') {
             continue;
           }
@@ -163,6 +361,8 @@ export class SynapseServer {
           } else if (isComponent(exportName)) {
             componentFn = val;
             componentExport = exportName;
+          } else if (isWebhook(exportName)) {
+            webhookFn = val;
           }
         }
 
@@ -172,11 +372,13 @@ export class SynapseServer {
           key,
           routePath,
           rpcPath,
+          webhookPath: `/_synapse/webhooks/${domain}/${name}`,
           filePath: file,
           actionFn,
           componentFn,
           componentExport,
-          loaderFn
+          loaderFn,
+          webhookFn
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -245,8 +447,22 @@ export class SynapseServer {
     };
   }
 
-  /** One JSON line per request when SYNAPSE_LOG=json, so an app can be observed. */
-  private logRequest(request: Request, pathname: string, status: number, startedAt: number): void {
+  /** Records request metrics and writes one JSON line per request when SYNAPSE_LOG=json. */
+  private logRequest(
+    request: Request,
+    pathname: string,
+    status: number,
+    startedAt: number,
+    session?: SessionContext,
+    metricType?: 'rpc_success' | 'rpc_error' | 'ssr' | 'static'
+  ): void {
+    this.metrics.totalRequests++;
+    this.metrics.statusCodes[status] = (this.metrics.statusCodes[status] || 0) + 1;
+    if (metricType === 'rpc_success') this.metrics.rpcSuccessCount++;
+    if (metricType === 'rpc_error') this.metrics.rpcErrorCount++;
+    if (metricType === 'ssr') this.metrics.ssrRenderCount++;
+    if (metricType === 'static') this.metrics.staticFileCount++;
+
     if (process.env.SYNAPSE_LOG !== 'json') {
       return;
     }
@@ -256,7 +472,9 @@ export class SynapseServer {
         method: request.method,
         path: pathname,
         status,
-        ms: Math.round(performance.now() - startedAt)
+        ms: Math.round(performance.now() - startedAt),
+        userId: session?.userId || null,
+        roles: session?.roles?.length ? session.roles : undefined
       })}\n`
     );
   }
@@ -265,33 +483,63 @@ export class SynapseServer {
     const authHeader = request.headers.get('Authorization') || request.headers.get('authorization');
     const userIdHeader = request.headers.get('x-user-id');
     const rolesHeader = request.headers.get('x-user-roles');
+    const tenantHeader = request.headers.get('x-tenant-id');
+    const cookieHeader = request.headers.get('cookie') || request.headers.get('Cookie');
+    const cookies = parseCookies(cookieHeader);
 
-    // Com um segredo configurado, a sessão vem da assinatura: um header de papel,
-    // que qualquer cliente escreve, deixa de valer. Sem segredo vale o modo de
-    // desenvolvimento (headers), que é conveniente e inseguro em produção.
+    // Resolves multi-tenant ID from subdomain (acme.myapp.com) or header
+    const host = request.headers.get('host') || '';
+    const hostParts = host.split(':')[0].split('.');
+    let subdomainTenant: string | undefined;
+    if (hostParts.length > 2 && hostParts[0] !== 'www' && hostParts[0] !== 'localhost') {
+      subdomainTenant = hostParts[0];
+    }
+    const tenantId = tenantHeader || subdomainTenant;
+
+    // Com um segredo configurado, a sessão vem OBRIGATORIAMENTE da assinatura
+    // criptográfica válida (Bearer header ou cookie synapse_token).
+    // Headers de papel (x-user-id, x-user-roles) e cookies não assinados são
+    // terminantemente ignorados, prevenindo bypass de autenticação.
     const secret = process.env.SYNAPSE_SESSION_SECRET;
     const bearer = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : undefined;
+    const token = bearer || cookies[SESSION_COOKIE];
 
-    if (secret && bearer) {
-      const verified = verifySessionToken(bearer, secret);
+    if (secret) {
+      if (!token) {
+        return AnonymousSession(tenantId);
+      }
+      const verified = verifySessionToken(token, secret);
       return verified.ok
-        ? createSession({ userId: verified.value.userId, roles: verified.value.roles, token: bearer })
-        : AnonymousSession();
+        ? createSession({
+            userId: verified.value.userId,
+            tenantId: (verified.value as { tenantId?: string }).tenantId || tenantId,
+            roles: verified.value.roles,
+            token
+          })
+        : AnonymousSession(tenantId);
     }
 
-    // Qualquer um dos três headers identifica uma sessão. Antes, mandar apenas
-    // `x-user-roles` (o que o cookie do browser produz) caía em sessão anônima em
-    // silêncio e toda action respondia UNAUTHORIZED sem explicação.
-    if (authHeader || userIdHeader || rolesHeader) {
-      const token = authHeader?.startsWith('Bearer ') ? authHeader.replace('Bearer ', '') : undefined;
+    // Modo de desenvolvimento (sem segredo configurado):
+    // Aceita headers diretos ou cookies para conveniência local.
+    const cookieRoles = cookies[ROLES_COOKIE];
+    if (authHeader || userIdHeader || rolesHeader || cookieRoles || token) {
+      const rawRoles = rolesHeader || cookieRoles;
+      const roles = rawRoles
+        ? rawRoles
+            .split(',')
+            .map((role) => role.trim())
+            .filter((role) => role.length > 0)
+        : ['user'];
+
       return createSession({
-        userId: userIdHeader || `user-${token?.slice(0, 8) || 'header'}`,
-        roles: rolesHeader ? rolesHeader.split(',').map((role) => role.trim()) : ['user'],
-        token
+        userId: userIdHeader || (cookies[SESSION_COOKIE] ? 'user-cookie' : `user-${token?.slice(0, 8) || 'header'}`),
+        tenantId,
+        roles,
+        token: token || undefined
       });
     }
 
-    return AnonymousSession();
+    return AnonymousSession(tenantId);
   }
 
   /**
@@ -347,6 +595,29 @@ export class SynapseServer {
   }
 
   /**
+   * Returns stylesheet links, respecting SYNAPSE_DISABLE_CDN and detecting public/synapse.css
+   */
+  private renderStylesheets(): string {
+    const disableCdn = process.env.SYNAPSE_DISABLE_CDN === 'true' || process.env.SYNAPSE_DISABLE_CDN === '1';
+    const localCssPath = path.join(this.baseDir, 'public', 'synapse.css');
+    const hasLocalCss = fs.existsSync(localCssPath);
+
+    const elements: string[] = [];
+    if (!disableCdn) {
+      elements.push('  <script src="https://cdn.tailwindcss.com"></script>');
+      elements.push('  <link rel="preconnect" href="https://fonts.googleapis.com">');
+      elements.push('  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>');
+      elements.push(
+        '  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">'
+      );
+    }
+    if (hasLocalCss) {
+      elements.push('  <link rel="stylesheet" href="/synapse.css">');
+    }
+    return elements.join('\n');
+  }
+
+  /**
    * Generates the SSR HTML Shell with Inter font, Tailwind and client hydration
    */
   private renderHtmlShell(
@@ -356,16 +627,15 @@ export class SynapseServer {
     propsJson: string,
     clientUrl: string | null
   ): string {
+    const safeTitle = escapeHtml(title);
+    const safeSliceName = escapeHtml(sliceName);
     return `<!DOCTYPE html>
 <html lang="pt-BR" class="h-full bg-slate-950 text-slate-100">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title} | SynapseJS</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <title>${safeTitle} | SynapseJS</title>
+${this.renderStylesheets()}
   <style>
     body { font-family: 'Inter', sans-serif; }
     code, pre { font-family: 'JetBrains Mono', monospace; }
@@ -393,8 +663,8 @@ export class SynapseServer {
   <main class="flex-1 max-w-4xl w-full mx-auto p-6 md:p-10">
     <div class="mb-6 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl font-bold text-white tracking-tight">${title}</h1>
-        <p class="text-sm text-slate-400 font-mono mt-1">Fatia Vertical: <span class="text-cyan-400">${sliceName}.slice.tsx</span></p>
+        <h1 class="text-2xl font-bold text-white tracking-tight">${safeTitle}</h1>
+        <p class="text-sm text-slate-400 font-mono mt-1">Fatia Vertical: <span class="text-cyan-400">${safeSliceName}.slice.tsx</span></p>
       </div>
       <a href="/" class="text-xs px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 transition-colors">
         ← Voltar ao Hub
@@ -409,6 +679,9 @@ export class SynapseServer {
     <!-- Props de hidratacao e a entrada de cliente gerada -->
     <script>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
     ${clientUrl ? `<script type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
+
+    <!-- Turbo Morphing SPA Navigation (<1.5kb, Zero Dependencies) -->
+    <script type="module" src="/_synapse/turbo-router.js"></script>
   </main>
 
   <!-- Footer -->
@@ -430,21 +703,21 @@ export class SynapseServer {
           <div>
             <div class="flex items-center justify-between mb-2">
               <span class="text-xs font-mono uppercase tracking-wider text-cyan-400 bg-cyan-950/60 border border-cyan-800/60 px-2 py-0.5 rounded">
-                ${s.domain}
+                ${escapeHtml(s.domain)}
               </span>
               <span class="text-xs text-emerald-400 font-mono flex items-center gap-1.5">
                 <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Pronto
               </span>
             </div>
-            <h3 class="text-lg font-semibold text-white mb-1">${s.name}</h3>
-            <p class="text-xs text-slate-400 font-mono mb-4 truncate">${s.filePath}</p>
+            <h3 class="text-lg font-semibold text-white mb-1">${escapeHtml(s.name)}</h3>
+            <p class="text-xs text-slate-400 font-mono mb-4 truncate">${escapeHtml(s.filePath)}</p>
           </div>
           <div class="flex items-center gap-2 pt-3 border-t border-slate-800/80">
-            <a href="${s.routePath}" class="flex-1 text-center py-2 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium transition-colors">
+            <a href="${escapeHtml(s.routePath)}" class="flex-1 text-center py-2 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-medium transition-colors">
               Abrir Interface UI →
             </a>
             <span class="text-xs font-mono text-slate-500 bg-slate-800/80 px-2 py-2 rounded-lg" title="RPC Endpoint">
-              POST ${s.rpcPath}
+              POST ${escapeHtml(s.rpcPath)}
             </span>
           </div>
         </div>
@@ -458,8 +731,7 @@ export class SynapseServer {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Hub de Fatias Verticais | SynapseJS</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+${this.renderStylesheets()}
   <style>body { font-family: 'Inter', sans-serif; }</style>
 </head>
 <body class="h-full flex flex-col justify-between">
@@ -491,7 +763,7 @@ export class SynapseServer {
         ? `<div class="mb-8 p-5 rounded-xl border border-rose-800 bg-rose-950/50">
       <h3 class="text-rose-300 font-semibold mb-2">${this.loadErrors.length} fatia(s) falharam ao carregar</h3>
       <ul class="text-xs font-mono text-rose-200 space-y-1">
-        ${this.loadErrors.map((error) => `<li>${error.file}: ${error.message}</li>`).join('')}
+        ${this.loadErrors.map((error) => `<li>${escapeHtml(error.file)}: ${escapeHtml(error.message)}</li>`).join('')}
       </ul>
     </div>`
         : ''
@@ -513,36 +785,39 @@ export class SynapseServer {
    * Starts the Bun.serve HTTP server
    */
   async start() {
+    this.config = await loadSynapseConfig(this.baseDir);
+
     // 0. Auto-run declarative slice migrations on startup
     await runSliceMigrations(this.baseDir, this.db);
 
-    const server = Bun.serve({
+    this.httpServer = Bun.serve({
       port: this.port,
       fetch: async (req: Request) => {
         const url = new URL(req.url);
         const pathname = url.pathname;
         const startedAt = performance.now();
 
-        // Arquivos estáticos primeiro: `public/` e do app, e o que existe em disco ganha.
+        // Arquivos estáticos primeiro: `public/` do app, estritamente contido no diretório.
         if (!pathname.startsWith('/_synapse/') && pathname !== '/') {
-          const publicDir = path.join(this.baseDir, 'public');
+          const publicDir = path.resolve(this.baseDir, 'public');
           const relative = pathname.replace(/^\/+/, '');
-          const candidate = path.join(publicDir, relative);
+          const candidate = path.resolve(publicDir, relative);
 
           if (
             relative.length > 0 &&
-            candidate.startsWith(publicDir) &&
+            candidate.startsWith(publicDir + path.sep) &&
             fs.existsSync(candidate) &&
             fs.statSync(candidate).isFile()
           ) {
             const served = new Response(Bun.file(candidate));
-            this.logRequest(req, pathname, served.status, startedAt);
+            this.logRequest(req, pathname, served.status, startedAt, undefined, 'static');
             return served;
           }
         }
 
         // 1. Dashboard Hub
         if (pathname === '/' || pathname === '/index.html') {
+          this.logRequest(req, pathname, 200, startedAt);
           return new Response(this.renderDashboardHtml(), {
             headers: { 'Content-Type': 'text/html; charset=utf-8' }
           });
@@ -553,28 +828,92 @@ export class SynapseServer {
           const repoMapPath = path.join(this.baseDir, '.codebase/repo-map.d.ts');
           if (fs.existsSync(repoMapPath)) {
             const content = fs.readFileSync(repoMapPath, 'utf-8');
+            this.logRequest(req, pathname, 200, startedAt);
             return new Response(content, {
               headers: { 'Content-Type': 'text/plain; charset=utf-8' }
             });
           }
+          this.logRequest(req, pathname, 404, startedAt);
           return new Response('repo-map.d.ts not generated yet', { status: 404 });
         }
 
         if (pathname === '/_synapse/api/health') {
+          let dbHealthy = false;
+          let dbError: string | null = null;
+          try {
+            await this.db.query('SELECT 1;');
+            dbHealthy = true;
+          } catch (err) {
+            dbError = err instanceof Error ? err.message : String(err);
+          }
+
+          const healthy = dbHealthy && !this.discoveryError;
+          const status = healthy ? 'OK' : 'DEGRADED';
+          const httpStatus = healthy ? 200 : 503;
+
+          this.logRequest(req, pathname, httpStatus, startedAt);
+          return Response.json(
+            {
+              status,
+              framework: 'SynapseJS',
+              version: '0.6.0',
+              uptime: process.uptime(),
+              database: dbHealthy ? 'connected' : 'disconnected',
+              ...(dbError ? { databaseError: dbError } : {}),
+              slicesLoaded: this.slices.size,
+              slicesResolutionError: this.discoveryError,
+              loadErrors: this.loadErrors,
+              slices: Array.from(this.slices.values()).map((s) => ({
+                domain: s.domain,
+                name: s.name,
+                route: s.routePath,
+                rpc: s.rpcPath
+              }))
+            },
+            { status: httpStatus }
+          );
+        }
+
+        if (pathname === '/_synapse/api/metrics') {
+          const uptimeSeconds = Math.round((Date.now() - this.metrics.startTime) / 1000);
+          const formatParam = url.searchParams.get('format');
+          const acceptHeader = req.headers.get('accept') || '';
+
+          this.logRequest(req, pathname, 200, startedAt);
+
+          if (formatParam === 'prometheus' || acceptHeader.includes('text/plain')) {
+            const promText =
+              [
+                '# HELP synapse_uptime_seconds SynapseJS server uptime in seconds',
+                '# TYPE synapse_uptime_seconds gauge',
+                `synapse_uptime_seconds ${uptimeSeconds}`,
+                '# HELP synapse_requests_total Total number of HTTP requests received',
+                '# TYPE synapse_requests_total counter',
+                `synapse_requests_total ${this.metrics.totalRequests}`,
+                '# HELP synapse_rpc_success_total Total successful RPC action calls',
+                '# TYPE synapse_rpc_success_total counter',
+                `synapse_rpc_success_total ${this.metrics.rpcSuccessCount}`,
+                '# HELP synapse_rpc_error_total Total failed RPC action calls',
+                '# TYPE synapse_rpc_error_total counter',
+                `synapse_rpc_error_total ${this.metrics.rpcErrorCount}`,
+                '# HELP synapse_ssr_renders_total Total server-side rendered pages',
+                '# TYPE synapse_ssr_renders_total counter',
+                `synapse_ssr_renders_total ${this.metrics.ssrRenderCount}`
+              ].join('\n') + '\n';
+
+            return new Response(promText, {
+              headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' }
+            });
+          }
+
           return Response.json({
-            status: 'OK',
-            framework: 'SynapseJS',
-            version: '0.6.0',
-            uptime: process.uptime(),
-            slicesLoaded: this.slices.size,
-            slicesResolutionError: this.discoveryError,
-            loadErrors: this.loadErrors,
-            slices: Array.from(this.slices.values()).map((s) => ({
-              domain: s.domain,
-              name: s.name,
-              route: s.routePath,
-              rpc: s.rpcPath
-            }))
+            uptimeSeconds,
+            totalRequests: this.metrics.totalRequests,
+            statusCodes: this.metrics.statusCodes,
+            rpcSuccessCount: this.metrics.rpcSuccessCount,
+            rpcErrorCount: this.metrics.rpcErrorCount,
+            ssrRenderCount: this.metrics.ssrRenderCount,
+            staticFileCount: this.metrics.staticFileCount
           });
         }
 
@@ -583,16 +922,20 @@ export class SynapseServer {
           const cors = this.corsHeaders(req);
 
           if (req.method === 'OPTIONS') {
-            return new Response(null, { status: cors ? 204 : 404, headers: cors ?? undefined });
+            const status = cors ? 204 : 404;
+            this.logRequest(req, pathname, status, startedAt);
+            return new Response(null, { status, headers: cors ?? undefined });
           }
 
           if (req.method !== 'POST') {
+            this.logRequest(req, pathname, 405, startedAt);
             return new Response('Method Not Allowed', { status: 405, headers: cors ?? undefined });
           }
 
           // CSRF: um formulario de outra origem so consegue mandar
           // urlencoded/plain/text, nunca application/json.
           if (!(req.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) {
+            this.logRequest(req, pathname, 415, startedAt);
             return Response.json(
               { ok: false, error: 'Requisicao RPC exige Content-Type: application/json.' },
               { status: 415, headers: cors ?? undefined }
@@ -603,11 +946,13 @@ export class SynapseServer {
           const resolved = this.resolveSlice(target);
 
           if (!resolved.ok) {
+            this.logRequest(req, pathname, resolved.status, startedAt);
             return Response.json({ ok: false, error: resolved.message }, { status: resolved.status });
           }
 
           const slice = resolved.slice;
           if (!slice.actionFn) {
+            this.logRequest(req, pathname, 404, startedAt);
             return Response.json(
               { ok: false, error: `A fatia '${slice.key}' não exporta nenhuma *Action.` },
               { status: 404 }
@@ -617,18 +962,93 @@ export class SynapseServer {
           try {
             const body = await req.json();
             const session = this.sessionFrom(req);
+            const actionCtx = this.createActionContext(slice.name, session);
 
-            const result = await slice.actionFn(body, this.db, session);
+            const result = await slice.actionFn(body, actionCtx, session, actionCtx);
             const status = result.ok ? 200 : httpStatusForError(result.error);
-            this.logRequest(req, pathname, status, startedAt);
+            const metricType = result.ok ? 'rpc_success' : 'rpc_error';
+            this.logRequest(req, pathname, status, startedAt, session, metricType);
 
             return Response.json(result, { status, headers: cors ?? undefined });
           } catch (err: any) {
+            this.logRequest(req, pathname, 500, startedAt, undefined, 'rpc_error');
             return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });
           }
         }
 
-        // 4. Uploads (o RPC é JSON de propósito; arquivo precisa de outra porta)
+        // 4. Webhooks Gateway (POST /_synapse/webhooks/:sliceName)
+        if (pathname.startsWith('/_synapse/webhooks/')) {
+          const cors = this.corsHeaders(req);
+
+          if (req.method === 'OPTIONS') {
+            const status = cors ? 204 : 404;
+            this.logRequest(req, pathname, status, startedAt);
+            return new Response(null, { status, headers: cors ?? undefined });
+          }
+
+          if (req.method !== 'POST') {
+            this.logRequest(req, pathname, 405, startedAt);
+            return new Response('Method Not Allowed', { status: 405, headers: cors ?? undefined });
+          }
+
+          const target = pathname.replace('/_synapse/webhooks/', '');
+          const resolved = this.resolveSlice(target);
+
+          if (!resolved.ok) {
+            this.logRequest(req, pathname, resolved.status, startedAt);
+            return Response.json({ ok: false, error: resolved.message }, { status: resolved.status });
+          }
+
+          const slice = resolved.slice;
+          if (!slice.webhookFn) {
+            this.logRequest(req, pathname, 404, startedAt);
+            return Response.json(
+              { ok: false, error: `A fatia '${slice.key}' não exporta nenhum *Webhook handler.` },
+              { status: 404 }
+            );
+          }
+
+          try {
+            const rawBody = new Uint8Array(await req.arrayBuffer());
+            const bodyText = new TextDecoder().decode(rawBody);
+            let json: unknown = null;
+            try {
+              json = JSON.parse(bodyText);
+            } catch {
+              json = null;
+            }
+
+            const session = this.sessionFrom(req);
+            const actionCtx = this.createActionContext(slice.name, session);
+
+            const result = await slice.webhookFn(
+              {
+                rawBody,
+                bodyText,
+                json,
+                headers: req.headers
+              },
+              actionCtx
+            );
+
+            const status = typeof result === 'object' && result !== null && 'ok' in result && !result.ok ? 400 : 200;
+
+            this.logRequest(req, pathname, status, startedAt, session);
+            if (result === undefined || result === null) {
+              return new Response('OK', { status: 200, headers: cors ?? undefined });
+            }
+            return Response.json(result, { status, headers: cors ?? undefined });
+          } catch (err: unknown) {
+            const message = err instanceof Error ? err.message : String(err);
+            this.logRequest(req, pathname, 500, startedAt);
+            return Response.json(
+              { ok: false, error: `Falha no processamento de webhook: ${message}` },
+              { status: 500 }
+            );
+          }
+        }
+
+        // 5. Uploads (o RPC é JSON de propósito; arquivo precisa de outra porta)
         if (pathname.startsWith('/_synapse/files/')) {
           const cors = this.corsHeaders(req);
 
@@ -659,11 +1079,20 @@ export class SynapseServer {
         }
 
         // 5. Client bundles produced by the splitter
+        if (pathname === '/_synapse/turbo-router.js') {
+          this.logRequest(req, pathname, 200, startedAt, undefined, 'static');
+          return new Response(TURBO_ROUTER_SCRIPT, {
+            headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+          });
+        }
+
         if (pathname.startsWith('/_synapse/client/')) {
           const bundleFile = path.join(this.baseDir, '.synapse/client', path.basename(pathname));
           if (!fs.existsSync(bundleFile)) {
+            this.logRequest(req, pathname, 404, startedAt);
             return new Response('Client bundle not found', { status: 404 });
           }
+          this.logRequest(req, pathname, 200, startedAt, undefined, 'static');
           return new Response(Bun.file(bundleFile), {
             headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
           });
@@ -673,13 +1102,21 @@ export class SynapseServer {
         for (const slice of this.slices.values()) {
           if (pathname === slice.routePath) {
             const session = this.sessionFrom(req);
+            const actionCtx = this.createActionContext(slice.name, session);
             const params = Object.fromEntries(url.searchParams.entries());
             const dataProps: Record<string, unknown> = { ...params };
             let loaderError: string | null = null;
 
             if (slice.loaderFn) {
               try {
-                const loaded = await slice.loaderFn({ url: url.toString(), params, db: this.db, session });
+                const loaded = await slice.loaderFn({
+                  url: url.toString(),
+                  params,
+                  db: this.db,
+                  session,
+                  ctx: actionCtx,
+                  services: (this.config.services as Record<string, unknown>) || {}
+                });
                 Object.assign(dataProps, loaded);
               } catch (err) {
                 loaderError = err instanceof Error ? err.message : String(err);
@@ -692,24 +1129,32 @@ export class SynapseServer {
             const renderProps: Record<string, unknown> = {
               ...dataProps,
               ...(slice.actionFn
-                ? { onSubmitAction: (payload: unknown) => slice.actionFn?.(payload, this.db, session) }
+                ? {
+                    onSubmitAction: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx),
+                    action: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx)
+                  }
                 : {})
             };
 
             let contentHtml: string;
             if (loaderError) {
-              contentHtml = `<div class="text-rose-400">Falha no loader de ${slice.key}: ${loaderError}</div>`;
+              contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${escapeHtml(loaderError)}</div>`;
             } else if (slice.componentFn) {
               try {
-                contentHtml = renderToString(React.createElement(slice.componentFn, renderProps));
+                const sliceEl = React.createElement(slice.componentFn, renderProps);
+                const rootEl = this.layoutComponent
+                  ? React.createElement(this.layoutComponent, { session, url: url.toString() }, sliceEl)
+                  : sliceEl;
+                contentHtml = renderToString(rootEl);
               } catch (e: any) {
-                contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${e.message}</div>`;
+                const errMessage = e instanceof Error ? e.message : String(e);
+                contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${escapeHtml(errMessage)}</div>`;
               }
             } else {
               contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
             }
 
-            this.logRequest(req, pathname, 200, startedAt);
+            this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
 
             const html = this.renderHtmlShell(
               slice.name,
@@ -729,6 +1174,8 @@ export class SynapseServer {
       }
     });
 
+    const server = this.httpServer;
+    this.port = server.port ?? this.port;
     console.log(`⚡ [SynapseJS Server] Executando em http://localhost:${server.port}`);
     console.log(`   - Fatias descobertas: ${this.slices.size}`);
     console.log(`   - Hub Principal: http://localhost:${server.port}/`);

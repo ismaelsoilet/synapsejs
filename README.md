@@ -40,6 +40,12 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Ensaio de publicação (o artefato que um estranho instalaria) | `bun run rehearse:publish` — acha bugs de empacotamento que nenhum outro gate vê |
 | CI no GitHub Actions (3 jobs: suíte, paridade PostgreSQL, ensaio) | [run 36220544931](https://github.com/ismaelsoilet/synapsejs/actions/runs/36220544931) — verde na primeira execução real |
 | Benchmark de superfície de contexto | `bun run bench` |
+| Tagged SQL nativo (`db.sql` e `db.sqlOne`) com interpolação segura | `bun test packages/synapse/test/sql-tagged.test.ts` |
+| Background Jobs & Fila SQLite com retry exponencial e dead-letter | `bun test packages/synapse/test/jobs-queue.test.ts` |
+| Gateway de Webhooks com preservação de rawBody (Uint8Array) para HMAC | `bun test packages/synapse/test/webhooks.test.ts` |
+| Multi-tenancy B2B & Prevenção IDOR via `requireTenant` | `bun test packages/synapse/test/multi-tenancy.test.ts` |
+| DAG de Migrações DDL e Ordenação Topológica de Foreign Keys | `bun test packages/synapse/test/schema-dag.test.ts` |
+| UI Layouts (`_layout.tsx`) e Router SPA Turbo Morphing | `bun test packages/synapse/test/layouts-morphing.test.ts` |
 
 ### Experimental
 
@@ -141,6 +147,64 @@ export const sliceTests = {
   }
 };
 ```
+
+## Recursos de Produção & SaaS
+
+SynapseJS combina o invariante $N = 1$ com capacidades de nível corporativo para aplicações SaaS de grande porte:
+
+### 1. Tagged SQL Nativo & Kysely Híbrido
+O `ActionContext` e o `DatabaseClient` suportam template literals com parametrização automática contra injeção SQL e tipagem completa via `db.sql` e `db.sqlOne`:
+```ts
+const customers = await db.sql<Customer>`
+  SELECT * FROM customers 
+  WHERE status = ${status} AND tenant_id = ${session.tenantId}
+`;
+```
+Para projetos que necessitam de um query builder relacional completo, o Kysely pode ser plugado sem inflar o núcleo do framework: registre sua instância no `synapse.config.ts` através de `services: { kysely: new Kysely(...) }` ou utilize o dialect adaptado com `ctx.db`.
+
+### 2. Background Jobs e Worker de Fila SQLite
+Jobs assíncronos e tarefas em segundo plano (e-mails, webhooks de saída, sincronização) são declarados com `defineJob`:
+```ts
+export const sendWelcomeEmailJob = defineJob<EmailPayload>({
+  name: 'send-welcome-email',
+  retryLimit: 3,
+  backoffSeconds: 5,
+  perform: async (payload, ctx) => {
+    await ctx.services.mailer.send(payload.email, 'Bem-vindo!');
+  }
+});
+```
+Disparo com garantia transacional na Action:
+```ts
+await ctx.enqueue(sendWelcomeEmailJob, { email: input.email });
+```
+Processamento contínuo em processo dedicado com atomicidade SQLite WAL + RETURNING:
+```bash
+synapse worker
+```
+
+### 3. Gateway de Webhooks com Raw Body Preservado
+Fatias podem exportar handlers `<Name>Webhook` em `POST /_synapse/webhooks/:domain/:name`. O evento preserva `rawBody: Uint8Array` intacto para validação criptográfica (HMAC) de assinaturas externas como Stripe (`Stripe-Signature`) e GitHub:
+```ts
+export async function stripeWebhook(event: WebhookEvent, ctx: ActionContext) {
+  const sig = event.headers.get('stripe-signature');
+  const stripeEvent = stripe.webhooks.constructEvent(event.bodyText, sig, webhookSecret);
+  return { received: true };
+}
+```
+
+### 4. Multi-tenancy B2B & Prevenção IDOR
+O contexto de sessão propaga `tenantId` (resolvido por cabeçalho `x-tenant-id`, subdomínio ou token assinado). O helper `requireTenant` valida acesso sem exceções:
+```ts
+const auth = requireTenant(session, expectedTenantId);
+if (!auth.ok) return Err(auth.error); // Retorna Err('FORBIDDEN') determinístico
+```
+
+### 5. DAG de Migrações DDL e Ordenação Topológica
+As migrações de `sliceSchema` analisam referências de Foreign Key e ordenam as fatias em um grafo acíclico direcionado (DAG de Kahn), garantindo que tabelas-mãe sejam criadas antes das tabelas dependentes.
+
+### 6. UI Layouts Hierárquicos e Router SPA Turbo Morphing
+Layouts de raiz em `src/slices/_layout.tsx` envolvem páginas SSR sem necessidade de boilerplate. A navegação cliente é acelerada pelo Router Turbo Morphing (`/_synapse/turbo-router.js`), atualizando o DOM `#synapse-root` de forma reativa sem recarregamento completo da página.
 
 ## Isolamento Client / Server
 

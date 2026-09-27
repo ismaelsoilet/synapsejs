@@ -56,6 +56,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run mcp` | stdio JSON-RPC | targets `examples/enterprise-crm` via `--cwd` |
+| `synapse worker` | continuous JSON log | background queue worker processing SQLite `.synapse/queue.sqlite` |
 
 ### Static files, CORS and logs
 
@@ -115,9 +116,12 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 7. `sliceTests` — invariants, as named cases: `{ description, cases: [{ name, run }] }`. `run()` alone
    still works and is reported as a single case. The runner registers each case with `bun:test` from a
    generated wrapper under `.synapse/oracles/`, so slices never import a test library.
-6. `sliceTests` — invariants, as named cases: `{ description, cases: [{ name, run }] }`. `run()` alone
-   still works and is reported as a single case. The runner registers each case with `bun:test` from a
-   generated wrapper under `.synapse/oracles/`, so slices never import a test library.
+8. `<Name>Webhook(event, ctx)` — **optional** endpoint at `POST /_synapse/webhooks/<domain>/<name>`,
+   preserving `event.rawBody: Uint8Array` for HMAC signature validation (e.g. Stripe, GitHub) and parsed JSON.
+9. `defineJob<TPayload>({ name, perform, retryLimit, backoffSeconds })` — **optional** background job contract,
+   enqueued with `ctx.enqueue(job, payload)` and processed continuously by `synapse worker`.
+10. `_layout.tsx` — **optional** root layout at `src/slices/_layout.tsx`, wrapping SSR slice components.
+    Turbo Morphing SPA router (`/_synapse/turbo-router.js`) provides seamless client-side navigation.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to

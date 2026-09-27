@@ -8,6 +8,8 @@
  */
 
 export const ACTION_SUFFIX = 'Action';
+export const JOB_SUFFIX = 'Job';
+export const WEBHOOK_SUFFIX = 'Webhook';
 export const LOADER_SUFFIX = 'Loader';
 export const SCHEMA_SUFFIX = 'Schema';
 export const SLICE_DDL_EXPORT = 'sliceSchema';
@@ -17,7 +19,7 @@ export const SLICE_ORACLE_EXPORT = 'sliceTests';
 export const COMPONENT_SUFFIXES = ['Trigger', 'View', 'Form', 'Component'] as const;
 
 /** Everything the server side of a slice is built from. */
-export const SERVER_ROOT_SUFFIXES = [ACTION_SUFFIX] as const;
+export const SERVER_ROOT_SUFFIXES = [ACTION_SUFFIX, JOB_SUFFIX, WEBHOOK_SUFFIX] as const;
 
 /** Test-only exports, dropped from both runtime bundles. */
 export const TEST_ONLY_EXPORTS = [SLICE_ORACLE_EXPORT] as const;
@@ -32,6 +34,14 @@ export function isLoader(name: string): boolean {
 
 export function isAction(name: string): boolean {
   return name.endsWith(ACTION_SUFFIX);
+}
+
+export function isJob(name: string): boolean {
+  return name.endsWith(JOB_SUFFIX);
+}
+
+export function isWebhook(name: string): boolean {
+  return name.endsWith(WEBHOOK_SUFFIX);
 }
 
 export function isComponent(name: string): boolean {

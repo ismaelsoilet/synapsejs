@@ -34,6 +34,7 @@ export {
   runSliceOracles
 } from './compiler/oracle-runner';
 export { type ScaffoldError, type ScaffoldErrorCode, scaffoldSlice } from './compiler/scaffolder';
+export { orderSlicesByDag, parseTableDependencies } from './compiler/schema-dag';
 export {
   findSliceFiles,
   resolveSlicesDir,
@@ -65,8 +66,8 @@ export {
 // 5. Model Context Protocol (MCP) Server
 export { SynapseMcpServer } from './mcp/server';
 export * from './runtime/discovery-rules';
-
-// 4. Runtime & Zero-Wiring HTTP Server
+// 4. Runtime, Queue & Zero-Wiring HTTP Server
+export { type JobRecord, QueueEngine } from './runtime/queue-engine';
 export {
   type DiscoveredSlice,
   type SliceLoadError,

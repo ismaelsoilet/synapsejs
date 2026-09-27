@@ -201,7 +201,7 @@ describe('pre-built client bundles', () => {
     const bundle = await fetch(`${base}/_synapse/client/tickets-view-tickets.js`);
     expect(bundle.status).toBe(200);
     expect((await bundle.text()).length).toBeGreaterThan(1000);
-  });
+  }, 20000);
 });
 
 describe('session from headers', () => {

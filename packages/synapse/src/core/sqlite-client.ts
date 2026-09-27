@@ -9,7 +9,7 @@
 import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
 import * as fs from 'fs';
 import * as path from 'path';
-import type { DatabaseClient } from './database-client';
+import { compileTaggedSql, type DatabaseClient } from './database-client';
 
 const READ_KEYWORDS = new Set(['SELECT', 'WITH', 'EXPLAIN', 'PRAGMA', 'VALUES']);
 
@@ -26,8 +26,12 @@ function firstKeyword(sql: string): string {
 export class SqliteDatabaseClient implements DatabaseClient {
   private db: Database;
   private statements: Map<string, Statement<unknown, SQLQueryBindings[]>> = new Map();
+  private maxStatements: number;
+  private txLock: Promise<void> = Promise.resolve();
 
-  constructor(filePath?: string) {
+  constructor(filePath?: string, maxStatements = 500) {
+    this.maxStatements = maxStatements;
+
     if (filePath && filePath !== ':memory:') {
       const dir = path.dirname(filePath);
       if (!fs.existsSync(dir)) {
@@ -45,7 +49,17 @@ export class SqliteDatabaseClient implements DatabaseClient {
   private getStatement(sql: string): Statement<unknown, SQLQueryBindings[]> {
     const cached = this.statements.get(sql);
     if (cached) {
+      // Re-insert to refresh LRU eviction order
+      this.statements.delete(sql);
+      this.statements.set(sql, cached);
       return cached;
+    }
+
+    if (this.statements.size >= this.maxStatements) {
+      const oldestKey = this.statements.keys().next().value;
+      if (oldestKey !== undefined) {
+        this.statements.delete(oldestKey);
+      }
     }
 
     const statement = this.db.query<unknown, SQLQueryBindings[]>(sql);
@@ -86,16 +100,48 @@ export class SqliteDatabaseClient implements DatabaseClient {
     return results.length > 0 ? results[0] : null;
   }
 
+  async sql<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T[]> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.query<T>(text, params);
+  }
+
+  async sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
+    const { text, params } = compileTaggedSql(strings, ...values);
+    return this.queryOne<T>(text, params);
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
-    this.db.run('BEGIN TRANSACTION;');
+    let releaseLock: () => void = () => {};
+    const lockAcquired = new Promise<void>((resolve) => {
+      releaseLock = resolve;
+    });
+
+    const previousLock = this.txLock;
+    this.txLock = lockAcquired;
+
+    await previousLock;
+
     try {
-      const result = await operation(this);
-      this.db.run('COMMIT;');
-      return result;
-    } catch (err) {
-      this.db.run('ROLLBACK;');
-      throw err;
+      this.db.run('BEGIN TRANSACTION;');
+      try {
+        const result = await operation(this);
+        this.db.run('COMMIT;');
+        return result;
+      } catch (err) {
+        this.db.run('ROLLBACK;');
+        throw err;
+      }
+    } finally {
+      releaseLock();
     }
+  }
+
+  get statementCacheSize(): number {
+    return this.statements.size;
+  }
+
+  hasCachedStatement(sql: string): boolean {
+    return this.statements.has(sql);
   }
 
   close(): void {

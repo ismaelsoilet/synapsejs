@@ -1,0 +1,62 @@
+/**
+ * SynapseJS - Enterprise & SaaS Configuration Contract
+ *
+ * Provides a declarative configuration entry point via `synapse.config.ts`.
+ */
+
+import * as fs from 'fs';
+import * as path from 'path';
+
+export interface SynapseConfig<TServices = Record<string, unknown>> {
+  /**
+   * Enterprise & SaaS service registry (e.g. mailer, stripe, storage, ai).
+   * Can be an object or an async factory returning the services.
+   */
+  services?: TServices | (() => Promise<TServices>) | (() => TServices);
+
+  /**
+   * Multi-tenancy configuration.
+   */
+  multitenancy?: {
+    strategy?: 'subdomain' | 'header' | 'cookie';
+    headerName?: string;
+  };
+
+  /**
+   * Background queue settings.
+   */
+  queue?: {
+    driver?: 'sqlite' | 'memory' | 'redis';
+    dbPath?: string;
+    concurrency?: number;
+  };
+}
+
+export function defineConfig<TServices = Record<string, unknown>>(
+  config: SynapseConfig<TServices>
+): SynapseConfig<TServices> {
+  return config;
+}
+
+const CONFIG_FILENAMES = ['synapse.config.ts', 'synapse.config.js', 'synapse.config.mjs'];
+
+/**
+ * Discovers and loads `synapse.config.(ts|js|mjs)` from the application root.
+ */
+export async function loadSynapseConfig(appDir: string): Promise<SynapseConfig> {
+  for (const filename of CONFIG_FILENAMES) {
+    const candidate = path.join(appDir, filename);
+    if (fs.existsSync(candidate)) {
+      try {
+        const mod = await import(candidate);
+        const config = mod.default || mod;
+        return typeof config === 'function' ? await config() : config;
+      } catch (err: unknown) {
+        const errMessage = err instanceof Error ? err.message : String(err);
+        console.warn(`[SynapseConfig] Aviso ao carregar ${filename}: ${errMessage}`);
+      }
+    }
+  }
+
+  return {};
+}

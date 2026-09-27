@@ -10,6 +10,7 @@ import { Err, Ok, type Result } from './machine-types';
 
 export interface SessionContext {
   readonly userId?: string;
+  readonly tenantId?: string;
   readonly email?: string;
   readonly roles: string[];
   readonly isAuthenticated: boolean;
@@ -17,15 +18,17 @@ export interface SessionContext {
   readonly metadata?: Record<string, unknown>;
 }
 
-export function AnonymousSession(): SessionContext {
+export function AnonymousSession(tenantId?: string): SessionContext {
   return {
     roles: [],
-    isAuthenticated: false
+    isAuthenticated: false,
+    tenantId
   };
 }
 
 export function createSession(data: {
   userId: string;
+  tenantId?: string;
   email?: string;
   roles?: string[];
   token?: string;
@@ -33,6 +36,7 @@ export function createSession(data: {
 }): SessionContext {
   return {
     userId: data.userId,
+    tenantId: data.tenantId,
     email: data.email,
     roles: data.roles || ['user'],
     isAuthenticated: true,
@@ -61,6 +65,22 @@ export function requireAuth(session?: SessionContext, requiredRoles?: string[]):
     if (!authorized) {
       return Err('FORBIDDEN');
     }
+  }
+
+  return Ok(session);
+}
+
+/**
+ * Asserts that the session is authenticated and associated with the expected tenant ID,
+ * returning Err('FORBIDDEN') to protect against IDOR (Insecure Direct Object Reference) violations.
+ */
+export function requireTenant(session?: SessionContext, expectedTenantId?: string): AuthCheckResult {
+  if (!session?.isAuthenticated) {
+    return Err('UNAUTHORIZED');
+  }
+
+  if (expectedTenantId && session.tenantId && session.tenantId !== expectedTenantId) {
+    return Err('FORBIDDEN');
   }
 
   return Ok(session);

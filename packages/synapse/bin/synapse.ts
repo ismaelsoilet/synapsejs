@@ -6,6 +6,7 @@
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  *
  * Subcommands:
+ *   synapse start      - Start production Bun.serve HTTP server with graceful shutdown (SIGTERM/SIGINT)
  *   synapse dev        - Start Bun.serve HTTP server with Zero-Wiring Router & Auto-Migrations
  *   synapse check      - Run the TypeScript typechecker and print JSON diagnostics
  *   synapse migrate    - Run declarative slice schema migrations on active DB
@@ -52,6 +53,41 @@ async function main() {
       const server = new SynapseServer(root, port);
       await server.discoverSlices();
       await server.start();
+      break;
+    }
+
+    case 'start': {
+      const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
+      const isProduction = process.env.NODE_ENV === 'production';
+
+      if (isProduction && !process.env.SYNAPSE_SESSION_SECRET) {
+        console.warn(
+          '⚠️  [AVISO DE SEGURANÇA] NODE_ENV=production ativo sem SYNAPSE_SESSION_SECRET configurado!\n' +
+            '   Sessões de usuário permanecerão anônimas por padrão.'
+        );
+      }
+
+      const server = new SynapseServer(root, port);
+      await server.discoverSlices();
+      await server.start();
+
+      let shuttingDown = false;
+      const gracefulShutdown = async (signal: string) => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        console.log(`\n🛑 [SynapseJS] Recebido sinal ${signal}, iniciando encerramento gracioso...`);
+        try {
+          await server.stop();
+          console.log('✅ [SynapseJS] Servidor e conexões de persistência encerrados com sucesso.');
+          process.exit(0);
+        } catch (err) {
+          console.error('❌ [SynapseJS] Erro durante encerramento gracioso:', err);
+          process.exit(1);
+        }
+      };
+
+      process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+      process.on('SIGINT', () => gracefulShutdown('SIGINT'));
       break;
     }
 
@@ -460,6 +496,66 @@ async function main() {
       break;
     }
 
+    case 'worker': {
+      const { QueueEngine } = await import('../src/runtime/queue-engine');
+      const { getDatabase } = await import('../src/core/database-factory');
+      const { loadSynapseConfig } = await import('../src/core/config');
+      const { isJob } = await import('../src/runtime/discovery-rules');
+
+      const config = await loadSynapseConfig(root);
+      const queue = new QueueEngine();
+      const db = getDatabase();
+
+      const resolution = resolveSlicesDir(root);
+      if (resolution.ok) {
+        const sliceFiles = findSliceFiles(resolution.value.slicesDir);
+        for (const file of sliceFiles) {
+          try {
+            const mod = await import(path.resolve(file));
+            for (const [exportKey, exportVal] of Object.entries(mod)) {
+              if (
+                isJob(exportKey) &&
+                exportVal &&
+                typeof exportVal === 'object' &&
+                'name' in (exportVal as Record<string, unknown>)
+              ) {
+                queue.registerJob(exportVal as any);
+              }
+            }
+          } catch (err) {
+            console.error(`[Worker] Erro ao carregar jobs da fatia ${file}:`, err);
+          }
+        }
+      }
+
+      console.log('⚡ [SynapseJS Worker] Fila de background jobs ativa e processando...');
+      let running = true;
+      const shutdown = () => {
+        running = false;
+        console.log('\n🛑 [SynapseJS Worker] Encerrando worker...');
+        queue.close();
+        process.exit(0);
+      };
+      process.on('SIGINT', shutdown);
+      process.on('SIGTERM', shutdown);
+
+      while (running) {
+        try {
+          const didWork = await queue.processNextJob({
+            db,
+            services: (config.services as Record<string, unknown>) || {}
+          });
+          if (!didWork) {
+            await new Promise((r) => setTimeout(r, 500));
+          }
+        } catch (err) {
+          console.error('[Worker] Erro no ciclo de execução:', err);
+          await new Promise((r) => setTimeout(r, 1000));
+        }
+      }
+      break;
+    }
+
     case 'info': {
       process.stdout.write(
         `${JSON.stringify(
@@ -585,6 +681,11 @@ async function main() {
                 feature: 'Context surface benchmark (files/tokens an agent must read)',
                 status: 'stable',
                 evidence: 'bun run bench'
+              },
+              {
+                feature: 'Isolated SQLite Queue & Background Jobs (defineJob, exponential backoff)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/jobs-queue.test.ts'
               }
             ],
             commands: [
@@ -597,6 +698,7 @@ async function main() {
               'split',
               'build',
               'test',
+              'worker',
               'new-slice',
               'contract',
               'info'
@@ -612,7 +714,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, split, test, new-slice, contract, info\n`
+        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, split, test, worker, new-slice, contract, info\n`
       );
       process.exit(1);
     }

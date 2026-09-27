@@ -21,11 +21,12 @@ Features are listed with the command that fails when they break. Nothing is docu
 without one — see the repository's `AGENTS.md` for the full contract.
 
 **Stable:** vertical slices (N = 1) · `Result<T, E>` flows · TypeBox JIT contracts · declarative
-`sliceSchema` migrations · embedded SQLite (WAL, prepared-statement cache, CTE-safe) · explicit RBAC
-via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery that never
-reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton
-map · MCP stdio server with 5 tools · slice invariants under `bun:test` with per-invariant reporting ·
-PostgreSQL parity (migrations, DDL and an action round-trip against a real server).
+`sliceSchema` migrations with DAG topological ordering · embedded SQLite (WAL, prepared-statement cache, CTE-safe) ·
+native Tagged SQL (`db.sql` / `db.sqlOne`) · background jobs engine (`defineJob` + `synapse worker`) · webhooks gateway
+with rawBody preservation · B2B multi-tenancy & IDOR prevention (`requireTenant`) · hierarchical UI layouts (`_layout.tsx`)
+and Turbo Morphing router · explicit RBAC via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery
+that never reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton map ·
+MCP stdio server with 5 tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity.
 
 **Roadmap:** incremental diagnostics daemon (`check --fast` was removed — measured slower than the
 full check), production bundling via `Bun.build`, auth/login flow in the example.
@@ -148,22 +149,29 @@ import {
   // Functional error handling
   Result, Ok, Err, isOk, isErr, map, mapErr, unwrapOr, Option, Some, None,
 
-  // Runtime & database
+  // Runtime, Database & Action Context
   SynapseServer, getDatabase, resetDatabaseInstance,
   SqliteDatabaseClient, PostgresDatabaseClient, MockDatabaseClient,
-  type DatabaseClient,
+  type DatabaseClient, compileTaggedSql,
+  type ActionContext, createActionContext,
+  defineConfig, loadSynapseConfig,
+
+  // Background Jobs & Queue Engine
+  defineJob, QueueEngine, type JobRecord, type JobDefinition,
 
   // RPC boundary (used by generated client stubs)
   rpcCall, rpcTransportFailure, type RpcTransportError,
 
-  // Session & RBAC
-  AnonymousSession, createSession, requireAuth, hasRole, hasAnyRole, type SessionContext,
+  // Session, Multi-Tenancy & RBAC
+  AnonymousSession, createSession, requireAuth, requireTenant,
+  hasRole, hasAnyRole, type SessionContext,
 
   // JIT validation
   Type, type Static, type TSchema, Value, fc,
 
   // Compiler & diagnostics
   runSliceMigrations, runMachineVerifications,
+  orderSlicesByDag, parseTableDependencies,
   resolveSlicesDir, findSliceFiles, SLICE_EXTENSION,
   splitSlice, verifySplit, writeSplitArtifacts, artifactDirectory,
   scaffoldSlice, compressRepositoryAST,
