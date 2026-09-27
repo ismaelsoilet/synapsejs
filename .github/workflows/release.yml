@@ -5,6 +5,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   publish:
@@ -37,13 +38,17 @@ jobs:
 
       - name: Tag Must Match The Package Version
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          PKG=$(node -p "require('./packages/synapse/package.json').version")
-          if [ "$TAG" != "$PKG" ]; then
-            echo "tag $TAG != package.json $PKG — abortando"
-            exit 1
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME#v}"
+            PKG=$(node -p "require('./packages/synapse/package.json').version")
+            if [ "$TAG" != "$PKG" ]; then
+              echo "tag $TAG != package.json $PKG — abortando"
+              exit 1
+            fi
+            echo "versão conferida: $PKG"
+          else
+            echo "Execução manual via workflow_dispatch (ref: $GITHUB_REF_NAME)"
           fi
-          echo "versão conferida: $PKG"
 
       - name: Framework Test Suite
         run: bun test packages/synapse/test
