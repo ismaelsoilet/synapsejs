@@ -674,9 +674,7 @@ ${this.renderStylesheets()}
     </div>
 
     <!-- Slice Render Container -->
-    <div id="synapse-root" class="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-2xl backdrop-blur">
-      ${contentHtml}
-    </div>
+    <div id="synapse-root" class="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-2xl backdrop-blur">${contentHtml}</div>
 
     <!-- Props de hidratacao e a entrada de cliente gerada -->
     <script>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
