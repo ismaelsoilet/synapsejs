@@ -196,7 +196,7 @@ describe('synapse new', () => {
     const pkg = JSON.parse(manifest);
 
     expect(pkg.name).toBe('my-app');
-    expect(pkg.dependencies.synapsejs).toBe('^1.1.0');
+    expect(pkg.dependencies['@ismaelsoilet/synapsejs'] || pkg.dependencies.synapsejs).toBe('^1.1.0');
     expect(manifest).not.toContain('workspace:*');
     expect(pkg.engines.bun).toBeDefined();
 

@@ -68,7 +68,7 @@ Inicie uma aplicação completa em produção em menos de 30 segundos:
 
 ```bash
 # 1. Crie uma nova aplicação
-bunx synapsejs new meu-saas-app
+bunx @ismaelsoilet/synapsejs new meu-saas-app
 
 # 2. Acesse a pasta do projeto e instale
 cd meu-saas-app

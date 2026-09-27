@@ -14,6 +14,9 @@
     "baseUrl": ".",
     "paths": {
       "synapsejs": ["./packages/synapse/src/index.ts"],
+      "synapsejs/*": ["./packages/synapse/src/*"],
+      "@ismaelsoilet/synapsejs": ["./packages/synapse/src/index.ts"],
+      "@ismaelsoilet/synapsejs/*": ["./packages/synapse/src/*"],
       "@/*": ["packages/synapse/src/*"]
     },
     "types": [

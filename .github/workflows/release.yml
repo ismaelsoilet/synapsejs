@@ -9,13 +9,14 @@ on:
 jobs:
   publish:
     runs-on: ubuntu-latest
+    environment: github-actions-release
     permissions:
       contents: read
       id-token: write
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v7
+        uses: actions/checkout@v4
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -27,6 +28,9 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
+
+      - name: Upgrade npm for Trusted Publishing OIDC support
+        run: npm install -g npm@latest
 
       - name: Install Dependencies
         run: bun install
@@ -61,3 +65,4 @@ jobs:
         working-directory: packages/synapse
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+

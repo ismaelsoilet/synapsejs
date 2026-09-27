@@ -124,7 +124,7 @@ try {
   fs.writeFileSync(
     importProbe,
     [
-      `import { Ok, Err, Type, resolveSlicesDir, rpcCall, MockDatabaseClient, fc } from 'synapsejs';`,
+      `import { Ok, Err, Type, resolveSlicesDir, rpcCall, MockDatabaseClient, fc } from '@ismaelsoilet/synapsejs';`,
       `console.log(JSON.stringify({ ok: [typeof Ok, typeof Err, typeof Type, typeof resolveSlicesDir, typeof rpcCall, typeof MockDatabaseClient, typeof fc] }));`,
       ''
     ].join('\n'),
@@ -152,7 +152,7 @@ try {
   const appManifestPath = path.join(appDir, 'package.json');
   const appManifest = fs
     .readFileSync(appManifestPath, 'utf-8')
-    .replace(/"synapsejs":\s*"[^"]+"/, `"synapsejs": "file:${tarballPath}"`);
+    .replace(/"(@ismaelsoilet\/)?synapsejs":\s*"[^"]+"/, `"@ismaelsoilet/synapsejs": "file:${tarballPath}"`);
   fs.writeFileSync(appManifestPath, appManifest, 'utf-8');
 
   const appInstall = await run(['bun', 'install'], appDir);

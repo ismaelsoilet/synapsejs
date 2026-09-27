@@ -68,7 +68,7 @@ Get a production-grade SynapseJS application running in less than 30 seconds:
 
 ```bash
 # 1. Scaffold a new application
-bunx synapsejs new my-saas-app
+bunx @ismaelsoilet/synapsejs new my-saas-app
 
 # 2. Enter project directory & install
 cd my-saas-app

@@ -609,7 +609,7 @@ async function main() {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
-              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^1.1.0"');
+              content = content.replace(/"(@ismaelsoilet\/)?synapsejs":\s*"[^"]+"/g, '"@ismaelsoilet/synapsejs": "^1.1.0"');
             }
             fs.writeFileSync(d, content, 'utf-8');
           }

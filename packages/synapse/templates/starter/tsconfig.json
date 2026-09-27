@@ -10,7 +10,11 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "forceConsistentCasingInFileNames": true,
-    "types": ["bun"]
+    "types": ["bun"],
+    "paths": {
+      "synapsejs": ["./node_modules/@ismaelsoilet/synapsejs"],
+      "synapsejs/*": ["./node_modules/@ismaelsoilet/synapsejs/*"]
+    }
   },
   "include": ["src/**/*"],
   "exclude": ["node_modules", ".codebase", ".synapse"]

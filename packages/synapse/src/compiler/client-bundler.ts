@@ -223,7 +223,7 @@ export async function buildClientBundle(
       outdir: buildDir,
       naming: '[name].js',
       minify: production,
-      external: vendorSplit ? ['react', 'react-dom', 'react-dom/client', 'synapsejs/client'] : [],
+      external: vendorSplit ? ['react', 'react-dom', 'react-dom/client', 'synapsejs/client', '@ismaelsoilet/synapsejs/client'] : [],
       define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
     });
   } catch (err) {

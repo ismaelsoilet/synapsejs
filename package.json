@@ -43,6 +43,7 @@
     "lint:fix": "bunx @biomejs/biome@2.5.14 check --write ."
   },
   "dependencies": {
+    "@ismaelsoilet/synapsejs": "workspace:*",
     "synapsejs": "workspace:*",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
