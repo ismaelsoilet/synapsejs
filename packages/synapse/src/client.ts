@@ -10,6 +10,40 @@
  * inside a client artifact fails the build and says so.
  */
 
+// Declarative UI Components
+export {
+  Badge,
+  type BadgeProps,
+  Button,
+  type ButtonProps,
+  Card,
+  type CardProps,
+  type Column,
+  DataForm,
+  type DataFormProps,
+  DataTable,
+  type DataTableProps,
+  type FormField,
+  Pagination,
+  type PaginationProps
+} from './client/components';
+// Context & SSR data isolation
+export {
+  type SynapseContextValue,
+  SynapseProvider,
+  type SynapseProviderProps,
+  useLoaderData,
+  useSession,
+  useSynapseContext
+} from './client/context';
+// Reactive Action & Realtime Subscription Hooks
+export {
+  type UseActionResult,
+  type UseSubscriptionOptions,
+  type UseSubscriptionResult,
+  useAction,
+  useSubscription
+} from './client/hooks';
 export type { Result } from './core/machine-types';
 export { type RpcTransportError, rpcCall, rpcTransportFailure } from './core/rpc-client';
 export type { SessionContext } from './core/session-context';

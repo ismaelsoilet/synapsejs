@@ -6,7 +6,17 @@
  */
 
 import postgres from 'postgres';
-import { compileTaggedSql, type DatabaseClient } from './database-client';
+import {
+  compileDelete,
+  compileInsert,
+  compileSelect,
+  compileTaggedSql,
+  compileUpdate,
+  type DatabaseClient,
+  nestJoinedRow,
+  type QueryOptions,
+  type WhereCondition
+} from './database-client';
 
 export class PostgresDatabaseClient implements DatabaseClient {
   private client: postgres.Sql;
@@ -43,6 +53,46 @@ export class PostgresDatabaseClient implements DatabaseClient {
     return this.queryOne<T>(text, params);
   }
 
+  async findMany<T = unknown>(table: string, options?: QueryOptions): Promise<T[]> {
+    const { sql, params } = compileSelect(table, options);
+    const rows = await this.query<Record<string, unknown>>(sql, params);
+    if (options?.join && options.join.length > 0) {
+      return rows.map((r) => nestJoinedRow<T>(r, options.join));
+    }
+    return rows as unknown as T[];
+  }
+
+  async findOne<T = unknown>(table: string, options?: QueryOptions): Promise<T | null> {
+    const opts = { ...options, limit: 1 };
+    const { sql, params } = compileSelect(table, opts);
+    const row = await this.queryOne<Record<string, unknown>>(sql, params);
+    if (!row) return null;
+    if (options?.join && options.join.length > 0) {
+      return nestJoinedRow<T>(row, options.join);
+    }
+    return row as unknown as T;
+  }
+
+  async insert<T = unknown>(table: string, data: Record<string, unknown>): Promise<T> {
+    const { sql, params } = compileInsert(table, data);
+    const rows = await this.query<T>(sql, params);
+    if (!rows || rows.length === 0) {
+      throw new Error(`Failed to insert into ${table}: no row returned`);
+    }
+    return rows[0];
+  }
+
+  async update<T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition): Promise<T[]> {
+    const { sql, params } = compileUpdate(table, data, where);
+    return this.query<T>(sql, params);
+  }
+
+  async delete(table: string, where: WhereCondition): Promise<number> {
+    const { sql, params } = compileDelete(table, where);
+    const rows = await this.query(sql, params);
+    return rows.length;
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
     const res = await this.client.begin(async (sqlTx) => {
       const txClient: DatabaseClient = {
@@ -63,6 +113,41 @@ export class PostgresDatabaseClient implements DatabaseClient {
           const { text, params } = compileTaggedSql(strings, ...values);
           const res = await sqlTx.unsafe(text, params as any[]);
           return (res[0] ?? null) as U | null;
+        },
+        findMany: async <U = unknown>(table: string, options?: QueryOptions) => {
+          const { sql, params } = compileSelect(table, options);
+          const rows = await txClient.query<Record<string, unknown>>(sql, params);
+          if (options?.join && options.join.length > 0) {
+            return rows.map((r) => nestJoinedRow<U>(r, options.join));
+          }
+          return rows as unknown as U[];
+        },
+        findOne: async <U = unknown>(table: string, options?: QueryOptions) => {
+          const opts = { ...options, limit: 1 };
+          const { sql, params } = compileSelect(table, opts);
+          const row = await txClient.queryOne<Record<string, unknown>>(sql, params);
+          if (!row) return null;
+          if (options?.join && options.join.length > 0) {
+            return nestJoinedRow<U>(row, options.join);
+          }
+          return row as unknown as U;
+        },
+        insert: async <U = unknown>(table: string, data: Record<string, unknown>) => {
+          const { sql, params } = compileInsert(table, data);
+          const rows = await txClient.query<U>(sql, params);
+          if (!rows || rows.length === 0) {
+            throw new Error(`Failed to insert into ${table}: no row returned`);
+          }
+          return rows[0];
+        },
+        update: async <U = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition) => {
+          const { sql, params } = compileUpdate(table, data, where);
+          return txClient.query<U>(sql, params);
+        },
+        delete: async (table: string, where: WhereCondition) => {
+          const { sql, params } = compileDelete(table, where);
+          const rows = await txClient.query(sql, params);
+          return rows.length;
         },
         transaction: async <U>(subOp: (nestedTx: DatabaseClient) => Promise<U>) => {
           return await subOp(txClient);

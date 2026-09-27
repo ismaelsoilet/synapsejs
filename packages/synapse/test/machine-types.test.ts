@@ -116,7 +116,35 @@ describe('public contract (decision recorded in packages/synapse/README.md)', ()
       'compressRepositoryAST',
       'runMachineVerifications',
       'SynapseServer',
-      'SynapseMcpServer'
+      'SynapseMcpServer',
+      // SynapseJS 1.0 Fullstack & Cloud Primitives
+      'DataTable',
+      'DataForm',
+      'Button',
+      'Card',
+      'Badge',
+      'Pagination',
+      'SynapseProvider',
+      'useAction',
+      'useLoaderData',
+      'useSession',
+      'useSynapseContext',
+      'getStorage',
+      'LocalStorageAdapter',
+      'S3StorageAdapter',
+      'PostgresQueueEngine',
+      'defineJob',
+      'createActionContext',
+      'parseFields',
+      'buildStandalone',
+      'scaffoldCrud',
+      'EventHub',
+      'getEventHub',
+      'useSubscription',
+      'checkSchemaDrift',
+      'nestJoinedRow',
+      'generateDatabaseSchemaCatalog',
+      'analyzeImpact'
     ];
 
     const missing = contract.filter((name) => !(name in publicEntry));

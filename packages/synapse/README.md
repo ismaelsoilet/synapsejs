@@ -22,14 +22,18 @@ without one — see the repository's `AGENTS.md` for the full contract.
 
 **Stable:** vertical slices (N = 1) · `Result<T, E>` flows · TypeBox JIT contracts · declarative
 `sliceSchema` migrations with DAG topological ordering · embedded SQLite (WAL, prepared-statement cache, CTE-safe) ·
+isomorphic Query Builder with parameterized relational joins and sub-object nesting (`nestJoinedRow`) · centralized Schema Catalog (`.codebase/db-schema.d.ts`) ·
+declarative UI primitives & hooks (`DataTable`, `DataForm`, `useAction`, `useLoaderData`, `useSubscription`, `SynapseProvider`) ·
+realtime SSE gateway (`EventHub` + `ctx.broadcast`) · schema drift detector (`synapse db-drift`) · AST diff & cross-slice impact analysis (`synapse impact`) ·
+unified Object Storage (Local + S3/R2/MinIO with SigV4 presigned URLs) · distributed PostgreSQL queue (`FOR UPDATE SKIP LOCKED`) ·
 native Tagged SQL (`db.sql` / `db.sqlOne`) · background jobs engine (`defineJob` + `synapse worker`) · webhooks gateway
 with rawBody preservation · B2B multi-tenancy & IDOR prevention (`requireTenant`) · hierarchical UI layouts (`_layout.tsx`)
 and Turbo Morphing router · explicit RBAC via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery
 that never reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton map ·
-MCP stdio server with 5 tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity.
+scaffolder with `--fields` grammar and templates (create, list, update, delete, login, oauth-github, crud) · standalone production bundler (`synapse build --standalone`) ·
+MCP stdio server with 10 tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks.
 
-**Roadmap:** incremental diagnostics daemon (`check --fast` was removed — measured slower than the
-full check), production bundling via `Bun.build`, auth/login flow in the example.
+**Roadmap:** down-migrations / DDL rollbacks, multi-region distributed cache adapters (Redis/Dragonfly).
 
 The repository README carries a measured context-surface benchmark of the same two features
 implemented with and without the slice convention, including what the numbers do not show.
@@ -120,8 +124,8 @@ export const sliceTests = {
 bun run mcp     # JSON-RPC 2.0 over stdio
 ```
 
-Tools: `synapse_get_repo_map`, `synapse_check`, `synapse_run_pbt`, `synapse_scaffold_slice`,
-`synapse_migrate`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
+Tools: `synapse_get_repo_map`, `synapse_get_db_schema`, `synapse_check`, `synapse_split`,
+`synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`, `synapse_contract`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
 instead of reporting an empty success.
 
 Client configuration for an agent host:
@@ -156,8 +160,11 @@ import {
   type ActionContext, createActionContext,
   defineConfig, loadSynapseConfig,
 
-  // Background Jobs & Queue Engine
-  defineJob, QueueEngine, type JobRecord, type JobDefinition,
+  // Object Storage (Local + S3/R2/MinIO with SigV4)
+  type StorageClient, LocalStorageAdapter, S3StorageAdapter,
+
+  // Background Jobs & Queue Engines
+  defineJob, QueueEngine, PostgresQueueEngine, type JobRecord, type JobDefinition,
 
   // RPC boundary (used by generated client stubs)
   rpcCall, rpcTransportFailure, type RpcTransportError,
@@ -169,12 +176,12 @@ import {
   // JIT validation
   Type, type Static, type TSchema, Value, fc,
 
-  // Compiler & diagnostics
+  // Compiler, Scaffolding, Schemas & Diagnostics
   runSliceMigrations, runMachineVerifications,
-  orderSlicesByDag, parseTableDependencies,
+  orderSlicesByDag, parseTableDependencies, generateDbSchemaCatalog,
   resolveSlicesDir, findSliceFiles, SLICE_EXTENSION,
   splitSlice, verifySplit, writeSplitArtifacts, artifactDirectory,
-  scaffoldSlice, compressRepositoryAST,
+  scaffoldSlice, parseFieldsSpec, compressRepositoryAST, buildStandalone,
 
   // MCP
   SynapseMcpServer

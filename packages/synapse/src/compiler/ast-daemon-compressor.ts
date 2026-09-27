@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import { generateDatabaseSchemaCatalog } from './db-schema-generator';
 
 /**
  * Resolves the runtime contract behind a TypeBox schema declaration.
@@ -152,6 +153,14 @@ export function compressRepositoryAST(
   }
 
   fs.writeFileSync(outputFile, manifest, 'utf-8');
+
+  // Also generate the database schema catalog if outputting into .codebase
+  try {
+    const dbSchemaPath = path.join(outDir, 'db-schema.d.ts');
+    generateDatabaseSchemaCatalog(baseDir, dbSchemaPath);
+  } catch {
+    // Non-fatal if project has no slices yet
+  }
 
   if (graphFile) {
     fs.writeFileSync(graphFile, JSON.stringify(architectureGraph, null, 2), 'utf-8');

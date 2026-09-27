@@ -1,0 +1,7 @@
+node_modules
+.git
+.synapse/dist
+.synapse/oracles
+.synapse/synapse.sqlite*
+.synapse/queue.sqlite*
+*.log

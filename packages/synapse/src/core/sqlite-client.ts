@@ -9,7 +9,17 @@
 import { Database, type SQLQueryBindings, type Statement } from 'bun:sqlite';
 import * as fs from 'fs';
 import * as path from 'path';
-import { compileTaggedSql, type DatabaseClient } from './database-client';
+import {
+  compileDelete,
+  compileInsert,
+  compileSelect,
+  compileTaggedSql,
+  compileUpdate,
+  type DatabaseClient,
+  nestJoinedRow,
+  type QueryOptions,
+  type WhereCondition
+} from './database-client';
 
 const READ_KEYWORDS = new Set(['SELECT', 'WITH', 'EXPLAIN', 'PRAGMA', 'VALUES']);
 
@@ -108,6 +118,46 @@ export class SqliteDatabaseClient implements DatabaseClient {
   async sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
     const { text, params } = compileTaggedSql(strings, ...values);
     return this.queryOne<T>(text, params);
+  }
+
+  async findMany<T = unknown>(table: string, options?: QueryOptions): Promise<T[]> {
+    const { sql, params } = compileSelect(table, options);
+    const rows = await this.query<Record<string, unknown>>(sql, params);
+    if (options?.join && options.join.length > 0) {
+      return rows.map((r) => nestJoinedRow<T>(r, options.join));
+    }
+    return rows as unknown as T[];
+  }
+
+  async findOne<T = unknown>(table: string, options?: QueryOptions): Promise<T | null> {
+    const opts = { ...options, limit: 1 };
+    const { sql, params } = compileSelect(table, opts);
+    const row = await this.queryOne<Record<string, unknown>>(sql, params);
+    if (!row) return null;
+    if (options?.join && options.join.length > 0) {
+      return nestJoinedRow<T>(row, options.join);
+    }
+    return row as unknown as T;
+  }
+
+  async insert<T = unknown>(table: string, data: Record<string, unknown>): Promise<T> {
+    const { sql, params } = compileInsert(table, data);
+    const rows = await this.query<T>(sql, params);
+    if (!rows || rows.length === 0) {
+      throw new Error(`Failed to insert into ${table}: no row returned`);
+    }
+    return rows[0];
+  }
+
+  async update<T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition): Promise<T[]> {
+    const { sql, params } = compileUpdate(table, data, where);
+    return this.query<T>(sql, params);
+  }
+
+  async delete(table: string, where: WhereCondition): Promise<number> {
+    const { sql, params } = compileDelete(table, where);
+    const rows = await this.query(sql, params);
+    return rows.length;
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {

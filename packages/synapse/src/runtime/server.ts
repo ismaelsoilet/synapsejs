@@ -12,6 +12,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
+import { SynapseProvider } from '../client/context';
 import {
   buildClientBundle,
   type ClientManifest,
@@ -37,6 +38,7 @@ import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { verifySessionToken } from '../core/session-token';
 import { serializeClientProps } from './client-entry';
 import { isAction, isComponent, isJob, isLoader, isWebhook } from './discovery-rules';
+import { getEventHub } from './event-hub';
 import { QueueEngine } from './queue-engine';
 import { saveUpload } from './uploads';
 
@@ -454,7 +456,7 @@ export class SynapseServer {
     status: number,
     startedAt: number,
     session?: SessionContext,
-    metricType?: 'rpc_success' | 'rpc_error' | 'ssr' | 'static'
+    metricType?: 'rpc_success' | 'rpc_error' | 'ssr' | 'static' | 'sse'
   ): void {
     this.metrics.totalRequests++;
     this.metrics.statusCodes[status] = (this.metrics.statusCodes[status] || 0) + 1;
@@ -856,7 +858,7 @@ ${this.renderStylesheets()}
             {
               status,
               framework: 'SynapseJS',
-              version: '0.6.0',
+              version: '1.0.0',
               uptime: process.uptime(),
               database: dbHealthy ? 'connected' : 'disconnected',
               ...(dbError ? { databaseError: dbError } : {}),
@@ -1048,6 +1050,70 @@ ${this.renderStylesheets()}
           }
         }
 
+        // 4.5. Realtime SSE Gateway (GET /_synapse/sse/:topic*)
+        if (pathname.startsWith('/_synapse/sse/')) {
+          const cors = this.corsHeaders(req);
+
+          if (req.method === 'OPTIONS') {
+            return new Response(null, { status: cors ? 204 : 404, headers: cors ?? undefined });
+          }
+
+          if (req.method !== 'GET') {
+            return new Response('Method Not Allowed', { status: 405, headers: cors ?? undefined });
+          }
+
+          const rawTopic = pathname.replace('/_synapse/sse/', '');
+          const topic = decodeURIComponent(rawTopic);
+
+          if (!topic) {
+            return Response.json({ ok: false, error: 'Tópico de subscrição inválido.' }, { status: 400 });
+          }
+
+          const eventHub = getEventHub();
+          const session = this.sessionFrom(req);
+          let unsubscribe: (() => void) | null = null;
+          let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
+
+          const stream = new ReadableStream({
+            start(controller) {
+              const encoder = new TextEncoder();
+              controller.enqueue(encoder.encode(': connected\n\n'));
+
+              keepAliveTimer = setInterval(() => {
+                try {
+                  controller.enqueue(encoder.encode(': keep-alive\n\n'));
+                } catch {
+                  if (keepAliveTimer) clearInterval(keepAliveTimer);
+                }
+              }, 15000);
+
+              unsubscribe = eventHub.subscribe(topic, (data) => {
+                try {
+                  const eventData = JSON.stringify(data);
+                  controller.enqueue(encoder.encode(`event: message\ndata: ${eventData}\n\n`));
+                } catch (err) {
+                  console.error(`[SSE] Erro ao serializar evento para tópico "${topic}":`, err);
+                }
+              });
+            },
+            cancel() {
+              if (keepAliveTimer) clearInterval(keepAliveTimer);
+              if (unsubscribe) unsubscribe();
+            }
+          });
+
+          this.logRequest(req, pathname, 200, startedAt, session, 'sse');
+
+          const sseHeaders: Record<string, string> = {
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            Connection: 'keep-alive',
+            ...(cors ?? {})
+          };
+
+          return new Response(stream, { headers: sseHeaders });
+        }
+
         // 5. Uploads (o RPC é JSON de propósito; arquivo precisa de outra porta)
         if (pathname.startsWith('/_synapse/files/')) {
           const cors = this.corsHeaders(req);
@@ -1142,9 +1208,10 @@ ${this.renderStylesheets()}
             } else if (slice.componentFn) {
               try {
                 const sliceEl = React.createElement(slice.componentFn, renderProps);
-                const rootEl = this.layoutComponent
+                const treeWithLayout = this.layoutComponent
                   ? React.createElement(this.layoutComponent, { session, url: url.toString() }, sliceEl)
                   : sliceEl;
+                const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
                 contentHtml = renderToString(rootEl);
               } catch (e: any) {
                 const errMessage = e instanceof Error ? e.message : String(e);

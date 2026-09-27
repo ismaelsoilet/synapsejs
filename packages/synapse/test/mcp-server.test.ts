@@ -52,7 +52,7 @@ async function runMcp(
 }
 
 describe('SynapseMcpServer over stdio', () => {
-  it('completes the JSON-RPC handshake and lists its six tools', async () => {
+  it('completes the JSON-RPC handshake and lists its eight tools', async () => {
     const { responses } = await runMcp([
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {} } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
@@ -70,11 +70,15 @@ describe('SynapseMcpServer over stdio', () => {
     const toolNames = list?.result.tools.map((t: { name: string }) => t.name).sort();
     expect(toolNames).toEqual([
       'synapse_check',
+      'synapse_check_db_drift',
       'synapse_contract',
+      'synapse_diff_impact',
+      'synapse_get_db_schema',
       'synapse_get_repo_map',
       'synapse_migrate',
       'synapse_run_pbt',
-      'synapse_scaffold_slice'
+      'synapse_scaffold_slice',
+      'synapse_split'
     ]);
     expect(list?.result.tools.every((t: { description?: string }) => Boolean(t.description))).toBe(true);
   });
@@ -121,19 +125,91 @@ describe('SynapseMcpServer over stdio', () => {
     expect(payload.code).toBe('NO_SLICES_DIR');
   });
 
-  it('scaffolds a slice that resolves against the package entry', async () => {
+  it('returns DB_SCHEMA_MISSING when .codebase/db-schema.d.ts is missing and cannot be generated', async () => {
+    const { responses } = await runMcp([
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'synapse_get_db_schema', arguments: {} } }
+    ]);
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(responses[0].result.isError).toBe(true);
+    expect(payload.code).toBe('DB_SCHEMA_MISSING');
+  });
+
+  it('fails split when no slices directory exists', async () => {
+    const { responses } = await runMcp([
+      { jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'synapse_split', arguments: {} } }
+    ]);
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(responses[0].result.isError).toBe(true);
+    expect(payload.status).toBe('FAIL');
+    expect(payload.code).toBe('NO_SLICES_DIR');
+  });
+
+  it('scaffolds a slice with fields grammar and template', async () => {
     const { responses } = await runMcp([
       {
         jsonrpc: '2.0',
         id: 1,
         method: 'tools/call',
-        params: { name: 'synapse_scaffold_slice', arguments: { domain: 'orders', name: 'process-checkout' } }
+        params: {
+          name: 'synapse_scaffold_slice',
+          arguments: {
+            domain: 'customers',
+            name: 'register-customer',
+            template: 'create',
+            fields: 'name:string,email:string,age:number,status:enum(ACTIVE|PENDING)'
+          }
+        }
       }
     ]);
 
     const payload = JSON.parse(responses[0].result.content[0].text);
     expect(payload.status).toBe('PASS');
-    expect(payload.createdPath).toBe(path.join('src', 'slices', 'orders', 'process-checkout.slice.tsx'));
-    expect(fs.readFileSync(path.join(sandbox, payload.createdPath), 'utf-8')).toContain(`from 'synapsejs'`);
+    const content = fs.readFileSync(path.join(sandbox, payload.createdPath), 'utf-8');
+    expect(content).toContain("status: Type.Union([Type.Literal('ACTIVE'), Type.Literal('PENDING')])");
+    expect(content).toContain('age REAL NOT NULL');
+  });
+
+  it('runs schema drift check tool', async () => {
+    const { responses } = await runMcp([
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'synapse_check_db_drift',
+          arguments: {}
+        }
+      }
+    ]);
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(['PASS', 'DRIFT_DETECTED']).toContain(payload.status);
+    expect(payload.drift).toBeDefined();
+    expect(Array.isArray(payload.drift.missingTables)).toBe(true);
+  });
+
+  it('runs diff impact analysis tool', async () => {
+    const { responses } = await runMcp([
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: {
+          name: 'synapse_diff_impact',
+          arguments: {
+            target: 'customers'
+          }
+        }
+      }
+    ]);
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('PASS');
+    expect(payload.operation).toBe('IMPACT_ANALYSIS');
+    expect(payload.target).toBe('customers');
+    expect(Array.isArray(payload.impactedSlices)).toBe(true);
+    expect(Array.isArray(payload.recommendedCommands)).toBe(true);
   });
 });

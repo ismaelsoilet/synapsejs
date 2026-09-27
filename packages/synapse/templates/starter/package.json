@@ -13,10 +13,13 @@
     "skeleton": "synapse skeleton",
     "test": "synapse test",
     "new-slice": "synapse new-slice",
-    "split": "synapse split"
+    "split": "synapse split",
+    "build": "synapse build",
+    "build:standalone": "synapse build --standalone",
+    "start": "synapse start"
   },
   "dependencies": {
-    "synapsejs": "^0.6.0",
+    "synapsejs": "^1.0.0",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "react": "^19.0.0",

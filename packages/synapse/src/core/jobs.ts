@@ -10,11 +10,13 @@
 
 import type { ActionContext } from './action-context';
 
+export type JobHandlerFn<TPayload = unknown> = (payload: TPayload, ctx: ActionContext) => Promise<void>;
+
 export interface JobDefinition<TPayload = unknown> {
   /** Unique name identifier for the job */
   readonly name: string;
   /** Async execution handler receiving the typed payload and ActionContext */
-  readonly handler: (payload: TPayload, ctx: ActionContext) => Promise<void>;
+  readonly handler: JobHandlerFn<TPayload>;
   /** Maximum retry attempts before marking the job as permanently failed (default: 3) */
   readonly retryLimit?: number;
   /** Initial backoff in seconds for exponential backoff retries (default: 5) */
@@ -23,13 +25,27 @@ export interface JobDefinition<TPayload = unknown> {
   readonly schema?: unknown;
 }
 
+export interface JobOptions<TPayload = unknown> {
+  name: string;
+  handler?: JobHandlerFn<TPayload>;
+  perform?: JobHandlerFn<TPayload>;
+  retryLimit?: number;
+  backoffSeconds?: number;
+  schema?: unknown;
+}
+
 /**
  * Declares a background job definition with type safety.
  */
-export function defineJob<TPayload = unknown>(options: JobDefinition<TPayload>): JobDefinition<TPayload> {
+export function defineJob<TPayload = unknown>(options: JobOptions<TPayload>): JobDefinition<TPayload> {
+  const handler = options.handler || options.perform;
+  if (!handler) {
+    throw new Error(`Job "${options.name}" must specify either a handler or perform function.`);
+  }
+
   return Object.freeze({
     name: options.name,
-    handler: options.handler,
+    handler,
     retryLimit: options.retryLimit ?? 3,
     backoffSeconds: options.backoffSeconds ?? 5,
     schema: options.schema

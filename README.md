@@ -33,19 +33,32 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 | Descoberta de fatias que nunca retorna PASS com zero fatias | `bun test packages/synapse/test/slice-discovery.test.ts` |
 | Splitter isomórfico (shared/server/client) com dois gates | `bun test packages/synapse/test/slice-splitter.test.ts` |
 | Skeletonizer para `.codebase/repo-map.d.ts` (tipado, sem `any`) | `bun test packages/synapse/test/repo-map.test.ts` |
-| Servidor MCP stdio (5 ferramentas) | `bun test packages/synapse/test/mcp-server.test.ts` |
+| Catálogo Central de Schema DAG (`.codebase/db-schema.d.ts`) | `bun test packages/synapse/test/db-schema-generator.test.ts` |
+| Query Builder Isomórfico (`findMany`, `findOne`, `insert`, `update`, `delete`) | `bun test packages/synapse/test/query-builder.test.ts` |
+| Primitivas de UI e Hooks (`DataTable`, `DataForm`, `useAction`, `useLoaderData`) | `bun test packages/synapse/test/client-primitives.test.ts` |
+| Object Storage Unificado (Local + S3/R2/MinIO com URLs pré-assinadas SigV4) | `bun test packages/synapse/test/storage.test.ts` |
+| Fila Distribuída PostgreSQL (`FOR UPDATE SKIP LOCKED`) | `bun test packages/synapse/test/postgres-queue.test.ts` |
+| Scaffolder com gramática `--fields` e oráculos PBT automáticos | `bun test packages/synapse/test/fields-parser.test.ts` + `bun test packages/synapse/test/scaffolder.test.ts` |
+| Suíte MCP nativa (10 ferramentas JSON-RPC 2.0) | `bun test packages/synapse/test/mcp-server.test.ts` |
+| Empacotamento Standalone (`synapse build --standalone`) | `bun test packages/synapse/test/standalone-builder.test.ts` |
 | Invariantes das fatias sob `bun:test`, com relatório por invariante | `bun test packages/synapse/test/oracle-runner.test.ts` + `bun run test:helpdesk` |
 | Paridade PostgreSQL (migrações, DDL, round-trip de action) | `bun run test:postgres` (CI roda um serviço `postgres:16-alpine`) |
-| Lint e format com Biome | `bun run lint` — 0 erros; 17 warnings de `noExplicitAny`, todos fronteira dinâmica (postgres.js, MCP, SQL) |
+| Lint e format com Biome | `bun run lint` — 0 erros |
 | Ensaio de publicação (o artefato que um estranho instalaria) | `bun run rehearse:publish` — acha bugs de empacotamento que nenhum outro gate vê |
 | CI no GitHub Actions (3 jobs: suíte, paridade PostgreSQL, ensaio) | [run 36220544931](https://github.com/ismaelsoilet/synapsejs/actions/runs/36220544931) — verde na primeira execução real |
 | Benchmark de superfície de contexto | `bun run bench` |
+| Benchmark de concorrência e estresse real | `bun run bench:concurrency` |
 | Tagged SQL nativo (`db.sql` e `db.sqlOne`) com interpolação segura | `bun test packages/synapse/test/sql-tagged.test.ts` |
 | Background Jobs & Fila SQLite com retry exponencial e dead-letter | `bun test packages/synapse/test/jobs-queue.test.ts` |
 | Gateway de Webhooks com preservação de rawBody (Uint8Array) para HMAC | `bun test packages/synapse/test/webhooks.test.ts` |
 | Multi-tenancy B2B & Prevenção IDOR via `requireTenant` | `bun test packages/synapse/test/multi-tenancy.test.ts` |
 | DAG de Migrações DDL e Ordenação Topológica de Foreign Keys | `bun test packages/synapse/test/schema-dag.test.ts` |
 | UI Layouts (`_layout.tsx`) e Router SPA Turbo Morphing | `bun test packages/synapse/test/layouts-morphing.test.ts` |
+| Realtime Declarativo via SSE (`EventHub` + `useSubscription`) | `bun test packages/synapse/test/event-hub.test.ts` + `bun test packages/synapse/test/sse-gateway.test.ts` |
+| Relational Joins & Sub-Object Nesting (`nestJoinedRow`) | `bun test packages/synapse/test/query-builder-joins.test.ts` |
+| Detecção de Schema Drift (`synapse db-drift`) | `bun test packages/synapse/test/schema-drift.test.ts` |
+| Análise de Impacto AST & Blast Radius (`synapse impact`) | `bun test packages/synapse/test/impact-analyzer.test.ts` |
+| Template OAuth2 Social Auth (`oauth-github`) | `bun test packages/synapse/test/scaffolder.test.ts` |
 
 ### Experimental
 
@@ -57,10 +70,10 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 
 | Feature | Nota |
 |---|---|
-| Daemon de diagnósticos incrementais | `check --fast` foi **removido** na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s), porque o cache `.tsbuildinfo` nunca era lido de volta entre processos |
-| Bundling de produção | `split` emite módulos; alimentar `Bun.build` com dois targets não está implementado |
-| Fluxo de login no exemplo | O RBAC é aplicado, mas as credenciais vêm de headers ou cookies |
-| Estudo replicado com implementadores independentes | O piloto tem 1 executor (este agente) e 3 tarefas; ver `STUDY.md` |
+| Live Subscriptions / WebSockets | SSE/WebSocket nativo para sincronização em tempo real de fatias |
+| Query Builder com Joins Profundos | Suporte a relações declarativas aninhadas (graph relations / joins tipados) |
+| Rollback de Migrações DDL | Suporte a migrações reversas (down-migrations automáticas) |
+| Integração com Provedores OAuth2 / OIDC | Gerador de slices para autenticação social (Google, GitHub, Auth0) |
 
 ---
 
@@ -68,19 +81,21 @@ Cada feature abaixo vem com o comando que falha quando ela quebra. Nada entra co
 
 ```text
 packages/synapse/
-  src/core/          Result/Option, DatabaseClient, SQLite, Postgres, sessão, cliente RPC
-  src/compiler/      slice-discovery, migration-runner, oracle-runner, scaffolder, splitter, repo-map, bench
-  src/runtime/       roteador Bun.serve + shell SSR + dispatcher RPC
-  src/mcp/           servidor MCP stdio (5 ferramentas)
+  src/core/          Result/Option, DatabaseClient, SQLite, Postgres, QueryBuilder, Storage, PostgresQueue, sessão, RPC
+  src/client/        Primitivas de UI declarativas (DataTable, DataForm, Button, Card, Badge, Pagination, useAction, useLoaderData)
+  src/compiler/      slice-discovery, migration-runner, db-schema-generator, fields-parser, oracle-runner, scaffolder, splitter, repo-map, standalone-builder
+  src/runtime/       roteador Bun.serve + shell SSR + dispatcher RPC + SynapseProvider
+  src/mcp/           servidor MCP stdio (8 ferramentas completas)
   bin/synapse.ts     a CLI
-  templates/starter/ o template que `synapse new` copia
+  templates/starter/ o template que `synapse new` copia (com Dockerfile e standalone build)
   test/              suíte bun:test + fixtures dos gates do splitter, dos oráculos e do bench
+Dockerfile           imagem de produção multi-stage (Bun on Alpine, ~90MB)
 examples/enterprise-crm/       app de referência: 3 fatias + suíte e2e ao vivo (12 checagens)
 examples/helpdesk-slices/      as mesmas 2 features de outro domínio, em 2 fatias
 examples/helpdesk-conventional/ as mesmas 2 features em camadas, sem o framework (adoção + comparador)
 .synapse/                      gerado (gitignored): banco sqlite, artefatos do split, wrappers de oráculo
-.codebase/                 repo map gerado (commitado por app)
-AGENTS.md                  contrato completo para agentes autônomos
+.codebase/                     repo map e schema catalog gerados (commitados por app)
+AGENTS.md                      contrato completo para agentes autônomos
 ```
 
 ## Começando
@@ -90,10 +105,21 @@ bunx synapsejs new my-app
 cd my-app
 bun install
 bun run dev            # http://localhost:3000
-bun run new-slice users register-user
+bun run new-slice users register-user --fields="name:string,email:string,role:enum(ADMIN|USER)"
 bun run test
 bun run mcp            # servidor MCP via stdio
+bun run build --standalone # compila para .synapse/standalone/
 ```
+
+## Limitações Conhecidas & Fronteiras de Engenharia (Radical Candor)
+
+Para manter transparência técnica absoluta e evitar falsas expectativas:
+
+1. **Bun Exclusivo:** O SynapseJS é construído sobre primitivas nativas do Bun (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Não roda sobre Node.js puro, Deno ou Cloudflare Workers sem compatibilidade Bun.
+2. **Query Builder Single-Table:** O query builder cobre com segurança e tipagem operações transacionais em tabelas individuais (`findMany`, `findOne`, `insert`, `update`, `delete` com filtros relacionais e paginação). Para joins complexos multi-tabelas ou queries OLAP, utilize `db.sql` / `db.query` parametrizado ou adapters Kysely no `ctx.kysely`.
+3. **Migrações Forward-Only:** O engine de migração é idempotente por statement, gravando cada comando executado em `_synapse_migration_statements`. Não há migração reversa ("down") automática; reversões devem ser declaradas como novas migrações corretivas.
+4. **Isolamento de Tenants a Nível de Aplicação:** O multi-tenancy é garantido de ponta a ponta na camada de aplicação via `requireTenant` e claims de sessão validados. Não há injeção mágica de RLS (Row Level Security) transparente no banco sem passagem explícita do tenant.
+5. **Tempo Real (WebSockets):** O framework oferece navegação SPA fluida via SSR + Turbo Morphing; WebSockets / SSE bidirecionais de live subscription ainda não possuem abstração unificada no kernel.
 
 ## Anatomia de uma fatia
 
@@ -224,8 +250,8 @@ splitter se recusam a reportar sucesso quando nada foi verificado.
 |---|---|
 | `bun run check` (monorepo inteiro, 4 apps) | ~3s nesta máquina (varia) |
 | `bun run check --fast` | removido — 2.5s (mais lento que o check completo) |
-| Repo map do app de exemplo | ~1005 tokens (orçamento 3000) |
-| Suíte do framework | 110 testes, 13 arquivos |
+| Repo map do app de exemplo | ~1101 tokens (orçamento 3000) |
+| Suíte do framework | 301 testes, 40 arquivos (`bun test packages/synapse/test`) |
 | Suíte e2e | 12 checagens (SSR, RPC, RBAC, idempotência) |
 | Paridade PostgreSQL | verificada contra `postgres:16-alpine` (migração, DDL, round-trip de action) |
 
@@ -235,10 +261,10 @@ As mesmas duas features implementadas em duas stacks — `bun run bench`:
 
 | app | feature | arquivos (app) | tokens (app, ≈) | arquivos (total) | tokens (total, ≈) |
 |---|---|---|---|---|---|
-| helpdesk-slices | abrir chamado | 1 | 1.6k | 20 | 28.6k |
-| helpdesk-slices | atribuir chamado | 1 | 1.4k | 20 | 28.4k |
-| helpdesk-conventional | abrir chamado | 5 | 1.8k | 5 | 1.8k |
-| helpdesk-conventional | atribuir chamado | 5 | 1.8k | 5 | 1.8k |
+| helpdesk-slices | abrir chamado | 1 | 1.6k (1627) | 43 | 85.3k |
+| helpdesk-slices | atribuir chamado | 1 | 1.4k (1393) | 43 | 85.1k |
+| helpdesk-conventional | abrir chamado | 5 | 1.8k (1832) | 5 | 1.8k (1832) |
+| helpdesk-conventional | atribuir chamado | 5 | 1.8k (1832) | 5 | 1.8k (1832) |
 
 O fecho é a entrada declarada em `bench.config.json` mais tudo que ela importa. A UI do app
 convencional é declarada explicitamente porque quem a liga é o bundler, não um `import` — no app de

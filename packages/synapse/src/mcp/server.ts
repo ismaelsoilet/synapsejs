@@ -1,7 +1,8 @@
 /**
  * SynapseJS - Native Model Context Protocol (MCP) Server
  *
- * Exposes SynapseJS machine capabilities (repo-map, diagnostics, PBT, migrations, scaffolding)
+ * Exposes SynapseJS machine capabilities (repo-map, db-schema, diagnostics,
+ * split verification, PBT, migrations, scaffolding, authoring contract)
  * directly to AI Agents (Cursor, Claude Code, Windsurf, Antigravity) via JSON-RPC 2.0 over stdio.
  */
 
@@ -10,14 +11,19 @@ import * as path from 'path';
 import * as readline from 'readline';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
 import { machineContract } from '../compiler/contract';
+import { analyzeImpact } from '../compiler/impact-analyzer';
 import { runSliceMigrations } from '../compiler/migration-runner';
 import { runSliceOracles } from '../compiler/oracle-runner';
-import { scaffoldSlice } from '../compiler/scaffolder';
+import { type SliceTemplate, scaffoldCrud, scaffoldSlice } from '../compiler/scaffolder';
+import { checkSchemaDrift } from '../compiler/schema-drift';
+import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
+import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../compiler/slice-splitter';
 
 interface JsonRpcRequest {
   jsonrpc: string;
   id?: string | number | null;
   method: string;
+  // biome-ignore lint/suspicious/noExplicitAny: JSON-RPC parameter boundary
   params?: any;
 }
 
@@ -45,6 +51,7 @@ export class SynapseMcpServer {
         if (response) {
           process.stdout.write(`${JSON.stringify(response)}\n`);
         }
+        // biome-ignore lint/suspicious/noExplicitAny: error message catch
       } catch (err: any) {
         process.stdout.write(
           `${JSON.stringify({
@@ -57,7 +64,8 @@ export class SynapseMcpServer {
     });
   }
 
-  private async handleRequest(req: JsonRpcRequest): Promise<any> {
+  // biome-ignore lint/suspicious/noExplicitAny: JSON-RPC response boundary
+  public async handleRequest(req: JsonRpcRequest): Promise<any> {
     const { id, method, params } = req;
 
     switch (method) {
@@ -72,7 +80,7 @@ export class SynapseMcpServer {
             },
             serverInfo: {
               name: 'synapse-mcp',
-              version: '0.6.0'
+              version: '1.0.0'
             }
           }
         };
@@ -95,6 +103,12 @@ export class SynapseMcpServer {
                 inputSchema: { type: 'object', properties: {} }
               },
               {
+                name: 'synapse_get_db_schema',
+                description:
+                  'Get the centralized database schema catalog (.codebase/db-schema.d.ts) for AI context and type-safe relational queries',
+                inputSchema: { type: 'object', properties: {} }
+              },
+              {
                 name: 'synapse_check',
                 description:
                   'Run machine-centric compiler diagnostics, returning exact JSON coordinates (file, line, col, message)',
@@ -106,6 +120,17 @@ export class SynapseMcpServer {
                 }
               },
               {
+                name: 'synapse_split',
+                description:
+                  'Run slice splitter and leak verification gates to enforce server/client isolation and zero leakage',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    targetSlice: { type: 'string', description: 'Optional specific slice name to split' }
+                  }
+                }
+              },
+              {
                 name: 'synapse_run_pbt',
                 description: 'Execute Fast-Check Property-Based Testing (PBT) invariant test suite across all slices',
                 inputSchema: { type: 'object', properties: {} }
@@ -113,13 +138,23 @@ export class SynapseMcpServer {
               {
                 name: 'synapse_scaffold_slice',
                 description:
-                  'Scaffold a new fullstack atomic vertical slice with TypeBox, Result, Action, React UI and PBT',
+                  'Scaffold a new fullstack atomic vertical slice with TypeBox, Result, Action, React UI, and PBT oracles',
                 inputSchema: {
                   type: 'object',
                   required: ['domain', 'name'],
                   properties: {
                     domain: { type: 'string', description: 'Domain name (e.g. billing, customers, orders)' },
-                    name: { type: 'string', description: 'Slice name in kebab-case (e.g. cancel-subscription)' }
+                    name: { type: 'string', description: 'Slice name in kebab-case (e.g. cancel-subscription)' },
+                    template: {
+                      type: 'string',
+                      enum: ['create', 'list', 'update', 'delete', 'login', 'oauth-github', 'crud'],
+                      description: 'Optional slice template shape (default: create)'
+                    },
+                    fields: {
+                      type: 'string',
+                      description:
+                        'Optional fields grammar, e.g. "name:string,email:string,status:enum(ACTIVE|INACTIVE),price:number"'
+                    }
                   }
                 }
               },
@@ -134,6 +169,27 @@ export class SynapseMcpServer {
                 description:
                   'Auto-discover and apply sliceSchema DDL declarations across slices into the active database',
                 inputSchema: { type: 'object', properties: {} }
+              },
+              {
+                name: 'synapse_check_db_drift',
+                description:
+                  'Inspects live database catalog against sliceSchema DDL contracts, identifying missing tables, missing columns, and orphan tables',
+                inputSchema: { type: 'object', properties: {} }
+              },
+              {
+                name: 'synapse_diff_impact',
+                description:
+                  'Analyzes cross-slice dependencies (Foreign Keys, shared module imports, and table references) to report all slices impacted by a file or table change',
+                inputSchema: {
+                  type: 'object',
+                  required: ['target'],
+                  properties: {
+                    target: {
+                      type: 'string',
+                      description: 'Slice file path, slice name, shared module path, or table name'
+                    }
+                  }
+                }
               }
             ]
           }
@@ -181,9 +237,123 @@ export class SynapseMcpServer {
               null,
               2
             );
+          } else if (toolName === 'synapse_get_db_schema') {
+            const schemaPath = path.join(this.root, '.codebase/db-schema.d.ts');
+
+            if (!fs.existsSync(schemaPath)) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          code: 'DB_SCHEMA_MISSING',
+                          message: `db-schema.d.ts não encontrado. Gere com 'synapse skeleton'.`,
+                          schemaPath
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
+            const content = fs.readFileSync(schemaPath, 'utf-8');
+            contentText = JSON.stringify(
+              { status: 'PASS', schemaPath: path.relative(this.root, schemaPath), schema: content },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_check') {
             const report = runMachineVerifications(this.root, args.targetFile);
             contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_split') {
+            const resolution = resolveSlicesDir(this.root);
+            if (!resolution.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          operation: 'SLICE_SPLIT',
+                          code: resolution.error.code,
+                          message: resolution.error.message,
+                          candidates: resolution.error.candidates
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
+            let sliceFiles = findSliceFiles(resolution.value.slicesDir);
+            if (args.targetSlice) {
+              sliceFiles = sliceFiles.filter((f) => path.basename(f, '.slice.tsx') === args.targetSlice);
+            }
+
+            const slices = [];
+            let failed = false;
+
+            for (const file of sliceFiles) {
+              const split = splitSlice(file, this.root);
+
+              if (!split.ok) {
+                failed = true;
+                slices.push({
+                  slice: path.basename(file, '.slice.tsx'),
+                  status: 'FAIL',
+                  code: split.error.code,
+                  message: split.error.message
+                });
+                continue;
+              }
+
+              const outDir = artifactDirectory(this.root, split.value.sliceName);
+              const written = writeSplitArtifacts(split.value, outDir);
+              const verification = verifySplit(split.value, outDir);
+
+              if (verification.status === 'FAIL') {
+                failed = true;
+              }
+
+              slices.push({
+                slice: split.value.sliceName,
+                status: verification.status,
+                outDir: path.relative(this.root, outDir),
+                artifacts: written.map((target) => path.relative(this.root, target)),
+                diagnostics: verification.diagnostics,
+                leaks: verification.leaks
+              });
+            }
+
+            const splitStatus = failed || slices.length === 0 ? 'FAIL' : 'PASS';
+            contentText = JSON.stringify(
+              {
+                status: splitStatus,
+                operation: 'SLICE_SPLIT',
+                slicesDir: path.relative(this.root, resolution.value.slicesDir),
+                totalProcessed: slices.length,
+                slices
+              },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_run_pbt') {
             const report = await runSliceOracles(this.root);
 
@@ -203,9 +373,95 @@ export class SynapseMcpServer {
 
             contentText = JSON.stringify(report, null, 2);
           } else if (toolName === 'synapse_scaffold_slice') {
-            const created = scaffoldSlice(args.domain, args.name, this.root);
+            if (args.template === 'crud') {
+              const crud = scaffoldCrud(args.domain, args.name, this.root, args.fields);
 
-            if (!created.ok) {
+              if (!crud.ok) {
+                return {
+                  jsonrpc: '2.0',
+                  id,
+                  result: {
+                    isError: true,
+                    content: [
+                      {
+                        type: 'text',
+                        text: JSON.stringify(
+                          {
+                            status: 'FAIL',
+                            code: crud.error.code,
+                            message: crud.error.message,
+                            candidates: crud.error.candidates
+                          },
+                          null,
+                          2
+                        )
+                      }
+                    ]
+                  }
+                };
+              }
+
+              contentText = JSON.stringify(
+                {
+                  status: 'PASS',
+                  operation: 'SCAFFOLD_CRUD',
+                  domain: args.domain,
+                  resource: args.name,
+                  createdPaths: crud.value.map((file) => path.relative(this.root, file))
+                },
+                null,
+                2
+              );
+            } else {
+              const created = scaffoldSlice(
+                args.domain,
+                args.name,
+                this.root,
+                (args.template || 'create') as SliceTemplate,
+                args.fields
+              );
+
+              if (!created.ok) {
+                return {
+                  jsonrpc: '2.0',
+                  id,
+                  result: {
+                    isError: true,
+                    content: [
+                      {
+                        type: 'text',
+                        text: JSON.stringify(
+                          {
+                            status: 'FAIL',
+                            code: created.error.code,
+                            message: created.error.message,
+                            candidates: created.error.candidates
+                          },
+                          null,
+                          2
+                        )
+                      }
+                    ]
+                  }
+                };
+              }
+
+              contentText = JSON.stringify(
+                { status: 'PASS', createdPath: path.relative(this.root, created.value) },
+                null,
+                2
+              );
+            }
+          } else if (toolName === 'synapse_contract') {
+            contentText = JSON.stringify(machineContract(), null, 2);
+          } else if (toolName === 'synapse_migrate') {
+            const report = await runSliceMigrations(this.root);
+            contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_check_db_drift') {
+            const report = await checkSchemaDrift(this.root);
+            contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_diff_impact') {
+            if (!args.target) {
               return {
                 jsonrpc: '2.0',
                 id,
@@ -217,9 +473,8 @@ export class SynapseMcpServer {
                       text: JSON.stringify(
                         {
                           status: 'FAIL',
-                          code: created.error.code,
-                          message: created.error.message,
-                          candidates: created.error.candidates
+                          code: 'MISSING_TARGET',
+                          message: 'Argumento target obrigatório'
                         },
                         null,
                         2
@@ -229,16 +484,7 @@ export class SynapseMcpServer {
                 }
               };
             }
-
-            contentText = JSON.stringify(
-              { status: 'PASS', createdPath: path.relative(this.root, created.value) },
-              null,
-              2
-            );
-          } else if (toolName === 'synapse_contract') {
-            contentText = JSON.stringify(machineContract(), null, 2);
-          } else if (toolName === 'synapse_migrate') {
-            const report = await runSliceMigrations(this.root);
+            const report = analyzeImpact(args.target, this.root);
             contentText = JSON.stringify(report, null, 2);
           } else {
             return {
@@ -260,13 +506,19 @@ export class SynapseMcpServer {
               ]
             }
           };
-        } catch (err: any) {
+        } catch (err: unknown) {
+          const message = err instanceof Error ? err.message : String(err);
           return {
             jsonrpc: '2.0',
             id,
             result: {
               isError: true,
-              content: [{ type: 'text', text: `Tool error: ${err.message}` }]
+              content: [
+                {
+                  type: 'text',
+                  text: JSON.stringify({ status: 'ERROR', error: message }, null, 2)
+                }
+              ]
             }
           };
         }
@@ -281,9 +533,4 @@ export class SynapseMcpServer {
       }
     }
   }
-}
-
-if (import.meta.main) {
-  const server = new SynapseMcpServer();
-  server.start();
 }

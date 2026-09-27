@@ -8,8 +8,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Err, Ok, type Result } from '../core/machine-types';
+import { generateFormFieldsCode, generateSqlColumns, generateTypeBoxProperties, parseFields } from './fields-parser';
 import { resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
 import { generateOperationTemplate, type SliceTemplate } from './slice-templates';
+
+export type { SliceTemplate };
 
 export function toPascalCase(str: string): string {
   return str
@@ -23,7 +26,162 @@ export function toCamelCase(str: string): string {
   return pascal.charAt(0).toLowerCase() + pascal.slice(1);
 }
 
-export function generateSliceTemplate(domain: string, sliceName: string): string {
+export function generateFieldsSliceTemplate(domain: string, sliceName: string, fieldsSpec: string): string {
+  const pascal = toPascalCase(sliceName);
+  const camel = toCamelCase(sliceName);
+  const tableName = domain.replace(/[^a-zA-Z0-9_]/g, '_');
+  const inputSchemaName = `${pascal}InputSchema`;
+  const inputTypeName = `${pascal}Input`;
+  const outputTypeName = `${pascal}Output`;
+  const actionName = `${camel}Action`;
+  const triggerName = `${pascal}Trigger`;
+
+  const fields = parseFields(fieldsSpec);
+  const tbProps = generateTypeBoxProperties(fields);
+  const sqlCols = generateSqlColumns(fields);
+  const formFields = generateFormFieldsCode(fields);
+
+  return `import React, { useState } from 'react';
+import { Type, Static } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import * as fc from 'fast-check';
+import {
+  type DatabaseClient,
+  Result,
+  Ok,
+  Err,
+  MockDatabaseClient,
+  type SessionContext,
+  DataForm,
+  Card
+} from 'synapsejs';
+
+// ============================================================================
+// 1. CONTRATO DE ENTRADA JIT (TypeBox)
+// ============================================================================
+export const ${inputSchemaName} = Type.Object({
+${tbProps}
+});
+export type ${inputTypeName} = Static<typeof ${inputSchemaName}>;
+
+// DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
+export const sliceSchema = \`
+  CREATE TABLE IF NOT EXISTS ${tableName} (
+    id TEXT PRIMARY KEY,
+${sqlCols},
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+\`;
+
+// ============================================================================
+// 2. MODELAGEM ESTRITA DO DOMÍNIO (Result<T, E>)
+// ============================================================================
+export type ${outputTypeName} = Result<
+  { id: string } & ${inputTypeName},
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'PERSISTENCE_FAILED'
+>;
+
+// ============================================================================
+// 3. EXECUÇÃO DE SERVIDOR PURA (Server Action)
+// ============================================================================
+export async function ${actionName}(
+  payload: unknown,
+  db?: DatabaseClient,
+  session?: SessionContext
+): Promise<${outputTypeName}> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
+  if (!Value.Check(${inputSchemaName}, payload)) {
+    return Err('INVALID_SCHEMA');
+  }
+  const input = payload as ${inputTypeName};
+
+  const generatedId = crypto.randomUUID();
+
+  try {
+    const inserted = await db.insert<{ id: string } & ${inputTypeName}>('${tableName}', {
+      id: generatedId,
+      ...input
+    });
+    return Ok(inserted);
+  } catch (_err) {
+    return Err('PERSISTENCE_FAILED');
+  }
+}
+
+// ============================================================================
+// 4. VISUALIZAÇÃO INTERATIVA DA UI (React)
+// ============================================================================
+export interface ${pascal}TriggerProps {
+  onSubmitAction?: (payload: unknown) => Promise<${outputTypeName}>;
+}
+
+const FORM_FIELDS = ${formFields};
+
+export function ${triggerName}({ onSubmitAction }: ${pascal}TriggerProps) {
+  const [feedback, setFeedback] = useState<string | null>(null);
+
+  const handleSubmit = async (formData: Record<string, unknown>) => {
+    if (!onSubmitAction) return;
+    const res = await onSubmitAction(formData);
+    if (res.ok) {
+      setFeedback('Registro criado com sucesso! ID: ' + res.value.id);
+    } else {
+      setFeedback('Erro: ' + res.error);
+    }
+  };
+
+  return (
+    <Card title="${pascal}" subtitle="Gerenciado por SynapseJS">
+      <DataForm
+        fields={FORM_FIELDS}
+        onSubmit={handleSubmit}
+        submitLabel="Salvar ${pascal}"
+      />
+      {feedback && (
+        <div className="mt-4 p-3 rounded font-mono text-xs bg-slate-800 text-slate-300">
+          {feedback}
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// ============================================================================
+// 5. ORÁCULO DE AUTO-VERIFICAÇÃO PBT (Property-Based Testing)
+// ============================================================================
+export const sliceTests = {
+  description: 'Invariantes de ${sliceName}',
+  cases: [
+    {
+      name: 'payload inválido retorna INVALID_SCHEMA',
+      run: async () => {
+        const result = await ${actionName}({ invalidField: 123 }, new MockDatabaseClient());
+        if (result.ok || result.error !== 'INVALID_SCHEMA') {
+          throw new Error('esperava INVALID_SCHEMA');
+        }
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const result = await ${actionName}({});
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error('esperava NO_DATABASE');
+        }
+      }
+    }
+  ]
+};
+`;
+}
+
+export function generateSliceTemplate(domain: string, sliceName: string, fieldsSpec?: string): string {
+  if (fieldsSpec?.trim()) {
+    return generateFieldsSliceTemplate(domain, sliceName, fieldsSpec);
+  }
   const pascal = toPascalCase(sliceName);
   const camel = toCamelCase(sliceName);
   const tableName = domain.replace(/[^a-zA-Z0-9_]/g, '_');
@@ -288,7 +446,8 @@ export function scaffoldSlice(
   domain: string,
   sliceName: string,
   baseDir: string = process.cwd(),
-  template: SliceTemplate = 'create'
+  template: SliceTemplate = 'create',
+  fieldsSpec?: string
 ): Result<string, ScaffoldError> {
   const target = resolveScaffoldTarget(baseDir);
 
@@ -311,8 +470,8 @@ export function scaffoldSlice(
     fs.mkdirSync(targetDir, { recursive: true });
     const content =
       template === 'create'
-        ? generateSliceTemplate(domain, sliceName)
-        : generateOperationTemplate(domain, sliceName, template);
+        ? generateSliceTemplate(domain, sliceName, fieldsSpec)
+        : generateOperationTemplate(domain, sliceName, template, fieldsSpec);
     fs.writeFileSync(targetFile, content, 'utf-8');
   } catch (err) {
     return Err({
@@ -332,12 +491,13 @@ export function scaffoldSlice(
 export function scaffoldCrud(
   domain: string,
   resource: string,
-  baseDir: string = process.cwd()
+  baseDir: string = process.cwd(),
+  fieldsSpec?: string
 ): Result<string[], ScaffoldError> {
   const created: string[] = [];
 
   for (const template of ['create', 'list', 'update', 'delete'] as const) {
-    const result = scaffoldSlice(domain, `${template}-${resource}`, baseDir, template);
+    const result = scaffoldSlice(domain, `${template}-${resource}`, baseDir, template, fieldsSpec);
 
     if (!result.ok) {
       return Err({

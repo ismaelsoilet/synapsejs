@@ -10,8 +10,10 @@
  * the templates can be trusted as a starting point rather than only as prose.
  */
 
-export type SliceTemplate = 'create' | 'list' | 'update' | 'delete' | 'login';
-export const SLICE_TEMPLATES: SliceTemplate[] = ['create', 'list', 'update', 'delete', 'login'];
+import { generateTableColumnsCode, parseFields } from './fields-parser';
+
+export type SliceTemplate = 'create' | 'list' | 'update' | 'delete' | 'login' | 'oauth-github';
+export const SLICE_TEMPLATES: SliceTemplate[] = ['create', 'list', 'update', 'delete', 'login', 'oauth-github'];
 
 /** Paginação das listas geradas: o agente não escolhe esses números por conta. */
 export const DEFAULT_LIST_LIMIT = 20;
@@ -63,8 +65,158 @@ import {
 } from 'synapsejs';`;
 }
 
+function fieldsListTemplate(names: TemplateNames, fieldsSpec: string): string {
+  const fields = parseFields(fieldsSpec);
+  const listRow = `${names.pascal}Row`;
+  const tableColumns = generateTableColumnsCode(fields);
+
+  return `${imports(true)}
+import { DataTable, Card, Pagination } from 'synapsejs';
+
+// ============================================================================
+// 1. CONTRATO DE ENTRADA (TypeBox) — filtro e paginação tipados
+// ============================================================================
+export const ${names.schemaName} = Type.Object({
+  query: Type.Optional(Type.String({ maxLength: 60 })),
+  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+  offset: Type.Optional(Type.Integer({ minimum: 0 }))
+});
+export type ${names.inputName} = Static<typeof ${names.schemaName}>;
+
+// ============================================================================
+// 2. MODELAGEM DE DOMÍNIO (Result<T, E>)
+// ============================================================================
+export interface ${listRow} {
+  id: string;
+${fields.map((f) => `  ${f.name}: ${f.type === 'number' || f.type === 'integer' ? 'number' : f.type === 'boolean' ? 'boolean' : 'string'};`).join('\n')}
+}
+
+export type ${names.outputName} = Result<
+  { rows: ${listRow}[]; total: number; limit: number; offset: number },
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'UNAUTHORIZED'
+>;
+
+const DEFAULT_LIMIT = ${DEFAULT_LIST_LIMIT};
+const MAX_LIMIT = ${MAX_LIST_LIMIT};
+
+// ============================================================================
+// 3. SERVER ACTION — busca utilizando Query Builder
+// ============================================================================
+export async function ${names.actionName}(
+  payload: unknown,
+  db?: DatabaseClient,
+  session?: SessionContext
+): Promise<${names.outputName}> {
+  if (!session?.isAuthenticated) {
+    return Err('UNAUTHORIZED');
+  }
+
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
+  const input = (payload ?? {}) as ${names.inputName};
+  if (!Value.Check(${names.schemaName}, input)) {
+    return Err('INVALID_SCHEMA');
+  }
+
+  const limit = Math.min(input.limit ?? DEFAULT_LIMIT, MAX_LIMIT);
+  const offset = input.offset ?? 0;
+  const term = input.query ?? '';
+
+  const where = term ? { ${fields[0]?.name || 'id'}: { like: \`%\${term}%\` } } : {};
+  const rows = await db.findMany<${listRow}>('${names.table}', {
+    where,
+    limit,
+    offset
+  });
+
+  return Ok({ rows, total: rows.length, limit, offset });
+}
+
+// ============================================================================
+// 4. LOADER — a lista renderiza no servidor com dados reais
+// ============================================================================
+export async function ${names.pascal}Loader(
+  context: SliceLoaderContext
+): Promise<{ rows: ${listRow}[]; total: number; loadError?: string; query?: string }> {
+  const query = (context.params.query ?? '').slice(0, 60);
+  const limit = Number(context.params.limit ?? DEFAULT_LIMIT);
+  const offset = Number(context.params.offset ?? 0);
+
+  const result = await ${names.actionName}({ query, limit, offset }, context.db, context.session);
+
+  return result.ok
+    ? { rows: result.value.rows, total: result.value.total, query }
+    : { rows: [], total: 0, query, loadError: result.error };
+}
+
+// ============================================================================
+// 5. UI REACT com <DataTable> e <Card>
+// ============================================================================
+export interface ${names.pascal}ViewProps {
+  rows?: ${listRow}[];
+  total?: number;
+  loadError?: string;
+  query?: string;
+}
+
+const TABLE_COLUMNS = ${tableColumns};
+
+export function ${names.componentName}({ rows = [], total = 0, loadError, query = '' }: ${names.pascal}ViewProps) {
+  if (loadError) {
+    return (
+      <div className="p-4 rounded-lg border border-rose-800 bg-rose-950/50 text-rose-200 font-mono text-sm">
+        Não foi possível listar: {loadError}
+      </div>
+    );
+  }
+
+  return (
+    <Card title="Listagem de ${names.pascal}">
+      <DataTable data={rows} columns={TABLE_COLUMNS} />
+      <div className="mt-4">
+        <Pagination total={total} limit={DEFAULT_LIMIT} offset={0} />
+      </div>
+    </Card>
+  );
+}
+
+// ============================================================================
+// 6. ORÁCULO DE INVARIANTES
+// ============================================================================
+export const sliceTests = {
+  description: 'Invariantes de listagem de ${names.table}',
+  cases: [
+    {
+      name: 'chamada anônima retorna UNAUTHORIZED',
+      run: async () => {
+        const result = await ${names.actionName}({}, new MockDatabaseClient());
+        if (result.ok || result.error !== 'UNAUTHORIZED') {
+          throw new Error('esperava UNAUTHORIZED');
+        }
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const session = createSession('user-1', ['reader']);
+        const result = await ${names.actionName}({}, undefined, session);
+        if (result.ok || result.error !== 'NO_DATABASE') {
+          throw new Error('esperava NO_DATABASE');
+        }
+      }
+    }
+  ]
+};
+`;
+}
+
 /** `list`: filter, pagination and a loader that renders real rows on the server. */
-function listTemplate(names: TemplateNames): string {
+function listTemplate(names: TemplateNames, fieldsSpec?: string): string {
+  if (fieldsSpec?.trim()) {
+    return fieldsListTemplate(names, fieldsSpec);
+  }
   const listRow = `${names.pascal}Row`;
 
   return `${imports(true)}
@@ -895,18 +1047,313 @@ export const sliceTests = {
 `;
 }
 
-export function generateOperationTemplate(domain: string, sliceName: string, template: SliceTemplate): string {
+function oauthGithubTemplate(names: TemplateNames): string {
+  return `import React, { useState } from 'react';
+import { Type, Static } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import {
+  type DatabaseClient,
+  Err,
+  MockDatabaseClient,
+  Ok,
+  type Result,
+  type SessionContext,
+  signSessionToken
+} from 'synapsejs';
+
+// ============================================================================
+// 1. CONTRATO DE ENTRADA (TypeBox)
+// ============================================================================
+export const ${names.schemaName} = Type.Object({
+  code: Type.String({ minLength: 1, maxLength: 500 }),
+  state: Type.Optional(Type.String({ maxLength: 500 }))
+});
+export type ${names.inputName} = Static<typeof ${names.schemaName}>;
+
+// ============================================================================
+// 2. TABELA (DDL auto-migrado)
+// ============================================================================
+export const sliceSchema = \`
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    roles TEXT NOT NULL DEFAULT 'user',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS oauth_accounts (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    provider TEXT NOT NULL,
+    provider_user_id TEXT NOT NULL,
+    email TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(provider, provider_user_id)
+  );
+\`;
+
+// ============================================================================
+// 3. MODELAGEM DE DOMÍNIO (Result<T, E>)
+// ============================================================================
+export type ${names.outputName} = Result<
+  { token: string; roles: string[]; expiresAt: number; userId: string },
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'MISSING_SECRET' | 'OAUTH_CONFIG_MISSING' | 'OAUTH_EXCHANGE_FAILED'
+>;
+
+const SESSION_MAX_AGE_SECONDS = 43_200;
+
+// ============================================================================
+// 4. SERVER ACTION
+// ============================================================================
+export async function ${names.actionName}(
+  payload: unknown,
+  db?: DatabaseClient,
+  _session?: SessionContext
+): Promise<${names.outputName}> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
+  if (!Value.Check(${names.schemaName}, payload)) {
+    return Err('INVALID_SCHEMA');
+  }
+
+  const secret = process.env.SYNAPSE_SESSION_SECRET;
+  if (!secret) {
+    return Err('MISSING_SECRET');
+  }
+
+  const clientId = process.env.GITHUB_CLIENT_ID;
+  const clientSecret = process.env.GITHUB_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    return Err('OAUTH_CONFIG_MISSING');
+  }
+
+  const input = payload as ${names.inputName};
+
+  let tokenRes: Response;
+  try {
+    tokenRes = await fetch('https://github.com/login/oauth/access_token', {
+      method: 'POST',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        client_id: clientId,
+        client_secret: clientSecret,
+        code: input.code
+      })
+    });
+  } catch {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  if (!tokenRes.ok) {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: boundary OAuth externo
+  const tokenData = (await tokenRes.json().catch(() => null)) as any;
+  if (!tokenData?.access_token) {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  let userRes: Response;
+  try {
+    userRes = await fetch('https://api.github.com/user', {
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': \`Bearer \${tokenData.access_token}\`,
+        'User-Agent': 'SynapseJS-OAuth'
+      }
+    });
+  } catch {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  if (!userRes.ok) {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  // biome-ignore lint/suspicious/noExplicitAny: boundary OAuth externo
+  const profile = (await userRes.json().catch(() => null)) as any;
+  if (!profile?.id) {
+    return Err('OAUTH_EXCHANGE_FAILED');
+  }
+
+  const providerUserId = String(profile.id);
+  const email = (profile.email || \`\${profile.login || profile.id}@github.synapse.local\`).toLowerCase();
+
+  let userId: string;
+  let userRoles = ['user'];
+
+  const existingAccounts = await db.query<{ user_id: string }>(
+    'SELECT user_id FROM oauth_accounts WHERE provider = $1 AND provider_user_id = $2',
+    ['github', providerUserId]
+  );
+
+  if (existingAccounts.length > 0) {
+    userId = existingAccounts[0].user_id;
+    const userRows = await db.query<{ roles: string }>('SELECT roles FROM users WHERE id = $1', [userId]);
+    if (userRows.length > 0 && userRows[0].roles) {
+      userRoles = userRows[0].roles.split(',').map((r) => r.trim()).filter(Boolean);
+    }
+  } else {
+    const existingUsers = await db.query<{ id: string; roles: string }>(
+      'SELECT id, roles FROM users WHERE email = $1',
+      [email]
+    );
+
+    if (existingUsers.length > 0) {
+      userId = existingUsers[0].id;
+      if (existingUsers[0].roles) {
+        userRoles = existingUsers[0].roles.split(',').map((r) => r.trim()).filter(Boolean);
+      }
+    } else {
+      userId = \`u_\${Math.random().toString(36).substring(2, 10)}\`;
+      await db.query(
+        'INSERT INTO users (id, email, roles) VALUES ($1, $2, $3)',
+        [userId, email, 'user']
+      );
+    }
+
+    const accountId = \`oa_\${Math.random().toString(36).substring(2, 10)}\`;
+    await db.query(
+      'INSERT INTO oauth_accounts (id, user_id, provider, provider_user_id, email) VALUES ($1, $2, $3, $4, $5)',
+      [accountId, userId, 'github', providerUserId, email]
+    );
+  }
+
+  const expiresAt = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS;
+  const token = signSessionToken({ userId, roles: userRoles }, secret, SESSION_MAX_AGE_SECONDS);
+
+  return Ok({
+    token,
+    roles: userRoles,
+    expiresAt,
+    userId
+  });
+}
+
+// ============================================================================
+// 5. UI REACT
+// ============================================================================
+export interface ${names.pascal}TriggerProps {
+  clientId?: string;
+  redirectUri?: string;
+  onSubmitAction?: (payload: unknown) => Promise<${names.outputName}>;
+}
+
+export function ${names.componentName}({ clientId, redirectUri }: ${names.pascal}TriggerProps) {
+  const [error, setError] = useState<string | null>(null);
+
+  const handleAuthorize = () => {
+    if (!clientId) {
+      setError('GitHub Client ID não configurado');
+      return;
+    }
+    const params = new URLSearchParams({
+      client_id: clientId,
+      scope: 'read:user user:email'
+    });
+    if (redirectUri) {
+      params.set('redirect_uri', redirectUri);
+    }
+    const authorizeUrl = \`https://github.com/login/oauth/authorize?\${params.toString()}\`;
+    (globalThis as { location?: { href?: string } }).location?.href &&
+      ((globalThis as { location: { href: string } }).location.href = authorizeUrl);
+  };
+
+  return (
+    <div className="flex flex-col gap-3 max-w-sm">
+      <button
+        type="button"
+        onClick={handleAuthorize}
+        className="px-4 py-2 bg-slate-900 hover:bg-slate-800 border border-slate-700 rounded text-white text-sm font-medium flex items-center justify-center gap-2"
+      >
+        <span>Entrar com GitHub</span>
+      </button>
+      {error && <p className="text-xs font-mono text-rose-400">{error}</p>}
+    </div>
+  );
+}
+
+// ============================================================================
+// 6. ORÁCULO DE INVARIANTES
+// ============================================================================
+export const sliceTests = {
+  description: 'Invariantes de autenticação OAuth2 GitHub',
+  cases: [
+    {
+      name: 'sem SYNAPSE_SESSION_SECRET falha com MISSING_SECRET',
+      run: async () => {
+        const prev = process.env.SYNAPSE_SESSION_SECRET;
+        delete process.env.SYNAPSE_SESSION_SECRET;
+        try {
+          const res = await ${names.actionName}({ code: 'valid-code' }, new MockDatabaseClient());
+          if (res.ok || res.error !== 'MISSING_SECRET') {
+            throw new Error(\`Esperava MISSING_SECRET, obteve \${JSON.stringify(res)}\`);
+          }
+        } finally {
+          if (prev) process.env.SYNAPSE_SESSION_SECRET = prev;
+        }
+      }
+    },
+    {
+      name: 'sem credenciais do GitHub falha com OAUTH_CONFIG_MISSING',
+      run: async () => {
+        process.env.SYNAPSE_SESSION_SECRET = 'test-secret';
+        const prevId = process.env.GITHUB_CLIENT_ID;
+        const prevSecret = process.env.GITHUB_CLIENT_SECRET;
+        delete process.env.GITHUB_CLIENT_ID;
+        delete process.env.GITHUB_CLIENT_SECRET;
+        try {
+          const res = await ${names.actionName}({ code: 'valid-code' }, new MockDatabaseClient());
+          if (res.ok || res.error !== 'OAUTH_CONFIG_MISSING') {
+            throw new Error(\`Esperava OAUTH_CONFIG_MISSING, obteve \${JSON.stringify(res)}\`);
+          }
+        } finally {
+          if (prevId) process.env.GITHUB_CLIENT_ID = prevId;
+          if (prevSecret) process.env.GITHUB_CLIENT_SECRET = prevSecret;
+        }
+      }
+    },
+    {
+      name: 'payload inválido rejeita com INVALID_SCHEMA',
+      run: async () => {
+        process.env.SYNAPSE_SESSION_SECRET = 'test-secret';
+        const res = await ${names.actionName}({ code: '' }, new MockDatabaseClient());
+        if (res.ok || res.error !== 'INVALID_SCHEMA') {
+          throw new Error(\`Esperava INVALID_SCHEMA, obteve \${JSON.stringify(res)}\`);
+        }
+      }
+    }
+  ]
+};
+`;
+}
+
+export function generateOperationTemplate(
+  domain: string,
+  sliceName: string,
+  template: SliceTemplate,
+  fieldsSpec?: string
+): string {
   const names = templateNames(domain, sliceName);
 
   switch (template) {
     case 'list':
-      return listTemplate(names);
+      return listTemplate(names, fieldsSpec);
     case 'update':
       return updateTemplate(names);
     case 'delete':
       return deleteTemplate(names);
     case 'login':
       return loginTemplate(names);
+    case 'oauth-github':
+      return oauthGithubTemplate(names);
     default:
       throw new Error(`Template desconhecido: ${template}`);
   }

@@ -74,7 +74,7 @@ const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'UPDATE statement', pattern: /\bUPDATE\s+\w+\s+SET\b/i },
   { label: 'DELETE statement', pattern: /\bDELETE\s+FROM\b/i },
   { label: 'CREATE TABLE statement', pattern: /\bCREATE\s+TABLE\b/i },
-  { label: 'database call', pattern: /\bdb\s*\.\s*query\b/ },
+  { label: 'database call', pattern: /\bdb\s*\.\s*(?:query|findMany|findOne|insert|update|delete|sql|sqlOne)\b/ },
   { label: 'sliceSchema symbol', pattern: /\bsliceSchema\b/ },
   { label: 'test runner import', pattern: /from\s+['"]bun:test['"]/ },
   { label: 'process.env access', pattern: /\bprocess\.env\b/ },

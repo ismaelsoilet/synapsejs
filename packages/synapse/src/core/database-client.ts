@@ -28,6 +28,30 @@ export function compileTaggedSql(
   return { text, params };
 }
 
+import {
+  compileDelete,
+  compileInsert,
+  compileSelect,
+  compileUpdate,
+  type JoinClause,
+  nestJoinedRow,
+  type QueryOptions,
+  type WhereCondition,
+  type WhereOperator
+} from './query-builder';
+
+export {
+  compileDelete,
+  compileInsert,
+  compileSelect,
+  compileUpdate,
+  type JoinClause,
+  nestJoinedRow,
+  type QueryOptions,
+  type WhereCondition,
+  type WhereOperator
+};
+
 export interface DatabaseClient {
   /**
    * Execute parameterized SQL query with explicit generic return type.
@@ -48,6 +72,31 @@ export interface DatabaseClient {
    * Execute Tagged Template Literal SQL query returning first row or null.
    */
   sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null>;
+
+  /**
+   * Declarative type-safe SELECT with parameterized filters, ordering and pagination.
+   */
+  findMany<T = unknown>(table: string, options?: QueryOptions): Promise<T[]>;
+
+  /**
+   * Declarative type-safe single-row SELECT, returning null if not found.
+   */
+  findOne<T = unknown>(table: string, options?: QueryOptions): Promise<T | null>;
+
+  /**
+   * Declarative type-safe INSERT returning the created row.
+   */
+  insert<T = unknown>(table: string, data: Record<string, unknown>): Promise<T>;
+
+  /**
+   * Declarative type-safe UPDATE with WHERE condition, returning modified rows.
+   */
+  update<T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition): Promise<T[]>;
+
+  /**
+   * Declarative type-safe DELETE with WHERE condition, returning number of affected rows.
+   */
+  delete(table: string, where: WhereCondition): Promise<number>;
 
   /**
    * Execute command inside a database transaction boundary.
@@ -96,6 +145,15 @@ export class MockDatabaseClient implements DatabaseClient {
       }
     }
 
+    // Default mock response: check if table matches initialData for SELECT queries
+    if (/^\s*SELECT\b/i.test(sql)) {
+      for (const [table, rows] of this.tables.entries()) {
+        if (sql.includes(table)) {
+          return [...rows] as unknown as T[];
+        }
+      }
+    }
+
     // Default mock response: empty set
     return [] as T[];
   }
@@ -113,6 +171,71 @@ export class MockDatabaseClient implements DatabaseClient {
   async sqlOne<T = unknown>(strings: TemplateStringsArray, ...values: unknown[]): Promise<T | null> {
     const { text, params } = compileTaggedSql(strings, ...values);
     return this.queryOne<T>(text, params);
+  }
+
+  async findMany<T = unknown>(table: string, options?: QueryOptions): Promise<T[]> {
+    const { sql, params } = compileSelect(table, options);
+    const results = await this.query<Record<string, unknown>>(sql, params);
+    let rows: Array<Record<string, unknown>> = results;
+
+    if (rows.length === 0) {
+      const inMemory = this.tables.get(table);
+      if (inMemory) {
+        rows = inMemory;
+      }
+    }
+
+    if (options?.join && options.join.length > 0) {
+      return rows.map((r) => nestJoinedRow<T>(r, options.join));
+    }
+    return rows as unknown as T[];
+  }
+
+  async findOne<T = unknown>(table: string, options?: QueryOptions): Promise<T | null> {
+    const opts = { ...options, limit: 1 };
+    const { sql, params } = compileSelect(table, opts);
+    const result = await this.queryOne<Record<string, unknown>>(sql, params);
+    let row: Record<string, unknown> | null = result;
+
+    if (row === null) {
+      const inMemory = this.tables.get(table);
+      if (inMemory && inMemory.length > 0) {
+        row = inMemory[0];
+      }
+    }
+
+    if (!row) return null;
+    if (options?.join && options.join.length > 0) {
+      return nestJoinedRow<T>(row, options.join);
+    }
+    return row as unknown as T;
+  }
+
+  async insert<T = unknown>(table: string, data: Record<string, unknown>): Promise<T> {
+    const { sql, params } = compileInsert(table, data);
+    const results = await this.query<T>(sql, params);
+    if (results.length > 0) {
+      return results[0];
+    }
+
+    const tableRows = this.tables.get(table) || [];
+    const created = { ...data };
+    tableRows.push(created);
+    this.tables.set(table, tableRows);
+    return created as T;
+  }
+
+  async update<T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition): Promise<T[]> {
+    const { sql, params } = compileUpdate(table, data, where);
+    const results = await this.query<T>(sql, params);
+    if (results.length > 0) return results;
+    return [data as T];
+  }
+
+  async delete(table: string, where: WhereCondition): Promise<number> {
+    const { sql, params } = compileDelete(table, where);
+    const results = await this.query(sql, params);
+    return results.length > 0 ? results.length : 1;
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {

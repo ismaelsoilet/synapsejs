@@ -98,4 +98,47 @@ describe('scaffoldSlice', () => {
       expect(created.error.code).toBe('AMBIGUOUS_SLICES_DIR');
     }
   });
+
+  it('scaffolds slice with custom fields grammar', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'store'), { recursive: true });
+
+    const created = scaffoldSlice(
+      'store',
+      'create-product',
+      appDir,
+      'create',
+      'title:string,price:number,in_stock:boolean,category:enum(ELECTRONICS|BOOKS)'
+    );
+
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      const content = fs.readFileSync(created.value, 'utf-8');
+      expect(content).toContain('title: Type.String(');
+      expect(content).toContain('price: Type.Number()');
+      expect(content).toContain('in_stock: Type.Boolean()');
+      expect(content).toContain("category: Type.Union([Type.Literal('ELECTRONICS'), Type.Literal('BOOKS')])");
+      expect(content).toContain('price REAL NOT NULL');
+      expect(content).toContain('in_stock BOOLEAN DEFAULT FALSE');
+      expect(content).toContain('DataForm');
+    }
+  });
+
+  it('scaffolds oauth-github slice and passes invariant checks', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'auth'), { recursive: true });
+
+    const created = scaffoldSlice('auth', 'github-callback', appDir, 'oauth-github');
+    expect(created.ok).toBe(true);
+
+    if (created.ok) {
+      const content = fs.readFileSync(created.value, 'utf-8');
+      expect(content).toContain('GithubCallbackInputSchema');
+      expect(content).toContain('githubCallbackAction');
+      expect(content).toContain('GithubCallbackTrigger');
+      expect(content).toContain('oauth_accounts');
+      expect(content).toContain('https://github.com/login/oauth/access_token');
+      expect(content).toContain('sliceTests');
+    }
+  });
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * SynapseJS - Agent CLI v0.6.0
+ * SynapseJS - Agent CLI v1.0.0
  *
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  *
@@ -24,12 +24,16 @@ import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
 import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
+import { generateDatabaseSchemaCatalog } from '../src/compiler/db-schema-generator';
+import { analyzeImpact } from '../src/compiler/impact-analyzer';
 import { runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
 import { scaffoldCrud, scaffoldSlice } from '../src/compiler/scaffolder';
+import { checkSchemaDrift } from '../src/compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { SLICE_TEMPLATES, type SliceTemplate } from '../src/compiler/slice-templates';
+import { buildStandalone } from '../src/compiler/standalone-builder';
 import { SynapseMcpServer } from '../src/mcp/server';
 import { SynapseServer } from '../src/runtime/server';
 
@@ -134,6 +138,9 @@ async function main() {
       const graphPath = path.join(root, '.codebase/architecture-graph.json');
       const stats = compressRepositoryAST(root, repoMapPath, graphPath);
 
+      const dbSchemaPath = path.join(root, '.codebase/db-schema.d.ts');
+      const dbStats = generateDatabaseSchemaCatalog(root, dbSchemaPath);
+
       const skeletonStatus = stats.totalModules > 0 ? 'PASS' : 'FAIL';
 
       process.stdout.write(
@@ -142,8 +149,11 @@ async function main() {
             status: skeletonStatus,
             operation: 'SKELETON_COMPRESS',
             repoMapPath: '.codebase/repo-map.d.ts',
+            dbSchemaPath: '.codebase/db-schema.d.ts',
             totalModules: stats.totalModules,
             totalSlices: stats.totalSlices,
+            totalTables: dbStats.totalTables,
+            totalColumns: dbStats.totalColumns,
             estimatedTokens: stats.manifestTokensEstimate,
             budgetTokens: 3000,
             ...(skeletonStatus === 'FAIL'
@@ -158,6 +168,68 @@ async function main() {
         )}\n`
       );
       process.exit(skeletonStatus === 'PASS' ? 0 : 1);
+      break;
+    }
+
+    case 'db-schema': {
+      const dbSchemaPath = path.join(root, '.codebase/db-schema.d.ts');
+      const dbStats = generateDatabaseSchemaCatalog(root, dbSchemaPath);
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: 'PASS',
+            operation: 'DB_SCHEMA_CATALOG',
+            catalogFile: '.codebase/db-schema.d.ts',
+            totalTables: dbStats.totalTables,
+            totalColumns: dbStats.totalColumns,
+            tables: dbStats.tables.map((t) => t.name)
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(0);
+      break;
+    }
+
+    case 'db-drift': {
+      const report = await checkSchemaDrift(root);
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            operation: 'DB_DRIFT_CHECK',
+            ...report
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(report.status === 'PASS' ? 0 : 1);
+      break;
+    }
+
+    case 'impact': {
+      const target = process.argv[3];
+      if (!target) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'FAIL',
+              operation: 'IMPACT_ANALYSIS',
+              code: 'MISSING_TARGET',
+              message: 'Especifique o arquivo, fatia ou tabela: synapse impact <target>'
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
+      const report = analyzeImpact(target, root);
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      process.exit(0);
       break;
     }
 
@@ -252,6 +324,7 @@ async function main() {
 
       const templateArg = process.argv.find((arg) => arg.startsWith('--template='))?.split('=')[1];
       const template = (templateArg ?? 'create') as SliceTemplate | 'crud';
+      const fieldsArg = process.argv.find((arg) => arg.startsWith('--fields='))?.slice('--fields='.length);
 
       if (template !== 'crud' && !SLICE_TEMPLATES.includes(template)) {
         process.stdout.write(
@@ -271,7 +344,7 @@ async function main() {
       }
 
       if (template === 'crud') {
-        const crud = scaffoldCrud(domain, name, root);
+        const crud = scaffoldCrud(domain, name, root, fieldsArg);
 
         if (!crud.ok) {
           process.stdout.write(
@@ -305,7 +378,7 @@ async function main() {
         process.exit(0);
       }
 
-      const created = scaffoldSlice(domain, name, root, template);
+      const created = scaffoldSlice(domain, name, root, template, fieldsArg);
 
       if (!created.ok) {
         process.stderr.write(
@@ -342,6 +415,44 @@ async function main() {
     }
 
     case 'build': {
+      const isStandalone = process.argv.includes('--standalone');
+
+      if (isStandalone) {
+        const report = await buildStandalone(root);
+
+        if (!report.ok) {
+          process.stdout.write(
+            `${JSON.stringify(
+              {
+                status: 'FAIL',
+                operation: 'BUILD_STANDALONE',
+                code: 'code' in report.error ? report.error.code : 'UNKNOWN',
+                message: report.error.message
+              },
+              null,
+              2
+            )}\n`
+          );
+          process.exit(1);
+        }
+
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'PASS',
+              operation: 'BUILD_STANDALONE',
+              outDir: path.relative(root, report.value.outDir),
+              serverEntry: path.relative(root, report.value.serverEntry),
+              clientBundlesCount: report.value.clientBundlesCount,
+              totalBytes: report.value.totalBytes
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(0);
+      }
+
       // Pre-constroi os bundles de cliente que o runtime faria sob demanda no primeiro request.
       const report = await buildAllClientBundles(root);
 
@@ -470,7 +581,7 @@ async function main() {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
-              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^0.6.0"');
+              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^1.0.0"');
             }
             fs.writeFileSync(d, content, 'utf-8');
           }
@@ -561,7 +672,7 @@ async function main() {
         `${JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '0.6.0',
+            version: '1.0.0',
             runtime: 'Bun + Bun.serve',
             database: 'Embedded SQLite (WAL) and PostgreSQL, both verified',
             protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
@@ -648,7 +759,7 @@ async function main() {
                 evidence: 'bun test packages/synapse/test/slice-discovery.test.ts'
               },
               {
-                feature: 'MCP stdio server (5 tools)',
+                feature: 'MCP stdio server (8 tools)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/mcp-server.test.ts'
               },
@@ -656,6 +767,21 @@ async function main() {
                 feature: 'AST skeletonizer to .codebase/repo-map.d.ts',
                 status: 'stable',
                 evidence: 'bun --cwd examples/enterprise-crm skeleton'
+              },
+              {
+                feature: 'Centralized Database Schema Catalog (.codebase/db-schema.d.ts)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/db-schema-generator.test.ts'
+              },
+              {
+                feature: 'Unified Object Storage (LocalStorage + AWS S3/R2 with SigV4)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/storage.test.ts'
+              },
+              {
+                feature: 'Distributed PostgreSQL Queue (SKIP LOCKED, Full Jitter, DLQ)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/postgres-queue.test.ts'
               },
               {
                 feature: 'Isomorphic slice splitter (shared/server/client modules)',
@@ -695,6 +821,7 @@ async function main() {
               'migrate',
               'mcp',
               'skeleton',
+              'db-schema',
               'split',
               'build',
               'test',
@@ -714,7 +841,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, split, test, worker, new-slice, contract, info\n`
+        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, db-schema, split, build, test, worker, new-slice, contract, info\n`
       );
       process.exit(1);
     }
