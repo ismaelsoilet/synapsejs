@@ -44,7 +44,6 @@
   },
   "dependencies": {
     "@ismaelsoilet/synapsejs": "workspace:*",
-    "synapsejs": "workspace:*",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "postgres": "^3.4.9",

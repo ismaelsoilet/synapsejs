@@ -14,7 +14,7 @@
     "split": "synapse split"
   },
   "dependencies": {
-    "synapsejs": "workspace:*",
+    "@ismaelsoilet/synapsejs": "workspace:*",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "react": "^19.0.0",

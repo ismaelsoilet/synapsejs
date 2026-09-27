@@ -5,12 +5,12 @@
     "": {
       "name": "synapsejs",
       "dependencies": {
+        "@ismaelsoilet/synapsejs": "workspace:*",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
         "postgres": "^3.4.9",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "synapsejs": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.2",
@@ -24,11 +24,11 @@
       "name": "crm-app",
       "version": "0.1.0",
       "dependencies": {
+        "@ismaelsoilet/synapsejs": "workspace:*",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "synapsejs": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.2",
@@ -41,11 +41,11 @@
       "name": "enterprise-crm-example",
       "version": "0.1.0",
       "dependencies": {
+        "@ismaelsoilet/synapsejs": "workspace:*",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "synapsejs": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.2",
@@ -73,11 +73,11 @@
       "name": "helpdesk-slices-example",
       "version": "0.1.0",
       "dependencies": {
+        "@ismaelsoilet/synapsejs": "workspace:*",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
-        "synapsejs": "workspace:*",
       },
       "devDependencies": {
         "@types/bun": "^1.4.2",
@@ -87,7 +87,7 @@
       },
     },
     "packages/synapse": {
-      "name": "synapsejs",
+      "name": "@ismaelsoilet/synapsejs",
       "version": "1.1.0",
       "bin": {
         "synapse": "./bin/synapse.ts",
@@ -108,6 +108,8 @@
     },
   },
   "packages": {
+    "@ismaelsoilet/synapsejs": ["@ismaelsoilet/synapsejs@workspace:packages/synapse"],
+
     "@sinclair/typebox": ["@sinclair/typebox@0.34.52", "", {}, "sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw=="],
 
     "@types/bun": ["@types/bun@1.4.2", "", { "dependencies": { "bun-types": "1.4.2" } }, "sha512-GimotNn7+ZV0uVArItBbriZsR1oNf0+WTzPkdcFrzShI7k2norL0uzEaJT8T33dWr7O/c9ZDuAFQrctKCi72oQ=="],
@@ -141,8 +143,6 @@
     "react-dom": ["react-dom@19.3.0", "", { "dependencies": { "scheduler": "^0.28.0" }, "peerDependencies": { "react": "^19.3.0" } }, "sha512-JDk8dgif51OjFoDE70+OT9ICyYr+69HlmihNwp1+Nsfbna3t5sIiCa9ZJktDmQ4/1b/rn26hIAR2uYXDMr5r0Q=="],
 
     "scheduler": ["scheduler@0.28.0", "", {}, "sha512-juorfCmIkIw8tT+p5BXSm6PJjQF/ycEYmKyzURCIt/RaZIhL+PulbQ9Yu2z1HdOJDdqDTlxA1+xKBmHXJsczAw=="],
-
-    "synapsejs": ["synapsejs@workspace:packages/synapse"],
 
     "typescript": ["typescript@5.9.3", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-jl1vZzPDinLr9eUt3J/t7V6FgNEw9QjvBPdysz9KfQDD41fQrC2Y4vKQdiaUpFT4bXlb1RHhLpp8wtm6M5TgSw=="],
 
