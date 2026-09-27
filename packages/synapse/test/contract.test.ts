@@ -86,6 +86,7 @@ describe('machine contract', () => {
       'delete',
       'login',
       'oauth-github',
+      'auth-2fa',
       'crud'
     ]);
     expect(contract.shared.location).toBe('src/shared/<name>.ts');

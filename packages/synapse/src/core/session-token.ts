@@ -11,6 +11,7 @@
  * that difference is deliberate and documented.
  */
 
+import type { DatabaseClient } from './database-client';
 import { Err, Ok, type Result } from './machine-types';
 
 export interface SessionClaims {
@@ -20,7 +21,78 @@ export interface SessionClaims {
   exp: number;
 }
 
-export type SessionTokenError = 'INVALID_TOKEN' | 'EXPIRED_TOKEN';
+export type SessionTokenError = 'INVALID_TOKEN' | 'EXPIRED_TOKEN' | 'TOKEN_REVOKED';
+
+const inMemoryRevokedSignatures = new Set<string>();
+
+export function revokeSessionToken(token: string): boolean {
+  const [, signature] = token.split('.');
+  if (!signature) return false;
+  inMemoryRevokedSignatures.add(signature);
+  return true;
+}
+
+export function isSessionTokenRevoked(token: string): boolean {
+  const [, signature] = token.split('.');
+  if (!signature) return true;
+  return inMemoryRevokedSignatures.has(signature);
+}
+
+export function clearSessionTokenRevocations(): void {
+  inMemoryRevokedSignatures.clear();
+}
+
+/**
+ * Persists a token revocation into the database blacklist table.
+ */
+export async function revokeSessionTokenInDb(db: DatabaseClient, token: string): Promise<boolean> {
+  const [, signature] = token.split('.');
+  if (!signature) return false;
+
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS _synapse_session_blacklist (
+      token_signature TEXT PRIMARY KEY,
+      revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+  `);
+
+  await db
+    .query('INSERT INTO _synapse_session_blacklist (token_signature) VALUES ($1) ON CONFLICT DO NOTHING;', [signature])
+    .catch(async () => {
+      // SQLite fallback without ON CONFLICT DO NOTHING if needed
+      await db
+        .query('INSERT OR IGNORE INTO _synapse_session_blacklist (token_signature) VALUES ($1);', [signature])
+        .catch(() => {});
+    });
+
+  // Also sync in-memory for instant local lookup
+  inMemoryRevokedSignatures.add(signature);
+  return true;
+}
+
+/**
+ * Checks whether a token signature exists in the database blacklist table.
+ */
+export async function isSessionTokenRevokedInDb(db: DatabaseClient, token: string): Promise<boolean> {
+  const [, signature] = token.split('.');
+  if (!signature) return true;
+
+  if (inMemoryRevokedSignatures.has(signature)) return true;
+
+  try {
+    const rows = await db.query('SELECT token_signature FROM _synapse_session_blacklist WHERE token_signature = $1;', [
+      signature
+    ]);
+    if (rows && rows.length > 0) {
+      inMemoryRevokedSignatures.add(signature);
+      return true;
+    }
+  } catch {
+    // If table doesn't exist yet, it's not revoked
+  }
+
+  return false;
+}
 
 function toBase64Url(value: Uint8Array): string {
   return Buffer.from(value).toString('base64url');
@@ -61,7 +133,11 @@ export function signSessionToken(
   return `${payload}.${sign(payload, secret)}`;
 }
 
-export function verifySessionToken(token: string, secret: string): Result<SessionClaims, SessionTokenError> {
+export function verifySessionToken(
+  token: string,
+  secret: string,
+  options?: { checkRevoked?: boolean }
+): Result<SessionClaims, SessionTokenError> {
   const [payload, provided] = token.split('.');
   if (!payload || !provided) {
     return Err('INVALID_TOKEN');
@@ -69,6 +145,10 @@ export function verifySessionToken(token: string, secret: string): Result<Sessio
 
   if (!constantTimeEquals(sign(payload, secret), provided)) {
     return Err('INVALID_TOKEN');
+  }
+
+  if (options?.checkRevoked !== false && isSessionTokenRevoked(token)) {
+    return Err('TOKEN_REVOKED');
   }
 
   let claims: SessionClaims;

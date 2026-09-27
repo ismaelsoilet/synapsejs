@@ -12,7 +12,7 @@ import * as readline from 'readline';
 import { runMachineVerifications } from '../compiler/agent-diagnostic-json';
 import { machineContract } from '../compiler/contract';
 import { analyzeImpact } from '../compiler/impact-analyzer';
-import { runSliceMigrations } from '../compiler/migration-runner';
+import { rollbackSliceMigrations, runSliceMigrations } from '../compiler/migration-runner';
 import { runSliceOracles } from '../compiler/oracle-runner';
 import { type SliceTemplate, scaffoldCrud, scaffoldSlice } from '../compiler/scaffolder';
 import { checkSchemaDrift } from '../compiler/schema-drift';
@@ -80,7 +80,7 @@ export class SynapseMcpServer {
             },
             serverInfo: {
               name: 'synapse-mcp',
-              version: '1.0.0'
+              version: '1.1.0'
             }
           }
         };
@@ -188,6 +188,17 @@ export class SynapseMcpServer {
                       type: 'string',
                       description: 'Slice file path, slice name, shared module path, or table name'
                     }
+                  }
+                }
+              },
+              {
+                name: 'synapse_rollback',
+                description: 'Roll back applied sliceSchema migrations by executing their -- down: statements',
+                inputSchema: {
+                  type: 'object',
+                  properties: {
+                    targetSlice: { type: 'string', description: 'Optional target slice to rollback' },
+                    steps: { type: 'number', description: 'Number of recent migrations to rollback (default: 1)' }
                   }
                 }
               }
@@ -485,6 +496,12 @@ export class SynapseMcpServer {
               };
             }
             const report = analyzeImpact(args.target, this.root);
+            contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_rollback') {
+            const report = await rollbackSliceMigrations(this.root, undefined, {
+              targetSlice: args.targetSlice,
+              steps: args.steps
+            });
             contentText = JSON.stringify(report, null, 2);
           } else {
             return {

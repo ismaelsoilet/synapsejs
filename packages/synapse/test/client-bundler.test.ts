@@ -27,7 +27,11 @@ describe('synapse build', () => {
 
     const bundleFile = path.join(fixtureApp, '.synapse', 'client', 'tickets-view-tickets.js');
     expect(fs.existsSync(bundleFile)).toBe(true);
-    expect(fs.statSync(bundleFile).size).toBeGreaterThan(1000);
+    expect(fs.statSync(bundleFile).size).toBeGreaterThan(100);
+
+    const vendorFile = path.join(fixtureApp, '.synapse', 'client', '_vendor.js');
+    expect(fs.existsSync(vendorFile)).toBe(true);
+    expect(fs.statSync(vendorFile).size).toBeGreaterThan(10000);
   }, 20000);
 
   it('builds a client that uses the client entry, and the bundle carries no server code', async () => {
@@ -58,10 +62,10 @@ describe('synapse build', () => {
     }
 
     const code = fs.readFileSync(bundle.value.filePath, 'utf-8');
-    expect(bundle.value.bytes).toBeGreaterThan(1000);
+    expect(bundle.value.bytes).toBeGreaterThan(100);
     expect(code).not.toContain('bun:sqlite');
     expect(code).not.toContain('password_hash');
-    expect(code).toContain('synapse_token');
+    expect(code).toContain('storeSession');
   }, 20000);
 
   it('reports a slice that cannot be imported as FAIL with its reason, without crashing the build', async () => {

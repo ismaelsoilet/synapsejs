@@ -105,36 +105,78 @@ export async function saveUpload(
   }
 
   const maxBytes = options.maxBytes ?? maxUploadBytes();
-  const name = safeUploadName(new URL(request.url).searchParams.get('name'));
-
-  if (!name.ok) {
-    return {
-      status: 400,
-      body: { ok: false, error: 'INVALID_NAME', hint: 'passe ?name=arquivo.pdf, sem diretórios e sem ".."' }
-    };
-  }
 
   const declared = Number(request.headers.get('content-length') ?? '');
   if (Number.isFinite(declared) && declared > maxBytes) {
     return { status: 413, body: { ok: false, error: 'TOO_LARGE', maxBytes } };
   }
 
-  const body = await readBodyWithinLimit(request.body, maxBytes);
-  if (!body.ok) {
-    return { status: 413, body: { ok: false, error: 'TOO_LARGE', maxBytes } };
-  }
+  const contentType = request.headers.get('content-type') || '';
+  let fileBytes: Uint8Array;
+  let targetFileName: string;
 
-  if (body.value.byteLength === 0) {
-    return { status: 422, body: { ok: false, error: 'EMPTY_BODY' } };
+  if (contentType.includes('multipart/form-data')) {
+    let formData: FormData;
+    try {
+      formData = await request.formData();
+    } catch {
+      return { status: 400, body: { ok: false, error: 'INVALID_MULTIPART_BODY' } };
+    }
+    const file = formData.get('file');
+    if (!file || typeof file === 'string') {
+      return {
+        status: 422,
+        body: { ok: false, error: 'NO_FILE_IN_FORM_DATA', hint: 'envie o arquivo no campo "file"' }
+      };
+    }
+    const uploadedFile = file as File;
+    if (uploadedFile.size > maxBytes) {
+      return { status: 413, body: { ok: false, error: 'TOO_LARGE', maxBytes } };
+    }
+    if (uploadedFile.size === 0) {
+      return { status: 422, body: { ok: false, error: 'EMPTY_BODY' } };
+    }
+
+    const rawName = uploadedFile.name || new URL(request.url).searchParams.get('name');
+    const name = safeUploadName(rawName);
+    if (!name.ok) {
+      return {
+        status: 400,
+        body: { ok: false, error: 'INVALID_NAME', hint: 'nome do arquivo inválido' }
+      };
+    }
+    targetFileName = name.value;
+    fileBytes = new Uint8Array(await uploadedFile.arrayBuffer());
+  } else {
+    const name = safeUploadName(new URL(request.url).searchParams.get('name'));
+
+    if (!name.ok) {
+      return {
+        status: 400,
+        body: { ok: false, error: 'INVALID_NAME', hint: 'passe ?name=arquivo.pdf, sem diretórios e sem ".."' }
+      };
+    }
+
+    const body = await readBodyWithinLimit(request.body, maxBytes);
+    if (!body.ok) {
+      return { status: 413, body: { ok: false, error: 'TOO_LARGE', maxBytes } };
+    }
+
+    if (body.value.byteLength === 0) {
+      return { status: 422, body: { ok: false, error: 'EMPTY_BODY' } };
+    }
+
+    targetFileName = name.value;
+    fileBytes = body.value;
   }
 
   const directory = path.join(options.baseDir, '.synapse', 'uploads', options.domain);
-  const fileName = `${crypto.randomUUID().slice(0, 8)}-${name.value}`;
+  const fileName = `${crypto.randomUUID().slice(0, 8)}-${targetFileName}`;
   const target = path.join(directory, fileName);
 
   try {
     fs.mkdirSync(directory, { recursive: true });
-    fs.writeFileSync(target, body.value);
+    fs.writeFileSync(target, fileBytes);
   } catch (err) {
     return { status: 500, body: { ok: false, error: 'WRITE_FAILED', message: (err as Error).message } };
   }
@@ -144,7 +186,7 @@ export async function saveUpload(
     body: {
       ok: true,
       path: path.relative(options.baseDir, target).split(path.sep).join('/'),
-      bytes: body.value.byteLength
+      bytes: fileBytes.byteLength
     }
   };
 }

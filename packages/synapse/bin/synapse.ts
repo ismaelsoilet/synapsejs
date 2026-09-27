@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 
 /**
- * SynapseJS - Agent CLI v1.0.0
+ * SynapseJS - Agent CLI v1.1.0
  *
  * Provides headless, machine-readable interfaces for AI autonomous agents.
  *
@@ -26,7 +26,7 @@ import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
 import { generateDatabaseSchemaCatalog } from '../src/compiler/db-schema-generator';
 import { analyzeImpact } from '../src/compiler/impact-analyzer';
-import { runSliceMigrations } from '../src/compiler/migration-runner';
+import { rollbackSliceMigrations, runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
 import { scaffoldCrud, scaffoldSlice } from '../src/compiler/scaffolder';
 import { checkSchemaDrift } from '../src/compiler/schema-drift';
@@ -123,6 +123,34 @@ async function main() {
     case 'migrate': {
       const report = await runSliceMigrations(root);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      process.exit(report.status === 'PASS' ? 0 : 1);
+      break;
+    }
+
+    case 'rollback': {
+      let targetSlice: string | undefined;
+      let steps: number | undefined;
+
+      for (let i = 3; i < process.argv.length; i++) {
+        const arg = process.argv[i];
+        if (arg.startsWith('--steps=')) {
+          steps = parseInt(arg.replace('--steps=', ''), 10);
+        } else if (!arg.startsWith('--')) {
+          targetSlice = arg;
+        }
+      }
+
+      const report = await rollbackSliceMigrations(root, undefined, { targetSlice, steps });
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            operation: 'MIGRATION_ROLLBACK',
+            ...report
+          },
+          null,
+          2
+        )}\n`
+      );
       process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
@@ -581,7 +609,7 @@ async function main() {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
-              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^1.0.0"');
+              content = content.replace(/"synapsejs":\s*"workspace:\*"/g, '"synapsejs": "^1.1.0"');
             }
             fs.writeFileSync(d, content, 'utf-8');
           }
@@ -672,7 +700,7 @@ async function main() {
         `${JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '1.0.0',
+            version: '1.1.0',
             runtime: 'Bun + Bun.serve',
             database: 'Embedded SQLite (WAL) and PostgreSQL, both verified',
             protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
@@ -759,7 +787,7 @@ async function main() {
                 evidence: 'bun test packages/synapse/test/slice-discovery.test.ts'
               },
               {
-                feature: 'MCP stdio server (8 tools)',
+                feature: 'MCP stdio server (11 tools)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/mcp-server.test.ts'
               },
@@ -812,13 +840,47 @@ async function main() {
                 feature: 'Isolated SQLite Queue & Background Jobs (defineJob, exponential backoff)',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/jobs-queue.test.ts'
+              },
+              {
+                feature: 'Bidirectional DDL migrations with transactional rollback (synapse rollback)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda2.test.ts'
+              },
+              {
+                feature: 'Vendor code-splitting and dynamic metadata (sliceMeta)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda1.test.ts'
+              },
+              {
+                feature: 'Hierarchical domain layouts (_layout.tsx)',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda1.test.ts'
+              },
+              {
+                feature: 'Sliding-window rate limiting & streaming upload guard',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda2.test.ts'
+              },
+              {
+                feature: 'Distributed PostgreSQL Event Hub & Isomorphic i18n',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda3.test.ts'
+              },
+              {
+                feature: 'Token revocation, TOTP 2FA, image optimization & plugin hooks',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/onda4.test.ts'
               }
             ],
             commands: [
               'new',
               'dev',
+              'start',
               'check',
               'migrate',
+              'rollback',
+              'db-drift',
+              'impact',
               'mcp',
               'skeleton',
               'db-schema',
@@ -841,7 +903,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, mcp, skeleton, db-schema, split, build, test, worker, new-slice, contract, info\n`
+        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, rollback, mcp, skeleton, db-schema, split, build, test, worker, new-slice, contract, info\n`
       );
       process.exit(1);
     }

@@ -25,6 +25,7 @@ import {
   COMPONENT_SUFFIXES,
   SERVER_ROOT_SUFFIXES,
   SLICE_DDL_EXPORT,
+  SLICE_META_EXPORT,
   TEST_ONLY_EXPORTS
 } from '../runtime/discovery-rules';
 
@@ -602,7 +603,7 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
   const checker = program.getTypeChecker();
   const entries = collectDeclarations(sourceFile, checker);
 
-  const serverRoots = rootsFor(entries, SERVER_ROOT_SUFFIXES, [SLICE_DDL_EXPORT]);
+  const serverRoots = rootsFor(entries, SERVER_ROOT_SUFFIXES, [SLICE_DDL_EXPORT, SLICE_META_EXPORT]);
   const clientRoots = rootsFor(entries, CLIENT_ROOTS, []);
 
   if (serverRoots.length === 0 && clientRoots.length === 0) {

@@ -19,7 +19,7 @@
     "start": "synapse start"
   },
   "dependencies": {
-    "synapsejs": "^1.0.0",
+    "synapsejs": "^1.1.0",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "react": "^19.0.0",

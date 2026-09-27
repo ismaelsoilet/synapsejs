@@ -17,6 +17,12 @@ export * from './client';
 export { type DiagnosticIssue, type DiagnosticReport, runMachineVerifications } from './compiler/agent-diagnostic-json';
 export { compressRepositoryAST } from './compiler/ast-daemon-compressor';
 export {
+  buildClientBundle,
+  buildVendorBundle,
+  VENDOR_BUNDLE_NAME,
+  VENDOR_BUNDLE_URL
+} from './compiler/client-bundler';
+export {
   type MachineContract,
   machineContract,
   renderContractJson,
@@ -38,8 +44,17 @@ export {
   type ImpactedSlice,
   type ImpactReason
 } from './compiler/impact-analyzer';
-// 3. Compiler & AST Tooling
-export { type MigrationReport, type MigrationResult, runSliceMigrations } from './compiler/migration-runner';
+export {
+  type BidirectionalDdl,
+  type MigrationReport,
+  type MigrationResult,
+  parseBidirectionalDdl,
+  type RollbackOptions,
+  type RollbackReport,
+  type RollbackResult,
+  rollbackSliceMigrations,
+  runSliceMigrations
+} from './compiler/migration-runner';
 export {
   ORACLE_DIR_NAME,
   type OracleCaseResult,
@@ -98,11 +113,21 @@ export {
   resetEventHub,
   type UnsubscribeFn
 } from './runtime/event-hub';
+export {
+  PostgresEventHub,
+  type PostgresEventHubOptions
+} from './runtime/postgres-event-hub';
 export { type JobRecord, QueueEngine } from './runtime/queue-engine';
+export {
+  type RateLimitOptions,
+  type RateLimitResult,
+  TokenBucketRateLimiter
+} from './runtime/rate-limiter';
 export {
   type DiscoveredSlice,
   type SliceLoadError,
   type SliceLoaderContext,
+  type SliceMetadata,
   SynapseServer
 } from './runtime/server';
 export { fc };

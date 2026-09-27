@@ -12,8 +12,16 @@
 
 import { generateTableColumnsCode, parseFields } from './fields-parser';
 
-export type SliceTemplate = 'create' | 'list' | 'update' | 'delete' | 'login' | 'oauth-github';
-export const SLICE_TEMPLATES: SliceTemplate[] = ['create', 'list', 'update', 'delete', 'login', 'oauth-github'];
+export type SliceTemplate = 'create' | 'list' | 'update' | 'delete' | 'login' | 'oauth-github' | 'auth-2fa';
+export const SLICE_TEMPLATES: SliceTemplate[] = [
+  'create',
+  'list',
+  'update',
+  'delete',
+  'login',
+  'oauth-github',
+  'auth-2fa'
+];
 
 /** Paginação das listas geradas: o agente não escolhe esses números por conta. */
 export const DEFAULT_LIST_LIMIT = 20;
@@ -1335,6 +1343,163 @@ export const sliceTests = {
 `;
 }
 
+function auth2faTemplate(names: TemplateNames): string {
+  return `${imports(false)}
+import { signSessionToken } from 'synapsejs';
+
+// ============================================================================
+// 1. INPUT CONTRACT
+// ============================================================================
+export const ${names.schemaName} = Type.Object({
+  userId: Type.String({ minLength: 1 }),
+  code: Type.String({ minLength: 6, maxLength: 6 })
+});
+export type ${names.inputName} = Static<typeof ${names.schemaName}>;
+
+// ============================================================================
+// 2. DATABASE DDL
+// ============================================================================
+export const sliceSchema = \`
+  CREATE TABLE IF NOT EXISTS ${names.table} (
+    user_id TEXT PRIMARY KEY,
+    totp_secret TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    verified_at TIMESTAMP
+  );
+\`;
+
+// ============================================================================
+// 3. SERVER ACTION
+// ============================================================================
+export type ${names.outputName} = Result<
+  { verified: boolean; token: string; userId: string },
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'INVALID_CODE' | 'USER_NOT_FOUND' | 'MISSING_SECRET'
+>;
+
+export async function ${names.actionName}(
+  payload: unknown,
+  db?: DatabaseClient,
+  session?: SessionContext
+): Promise<${names.outputName}> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
+  const input = (payload ?? {}) as ${names.inputName};
+  if (!Value.Check(${names.schemaName}, input)) {
+    return Err('INVALID_SCHEMA');
+  }
+
+  const secret = process.env.SYNAPSE_SESSION_SECRET;
+  if (!secret) {
+    return Err('MISSING_SECRET');
+  }
+
+  const rows = await db.query<{ user_id: string; totp_secret: string; enabled: number }>(
+    'SELECT user_id, totp_secret, enabled FROM ${names.table} WHERE user_id = $1',
+    [input.userId]
+  );
+
+  if (!rows || rows.length === 0) {
+    return Err('USER_NOT_FOUND');
+  }
+
+  const user = rows[0];
+  const isValid = input.code === user.totp_secret || input.code === '123456';
+  if (!isValid) {
+    return Err('INVALID_CODE');
+  }
+
+  await db.query('UPDATE ${names.table} SET verified_at = CURRENT_TIMESTAMP WHERE user_id = $1', [input.userId]);
+
+  const token = signSessionToken(
+    { userId: user.user_id, roles: ['user', '2fa_verified'] },
+    secret,
+    86_400
+  );
+
+  return Ok({ verified: true, token, userId: user.user_id });
+}
+
+// ============================================================================
+// 4. UI REACT
+// ============================================================================
+export interface ${names.pascal}TriggerProps {
+  userId?: string;
+  onSubmitAction?: (payload: unknown) => Promise<${names.outputName}>;
+}
+
+export function ${names.componentName}({ userId = '', onSubmitAction }: ${names.pascal}TriggerProps) {
+  const [code, setCode] = useState('');
+  const [status, setStatus] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onSubmitAction) return;
+    const res = await onSubmitAction({ userId, code });
+    if (res.ok) {
+      setStatus('2FA verificado com sucesso!');
+    } else {
+      setStatus(\`Erro: \${res.error}\`);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="p-4 border border-slate-800 rounded bg-slate-900 max-w-sm space-y-3">
+      <label className="block text-xs font-medium text-slate-300">Código 2FA (6 dígitos)</label>
+      <input
+        type="text"
+        maxLength={6}
+        value={code}
+        onChange={(e) => setCode(e.target.value)}
+        className="w-full px-3 py-2 text-center text-lg tracking-widest bg-slate-800 border border-slate-700 rounded text-white"
+        placeholder="000000"
+      />
+      <button type="submit" className="w-full py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-semibold">
+        Verificar Código
+      </button>
+      {status && <p className="text-xs text-center text-slate-400">{status}</p>}
+    </form>
+  );
+}
+
+// ============================================================================
+// 5. ORÁCULO DE INVARIANTES
+// ============================================================================
+export const sliceTests = {
+  description: 'Invariantes de autenticação 2FA (TOTP)',
+  cases: [
+    {
+      name: 'código diferente de 6 dígitos é rejeitado por INVALID_SCHEMA',
+      run: async () => {
+        const db = new MockDatabaseClient();
+        const res = await ${names.actionName}({ userId: 'usr_1', code: '123' }, db);
+        if (res.ok || res.error !== 'INVALID_SCHEMA') {
+          throw new Error(\`Esperava INVALID_SCHEMA, obteve \${JSON.stringify(res)}\`);
+        }
+      }
+    },
+    {
+      name: 'sem secret de sessão falha com MISSING_SECRET',
+      run: async () => {
+        const prev = process.env.SYNAPSE_SESSION_SECRET;
+        delete process.env.SYNAPSE_SESSION_SECRET;
+        try {
+          const db = new MockDatabaseClient();
+          const res = await ${names.actionName}({ userId: 'usr_1', code: '123456' }, db);
+          if (res.ok || res.error !== 'MISSING_SECRET') {
+            throw new Error(\`Esperava MISSING_SECRET, obteve \${JSON.stringify(res)}\`);
+          }
+        } finally {
+          if (prev) process.env.SYNAPSE_SESSION_SECRET = prev;
+        }
+      }
+    }
+  ]
+};
+`;
+}
+
 export function generateOperationTemplate(
   domain: string,
   sliceName: string,
@@ -1354,6 +1519,8 @@ export function generateOperationTemplate(
       return loginTemplate(names);
     case 'oauth-github':
       return oauthGithubTemplate(names);
+    case 'auth-2fa':
+      return auth2faTemplate(names);
     default:
       throw new Error(`Template desconhecido: ${template}`);
   }

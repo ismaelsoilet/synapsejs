@@ -2,6 +2,7 @@ export * from './action-context';
 export * from './config';
 export * from './database-client';
 export * from './database-factory';
+export * from './image-optimizer';
 export * from './jobs';
 export * from './machine-types';
 export * from './postgres-client';

@@ -24,7 +24,7 @@ packages/synapse/src/         framework source
   client/                     DataTable, DataForm, Button, Card, Badge, Pagination, useAction, useLoaderData, SynapseProvider
   compiler/                   slice-discovery, migration-runner, db-schema-generator, fields-parser, scaffolder, splitter, repo-map, standalone-builder
   runtime/server.ts           Bun.serve router + SSR shell + RPC dispatcher + SynapseProvider
-  mcp/server.ts               MCP stdio server (8 tools)
+  mcp/server.ts               MCP stdio server (11 tools)
 packages/synapse/bin/synapse.ts   the CLI (single entry point)
 packages/synapse/templates/starter/   the starter template that `synapse new` copies
 packages/synapse/test/        bun:test suite (+ fixtures/ for splitter, oracle and bench fixtures)
@@ -53,6 +53,7 @@ failures only, so a machine consumer can always parse stdout.
 | `synapse db-schema` | `{"status":"PASS","operation":"DB_SCHEMA_GENERATE",...}` | writes centralized DAG catalog to `.codebase/db-schema.d.ts` |
 | `synapse db-drift` | `{"status":"PASS"|"DRIFT_DETECTED",...}` | detects missing tables, missing columns, and orphan tables |
 | `synapse impact <target>` | `{"status":"PASS","operation":"IMPACT_ANALYSIS",...}` | analyzes blast radius across FKs, shared modules, and tables |
+| `synapse rollback [slice]` | `{"status":"PASS","operation":"ROLLBACK",...}` | transactionally rolls back migration statements matching down blocks |
 | `bun run split` | `{"status":"PASS","slices":[{status,diagnostics,leaks}]}` | gates per slice, for all slice apps |
 | `synapse build --standalone` | `{"status":"PASS","operation":"BUILD_STANDALONE",...}` | compiles self-contained deployment package in `.synapse/standalone/` |
 | `synapse new-slice <domain> <name> --fields="..."` | `{"status":"PASS","operation":"SCAFFOLD_SLICE",...}` | scaffolds slice with TypeBox, DDL, Action, UI and PBT |
@@ -63,7 +64,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run bench:concurrency` | JSON report | measures real throughput (req/s) and latency percentiles |
-| `bun run mcp` | stdio JSON-RPC | exposes 10 native AI tools via JSON-RPC 2.0 |
+| `bun run mcp` | stdio JSON-RPC | exposes 11 native AI tools via JSON-RPC 2.0 |
 | `synapse worker` | continuous JSON log | background queue worker (SQLite or PostgreSQL) |
 
 ### Static files, CORS and logs
@@ -140,6 +141,17 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 18. `Schema Drift Detection` — `checkSchemaDrift(root)` comparing live SQLite/Postgres catalog against sliceSchema ASTs (`synapse db-drift`).
 19. `AST Impact Analysis` — `analyzeImpact(target)` calculating precise blast radius across Foreign Keys, shared module imports, and tables (`synapse impact`).
 20. `OAuth2 Social Authentication` — `oauth-github` template with GitHub OAuth code exchange, user creation, and signed session tokens.
+21. `Bidirectional DDL Migrations & Rollbacks` — `-- up:` and `-- down:` demarcation in `sliceSchema`, transactional rollback via `synapse rollback` and MCP `synapse_rollback`.
+22. `Vendor Code-Splitting & Micro-Bundles` — `_vendor.js` shared chunk, micro-bundles (< 500B), browser-native `<script type="importmap">`.
+23. `Dynamic SEO & Open Graph Metadata` — `sliceMeta(data, context)` export evaluated on server and stripped from client bundles.
+24. `Hierarchical Domain Layouts` — `src/slices/<domain>/_layout.tsx` nested within root layout `_layout.tsx`.
+25. `Sliding-Window Rate Limiting` — `TokenBucketRateLimiter` with strict RFC 6585 compliance.
+26. `Streaming Upload Guard` — Early HTTP 413 rejection preventing buffer exhaustion and OOM DoS.
+27. `Distributed Event Hub` — `PostgresEventHub` with dedicated persistent `LISTEN` connection and large payload offloading.
+28. `Isomorphic i18n Routing` — `createTranslator` and localized `/:locale/*` URL routing.
+29. `Advanced Form Primitives` — `<DataForm>` supporting dot-notation fields (`user.profile.bio`), file inputs, and inline `fieldErrors`.
+30. `Session Token Revocation` — `TOKEN_REVOKED` backed by in-memory cache and `_synapse_session_blacklist` table.
+31. `On-Demand Image Optimizer & Lifecycle Hooks` — `optimizeImage` endpoint and plugin hooks (`onBootstrap`, `onRequest`, `onResponse`, `onMigrate`).
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
@@ -149,13 +161,13 @@ code — the exact flake `generate-invoice` had.
 ### Authoring a slice without guessing
 
 `synapse contract` prints the whole authoring contract as JSON (the MCP tool `synapse_contract` does
-the same), and `synapse new-slice <domain> <name> --template=list|update|delete|login|oauth-github|crud --fields="..."` emits the shape
+the same), and `synapse new-slice <domain> <name> --template=list|update|delete|login|auth-2fa|oauth-github|crud --fields="..."` emits the shape
 instead of leaving it to be invented: `list` paginates with a parameterized filter, `update` is
 partial and builds its SET clause from a column allowlist, `delete` checks existence first. The
 suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
 contract, so the description cannot drift from behavior.
 
-The native MCP server (`bun run mcp`) exposes 10 tools for autonomous agents via JSON-RPC 2.0 over stdio:
+The native MCP server (`bun run mcp`) exposes 11 tools for autonomous agents via JSON-RPC 2.0 over stdio:
 1. `synapse_get_repo_map`: skeleton AST digest (< 3000 tokens).
 2. `synapse_get_db_schema`: centralized database schema catalog from slice DDLs.
 3. `synapse_check`: compiler diagnostics with exact JSON coordinates.
@@ -163,9 +175,10 @@ The native MCP server (`bun run mcp`) exposes 10 tools for autonomous agents via
 5. `synapse_run_pbt`: runs Fast-Check property oracles.
 6. `synapse_scaffold_slice`: scaffolds slices with `--fields` grammar and templates.
 7. `synapse_migrate`: applies DDL statements idempotently.
-8. `synapse_contract`: slice authoring contract and HTTP transport semantics.
-9. `synapse_check_db_drift`: compares live database schema against slice DDLs.
-10. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
+8. `synapse_rollback`: transactionally rolls back migration statements matching down blocks.
+9. `synapse_contract`: slice authoring contract and HTTP transport semantics.
+10. `synapse_check_db_drift`: compares live database schema against slice DDLs.
+11. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
 
 **A slice never imports another slice.** `SLICE_IMPORTS_SLICE` fails the split when it happens,
 transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by
@@ -222,7 +235,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.0.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.1.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.
@@ -265,7 +278,7 @@ A server action referenced by a component contributes **only its wire signature*
 ```bash
 bun install
 bun run lint                        # Biome: 0 errors, 27 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (301 tests across 40 files)
+bun test packages/synapse/test      # framework suite (359 tests across 49 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map

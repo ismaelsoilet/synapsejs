@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.1.0 — Resilience, Scalability & Advanced Composition (Waves 1-4)
+
+- **Wave 1: Routing, SSR Shell & Bundling**:
+  - **Vendor Code-Splitting & Micro-Bundles**: `client-bundler.ts` splits React, ReactDOM, and common dependencies into a shared `_vendor.js` chunk. Slice bundles are compiled as micro-bundles (< 500B), resolving external imports via browser-native `<script type="importmap">`.
+  - **Dynamic SEO & Open Graph Metadata (`sliceMeta`)**: Slices can export `sliceMeta(data, context)` returning title, description, keywords, canonical URLs, and Open Graph / Twitter card tags. The SSR shell evaluates `sliceMeta` on server render and the client splitter strips it with zero leaks.
+  - **Hierarchical Domain Layouts**: Support for nested layouts at `src/slices/<domain>/_layout.tsx`, wrapping domain-specific slices within domain navigation/sidebars while preserving the root layout `src/slices/_layout.tsx`.
+
+- **Wave 2: Database Resilience & Network Defense**:
+  - **Bidirectional DDL Migrations & Transactional Rollbacks**: `sliceSchema` supports optional `-- up:` and `-- down:` demarcations. Added CLI `synapse rollback [targetSlice] [--steps=N]` and native MCP tool `synapse_rollback` to roll back schema changes transactionally and clean up `_synapse_migration_statements`.
+  - **Sliding-Window Token Bucket Rate Limiting**: Built-in `TokenBucketRateLimiter` protecting RPC, webhook, and SSR routes with strict RFC 6585 compliance (`X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, `Retry-After`). Configurable via `SynapseConfig.rateLimit`.
+  - **Streaming Multipart File Upload Protection**: Memory-safe streaming parser rejecting oversized uploads via early `Content-Length` inspection (HTTP 413 Payload Too Large) before consuming body buffers, preventing OOM DoS attacks.
+
+- **Wave 3: Distributed Scale & i18n**:
+  - **PostgreSQL Distributed Event Hub (`PostgresEventHub`)**: Native multi-instance pub/sub using a dedicated persistent PostgreSQL connection for `LISTEN/NOTIFY` (preventing transaction-pooler eviction like PgBouncer in transaction mode). Automatically offloads payloads exceeding 8KB to `_synapse_event_payloads` table with automatic TTL cleanup, with per-instance deduplication via `instanceId`.
+  - **Isomorphic i18n Routing & Primitives**: First-class internationalization via `createTranslator(dictionary, locale)` primitive and localized URL prefix routing (`/:locale/*` e.g. `/en/...`, `/pt-BR/...`) with automatic `<html lang="...">` injection and cookie/header negotiation.
+
+- **Wave 4: UI Primitives, Auth & DX**:
+  - **Advanced `<DataForm>` Primitives**: Full support for nested dot-notation fields (`user.profile.bio`), file inputs (`<input type="file">`), and granular inline field-level validation errors (`fieldErrors`).
+  - **Session Token Revocation Blacklist**: Cryptographic session revocation mechanism (`TOKEN_REVOKED`) backed by an in-memory TTL cache and durable `_synapse_session_blacklist` database table. Revocation methods `revokeSessionToken(token)` and `isSessionRevoked(token)`.
+  - **TOTP Two-Factor Authentication Slice Template**: `synapse new-slice auth 2fa --template=auth-2fa` scaffolding complete TOTP 2FA enrollment, QR-compatible base32 secret generation, and verification action.
+  - **On-Demand Image Optimizer**: Secure dynamic sharp image transformation endpoint `GET /_synapse/images/optimize?url=...&w=...&h=...&q=...&fmt=webp` with domain allowlist, path traversal guards, dynamic sharp import, and air-gapped passthrough fallback when sharp is not installed.
+  - **Infrastructure Plugin Lifecycle Hooks**: Extensible application hooks in `defineConfig`: `onBootstrap`, `onRequest`, `onResponse`, and `onMigrate`.
+
+- **Tooling & Test Suite Expansion**:
+  - MCP Server expanded to 11 native tools (added `synapse_rollback`).
+  - Test suite expanded from 320 to 359 automated tests across 49 test files with 100% green gates.
+
 ## 1.0.0 — Production Release (Freeze & Realtime Parity)
 
 - **Realtime Declarative SSE Gateway (`EventHub`)**:

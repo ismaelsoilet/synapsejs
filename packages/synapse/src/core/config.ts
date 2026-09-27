@@ -7,6 +7,16 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export interface SynapsePlugin {
+  name: string;
+  // biome-ignore lint/suspicious/noExplicitAny: generic boundary for framework server
+  onBootstrap?: (server: any) => Promise<void> | void;
+  onRequest?: (req: Request) => Promise<Response | null | void> | Response | null | void;
+  onResponse?: (res: Response, req: Request) => Promise<Response> | Response;
+  // biome-ignore lint/suspicious/noExplicitAny: generic boundary for database client
+  onMigrate?: (db: any) => Promise<void> | void;
+}
+
 export interface SynapseConfig<TServices = Record<string, unknown>> {
   /**
    * Enterprise & SaaS service registry (e.g. mailer, stripe, storage, ai).
@@ -30,6 +40,11 @@ export interface SynapseConfig<TServices = Record<string, unknown>> {
     dbPath?: string;
     concurrency?: number;
   };
+
+  /**
+   * Infrastructure lifecycle plugins (onBootstrap, onRequest, onResponse, onMigrate).
+   */
+  plugins?: SynapsePlugin[];
 }
 
 export function defineConfig<TServices = Record<string, unknown>>(

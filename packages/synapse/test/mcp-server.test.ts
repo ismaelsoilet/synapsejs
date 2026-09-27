@@ -76,6 +76,7 @@ describe('SynapseMcpServer over stdio', () => {
       'synapse_get_db_schema',
       'synapse_get_repo_map',
       'synapse_migrate',
+      'synapse_rollback',
       'synapse_run_pbt',
       'synapse_scaffold_slice',
       'synapse_split'

@@ -1,6 +1,6 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",

@@ -36,6 +36,45 @@ export interface MigrationReport {
   candidates?: string[];
 }
 
+export interface BidirectionalDdl {
+  upDdl: string;
+  downDdl: string | null;
+}
+
+export interface RollbackResult {
+  slice: string;
+  status: 'ROLLED_BACK' | 'FAILED' | 'SKIPPED';
+  statementsRolledBack: number;
+  error?: string;
+}
+
+export interface RollbackReport {
+  status: 'PASS' | 'FAIL';
+  totalRolledBack: number;
+  rollbacks: RollbackResult[];
+  message?: string;
+}
+
+export interface RollbackOptions {
+  targetSlice?: string;
+  steps?: number;
+}
+
+export function parseBidirectionalDdl(rawDdl: string): BidirectionalDdl {
+  const downMarkerRegex = /^[ \t]*--\s*down:?[ \t]*$/im;
+  const match = downMarkerRegex.exec(rawDdl);
+  if (!match) {
+    return { upDdl: rawDdl.trim(), downDdl: null };
+  }
+  const splitIndex = match.index;
+  const upDdl = rawDdl.slice(0, splitIndex).trim();
+  const downDdl = rawDdl.slice(splitIndex + match[0].length).trim();
+  return {
+    upDdl,
+    downDdl: downDdl.length > 0 ? downDdl : null
+  };
+}
+
 function hashStatement(statement: string): string {
   const hasher = new Bun.CryptoHasher('sha256');
   hasher.update(statement);
@@ -239,9 +278,14 @@ export async function runSliceMigrations(
       CREATE TABLE IF NOT EXISTS _synapse_migrations (
         slice_name TEXT PRIMARY KEY,
         schema_hash TEXT NOT NULL,
+        down_ddl TEXT,
         applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       );
     `);
+
+    try {
+      await db.query(`ALTER TABLE _synapse_migrations ADD COLUMN down_ddl TEXT;`);
+    } catch (_) {}
 
     // Progresso por statement, não por fatia: sem isso, um `ALTER TABLE` registrado
     // uma vez volta a rodar na próxima edição do DDL e falha para sempre
@@ -251,10 +295,15 @@ export async function runSliceMigrations(
     CREATE TABLE IF NOT EXISTS _synapse_migration_statements (
       slice_name TEXT NOT NULL,
       statement_hash TEXT NOT NULL,
+      down_statement TEXT,
       applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (slice_name, statement_hash)
     );
   `);
+
+    try {
+      await db.query(`ALTER TABLE _synapse_migration_statements ADD COLUMN down_statement TEXT;`);
+    } catch (_) {}
 
     const resolution = resolveSlicesDir(baseDir);
     if (!resolution.ok) {
@@ -289,8 +338,13 @@ export async function runSliceMigrations(
         continue;
       }
 
-      const hash = hashStatement(ddlContent);
-      const statements = splitStatements(ddlContent);
+      const { upDdl, downDdl } = parseBidirectionalDdl(ddlContent);
+      if (!upDdl) {
+        continue;
+      }
+
+      const hash = hashStatement(upDdl);
+      const statements = splitStatements(upDdl);
       const withHashes = statements.map((statement) => ({ statement, hash: hashStatement(statement) }));
 
       const applied = await db.query<{ statement_hash: string }>(
@@ -318,15 +372,15 @@ export async function runSliceMigrations(
           }
           for (const entry of pending) {
             await tx.query(
-              `INSERT INTO _synapse_migration_statements (slice_name, statement_hash) VALUES ($1, $2)
+              `INSERT INTO _synapse_migration_statements (slice_name, statement_hash, down_statement) VALUES ($1, $2, $3)
              ON CONFLICT(slice_name, statement_hash) DO NOTHING`,
-              [sliceName, entry.hash]
+              [sliceName, entry.hash, downDdl]
             );
           }
           await tx.query(
-            `INSERT INTO _synapse_migrations (slice_name, schema_hash) VALUES ($1, $2)
-           ON CONFLICT(slice_name) DO UPDATE SET schema_hash = $2, applied_at = CURRENT_TIMESTAMP`,
-            [sliceName, hash]
+            `INSERT INTO _synapse_migrations (slice_name, schema_hash, down_ddl, applied_at) VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+           ON CONFLICT(slice_name) DO UPDATE SET schema_hash = $2, down_ddl = $3, applied_at = CURRENT_TIMESTAMP`,
+            [sliceName, hash, downDdl]
           );
         });
 
@@ -357,6 +411,134 @@ export async function runSliceMigrations(
       skippedCount,
       statementsApplied: statementsAppliedTotal,
       migrations
+    };
+  } finally {
+    if (isPostgres) {
+      await db.query(`SELECT pg_advisory_unlock(${SYNAPSE_MIGRATION_LOCK_ID});`);
+    }
+  }
+}
+
+export async function rollbackSliceMigrations(
+  _baseDir: string = process.cwd(),
+  customDb?: DatabaseClient,
+  options: RollbackOptions = {}
+): Promise<RollbackReport> {
+  const db = customDb || getDatabase();
+  const isPostgres = db instanceof PostgresDatabaseClient;
+  const SYNAPSE_MIGRATION_LOCK_ID = 82910471;
+
+  if (isPostgres) {
+    await db.query(`SELECT pg_advisory_lock(${SYNAPSE_MIGRATION_LOCK_ID});`);
+  }
+
+  try {
+    const tableExists = await db.query(
+      isPostgres
+        ? `SELECT 1 FROM information_schema.tables WHERE table_name = '_synapse_migrations'`
+        : `SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = '_synapse_migrations'`
+    );
+
+    if (tableExists.length === 0) {
+      return {
+        status: 'PASS',
+        totalRolledBack: 0,
+        rollbacks: [],
+        message: 'Nenhuma tabela de migrações encontrada no banco.'
+      };
+    }
+
+    let records: Array<{ slice_name: string; down_ddl: string | null }>;
+    if (options.targetSlice) {
+      const cleanTarget = options.targetSlice.endsWith('.slice.tsx')
+        ? path.basename(options.targetSlice, '.slice.tsx')
+        : options.targetSlice.includes('/')
+          ? (options.targetSlice.split('/').pop() ?? options.targetSlice)
+          : options.targetSlice;
+
+      records = await db.query<{ slice_name: string; down_ddl: string | null }>(
+        `SELECT slice_name, down_ddl FROM _synapse_migrations WHERE slice_name = $1`,
+        [cleanTarget]
+      );
+
+      if (records.length === 0) {
+        return {
+          status: 'FAIL',
+          totalRolledBack: 0,
+          rollbacks: [
+            {
+              slice: cleanTarget,
+              status: 'FAILED',
+              statementsRolledBack: 0,
+              error: `Fatia '${cleanTarget}' não foi encontrada no histórico de migrações aplicadas.`
+            }
+          ]
+        };
+      }
+    } else {
+      const steps = Math.max(1, options.steps ?? 1);
+      records = await db.query<{ slice_name: string; down_ddl: string | null }>(
+        `SELECT slice_name, down_ddl FROM _synapse_migrations ORDER BY applied_at DESC, slice_name DESC LIMIT $1`,
+        [steps]
+      );
+    }
+
+    if (records.length === 0) {
+      return {
+        status: 'PASS',
+        totalRolledBack: 0,
+        rollbacks: [],
+        message: 'Nenhuma migração disponível para reverter.'
+      };
+    }
+
+    const rollbacks: RollbackResult[] = [];
+    let hasFailure = false;
+    let totalRolledBack = 0;
+
+    for (const record of records) {
+      if (!record.down_ddl || record.down_ddl.trim().length === 0) {
+        hasFailure = true;
+        rollbacks.push({
+          slice: record.slice_name,
+          status: 'FAILED',
+          statementsRolledBack: 0,
+          error: `A fatia '${record.slice_name}' não possui bloco '-- down:' declarado para reversão.`
+        });
+        continue;
+      }
+
+      const downStatements = splitStatements(record.down_ddl);
+      try {
+        await db.transaction(async (tx) => {
+          for (const stmt of downStatements) {
+            await tx.query(stmt);
+          }
+          await tx.query(`DELETE FROM _synapse_migration_statements WHERE slice_name = $1`, [record.slice_name]);
+          await tx.query(`DELETE FROM _synapse_migrations WHERE slice_name = $1`, [record.slice_name]);
+        });
+
+        totalRolledBack++;
+        rollbacks.push({
+          slice: record.slice_name,
+          status: 'ROLLED_BACK',
+          statementsRolledBack: downStatements.length
+        });
+      } catch (err: unknown) {
+        hasFailure = true;
+        rollbacks.push({
+          slice: record.slice_name,
+          status: 'FAILED',
+          statementsRolledBack: 0,
+          error: err instanceof Error ? err.message : String(err)
+        });
+      }
+    }
+
+    return {
+      status: hasFailure ? 'FAIL' : 'PASS',
+      totalRolledBack,
+      rollbacks
     };
   } finally {
     if (isPostgres) {

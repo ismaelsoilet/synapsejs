@@ -312,12 +312,12 @@ export function DataTable<T extends Record<string, any>>({
 }
 
 // ============================================================================
-// 6. DATAFORM COMPONENT
+// 6. DATAFORM COMPONENT WITH NESTED DOT-NOTATION & FILE SUPPORT
 // ============================================================================
 export interface FormField {
   name: string;
   label: string;
-  type?: 'text' | 'email' | 'number' | 'password' | 'select' | 'textarea' | 'checkbox';
+  type?: 'text' | 'email' | 'number' | 'password' | 'select' | 'textarea' | 'checkbox' | 'file';
   options?: Array<{ label: string; value: string }>;
   required?: boolean;
   defaultValue?: unknown;
@@ -331,8 +331,44 @@ export interface DataFormProps {
   submitLabel?: string;
   isSubmitting?: boolean;
   error?: string | null;
+  fieldErrors?: Record<string, string>;
   successMessage?: string | null;
   className?: string;
+}
+
+export function setNestedProperty(obj: Record<string, any>, path: string, value: unknown): void {
+  const parts = path.split('.');
+  let cur = obj;
+  for (let i = 0; i < parts.length - 1; i++) {
+    const part = parts[i];
+    if (!cur[part] || typeof cur[part] !== 'object') {
+      cur[part] = {};
+    }
+    cur = cur[part];
+  }
+  cur[parts[parts.length - 1]] = value;
+}
+
+export function getNestedProperty(obj: Record<string, any>, path: string): unknown {
+  const parts = path.split('.');
+  let cur: any = obj;
+  for (const part of parts) {
+    if (cur === null || cur === undefined) return undefined;
+    cur = cur[part];
+  }
+  return cur;
+}
+
+export function expandNestedObject(flat: Record<string, unknown>): Record<string, unknown> {
+  const nested: Record<string, any> = {};
+  for (const [key, value] of Object.entries(flat)) {
+    if (key.includes('.')) {
+      setNestedProperty(nested, key, value);
+    } else {
+      nested[key] = value;
+    }
+  }
+  return nested;
 }
 
 export function DataForm({
@@ -341,13 +377,14 @@ export function DataForm({
   submitLabel = 'Salvar',
   isSubmitting = false,
   error,
+  fieldErrors,
   successMessage,
   className = ''
 }: DataFormProps) {
   const [formValues, setFormValues] = useState<Record<string, unknown>>(() => {
     const initial: Record<string, unknown> = {};
     for (const f of fields) {
-      initial[f.name] = f.defaultValue ?? (f.type === 'checkbox' ? false : '');
+      initial[f.name] = f.defaultValue ?? (f.type === 'checkbox' ? false : f.type === 'file' ? null : '');
     }
     return initial;
   });
@@ -358,7 +395,8 @@ export function DataForm({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    await onSubmit(formValues);
+    const payload = expandNestedObject(formValues);
+    await onSubmit(payload);
   };
 
   return (
@@ -371,79 +409,96 @@ export function DataForm({
         </div>
       )}
 
-      {fields.map((field) => (
-        <div key={field.name} className="space-y-1">
-          {field.type !== 'checkbox' && (
-            <label htmlFor={field.name} className="block text-xs font-medium text-slate-300">
-              {field.label} {field.required && <span className="text-rose-400">*</span>}
-            </label>
-          )}
+      {fields.map((field) => {
+        const fieldError =
+          fieldErrors?.[field.name] || (getNestedProperty(fieldErrors || {}, field.name) as string | undefined);
+        const borderClass = fieldError
+          ? 'border-rose-500 focus:border-rose-400'
+          : 'border-slate-700 focus:border-emerald-500';
 
-          {field.type === 'select' ? (
-            <select
-              id={field.name}
-              value={
-                formValues[field.name] !== undefined && formValues[field.name] !== null
-                  ? String(formValues[field.name])
-                  : ''
-              }
-              onChange={(e) => handleChange(field.name, e.target.value)}
-              required={field.required}
-              className="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-700 rounded text-slate-100 focus:outline-none focus:border-emerald-500"
-            >
-              <option value="">Selecione...</option>
-              {field.options?.map((opt) => (
-                <option key={opt.value} value={opt.value}>
-                  {opt.label}
-                </option>
-              ))}
-            </select>
-          ) : field.type === 'textarea' ? (
-            <textarea
-              id={field.name}
-              rows={3}
-              value={
-                formValues[field.name] !== undefined && formValues[field.name] !== null
-                  ? String(formValues[field.name])
-                  : ''
-              }
-              onChange={(e) => handleChange(field.name, e.target.value)}
-              placeholder={field.placeholder}
-              required={field.required}
-              className="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-700 rounded text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-            />
-          ) : field.type === 'checkbox' ? (
-            <label htmlFor={field.name} className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+        return (
+          <div key={field.name} className="space-y-1">
+            {field.type !== 'checkbox' && (
+              <label htmlFor={field.name} className="block text-xs font-medium text-slate-300">
+                {field.label} {field.required && <span className="text-rose-400">*</span>}
+              </label>
+            )}
+
+            {field.type === 'select' ? (
+              <select
+                id={field.name}
+                value={
+                  formValues[field.name] !== undefined && formValues[field.name] !== null
+                    ? String(formValues[field.name])
+                    : ''
+                }
+                onChange={(e) => handleChange(field.name, e.target.value)}
+                required={field.required}
+                className={`w-full px-3 py-2 text-xs bg-slate-800 border rounded text-slate-100 focus:outline-none ${borderClass}`}
+              >
+                <option value="">Selecione...</option>
+                {field.options?.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            ) : field.type === 'textarea' ? (
+              <textarea
+                id={field.name}
+                rows={3}
+                value={
+                  formValues[field.name] !== undefined && formValues[field.name] !== null
+                    ? String(formValues[field.name])
+                    : ''
+                }
+                onChange={(e) => handleChange(field.name, e.target.value)}
+                placeholder={field.placeholder}
+                required={field.required}
+                className={`w-full px-3 py-2 text-xs bg-slate-800 border rounded text-slate-100 placeholder-slate-500 focus:outline-none ${borderClass}`}
+              />
+            ) : field.type === 'checkbox' ? (
+              <label htmlFor={field.name} className="flex items-center gap-2 cursor-pointer text-xs text-slate-300">
+                <input
+                  id={field.name}
+                  type="checkbox"
+                  checked={Boolean(formValues[field.name])}
+                  onChange={(e) => handleChange(field.name, e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-0"
+                />
+                <span>{field.placeholder || field.label}</span>
+              </label>
+            ) : field.type === 'file' ? (
               <input
                 id={field.name}
-                type="checkbox"
-                checked={Boolean(formValues[field.name])}
-                onChange={(e) => handleChange(field.name, e.target.checked)}
-                className="rounded border-slate-700 bg-slate-800 text-emerald-600 focus:ring-0"
+                type="file"
+                onChange={(e) => handleChange(field.name, e.target.files?.[0] ?? null)}
+                required={field.required}
+                className={`w-full px-3 py-2 text-xs bg-slate-800 border rounded text-slate-300 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-slate-700 file:text-slate-200 hover:file:bg-slate-600 ${borderClass}`}
               />
-              <span>{field.placeholder || field.label}</span>
-            </label>
-          ) : (
-            <input
-              id={field.name}
-              type={field.type || 'text'}
-              value={
-                formValues[field.name] !== undefined && formValues[field.name] !== null
-                  ? String(formValues[field.name])
-                  : ''
-              }
-              onChange={(e) =>
-                handleChange(field.name, field.type === 'number' ? Number(e.target.value) : e.target.value)
-              }
-              placeholder={field.placeholder}
-              required={field.required}
-              className="w-full px-3 py-2 text-xs bg-slate-800 border border-slate-700 rounded text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-            />
-          )}
+            ) : (
+              <input
+                id={field.name}
+                type={field.type || 'text'}
+                value={
+                  formValues[field.name] !== undefined && formValues[field.name] !== null
+                    ? String(formValues[field.name])
+                    : ''
+                }
+                onChange={(e) =>
+                  handleChange(field.name, field.type === 'number' ? Number(e.target.value) : e.target.value)
+                }
+                placeholder={field.placeholder}
+                required={field.required}
+                className={`w-full px-3 py-2 text-xs bg-slate-800 border rounded text-slate-100 placeholder-slate-500 focus:outline-none ${borderClass}`}
+              />
+            )}
 
-          {field.helpText && <p className="text-[10px] text-slate-500">{field.helpText}</p>}
-        </div>
-      ))}
+            {fieldError && <p className="text-[11px] text-rose-400">{fieldError}</p>}
+            {field.helpText && !fieldError && <p className="text-[10px] text-slate-500">{field.helpText}</p>}
+          </div>
+        );
+      })}
 
       <Button type="submit" loading={isSubmitting} variant="primary" className="w-full mt-2">
         {submitLabel}

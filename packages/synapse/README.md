@@ -125,7 +125,8 @@ bun run mcp     # JSON-RPC 2.0 over stdio
 ```
 
 Tools: `synapse_get_repo_map`, `synapse_get_db_schema`, `synapse_check`, `synapse_split`,
-`synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`, `synapse_contract`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
+`synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`, `synapse_rollback`, `synapse_contract`,
+`synapse_check_db_drift`, `synapse_diff_impact`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
 instead of reporting an empty success.
 
 Client configuration for an agent host:
@@ -148,6 +149,8 @@ signature (payload + return type) to the client — never its body.
 
 ## Package API
 
+For comprehensive documentation, see [README.md](../../README.md) (English) or [README.pt-BR.md](../../README.pt-BR.md) (Português do Brasil).
+
 ```typescript
 import {
   // Functional error handling
@@ -160,28 +163,38 @@ import {
   type ActionContext, createActionContext,
   defineConfig, loadSynapseConfig,
 
-  // Object Storage (Local + S3/R2/MinIO with SigV4)
-  type StorageClient, LocalStorageAdapter, S3StorageAdapter,
+  // Object Storage & Optimization
+  type StorageClient, getStorage, LocalStorageAdapter, S3StorageAdapter,
+  optimizeImage,
 
   // Background Jobs & Queue Engines
   defineJob, QueueEngine, PostgresQueueEngine, type JobRecord, type JobDefinition,
 
-  // RPC boundary (used by generated client stubs)
+  // RPC boundary & Session
   rpcCall, rpcTransportFailure, type RpcTransportError,
-
-  // Session, Multi-Tenancy & RBAC
   AnonymousSession, createSession, requireAuth, requireTenant,
   hasRole, hasAnyRole, type SessionContext,
+  storeSession, clearSession, currentRoles, sessionCookie,
+  revokeSessionToken, isSessionTokenRevoked,
 
-  // JIT validation
+  // JIT validation & PBT
   Type, type Static, type TSchema, Value, fc,
 
-  // Compiler, Scaffolding, Schemas & Diagnostics
-  runSliceMigrations, runMachineVerifications,
-  orderSlicesByDag, parseTableDependencies, generateDbSchemaCatalog,
+  // Declarative UI Primitives, Hooks & i18n
+  DataTable, DataForm, Button, Card, Badge, Pagination,
+  SynapseProvider, useAction, useLoaderData, useSubscription, useSession, useSynapseContext,
+  createTranslator,
+
+  // Realtime SSE Gateway
+  EventHub, getEventHub, resetEventHub,
+
+  // Compiler, Scaffolding, Schemas, Drift & Diagnostics
+  runSliceMigrations, rollbackSliceMigrations, runMachineVerifications,
+  orderSlicesByDag, parseTableDependencies, generateDatabaseSchemaCatalog,
+  checkSchemaDrift, analyzeImpact, nestJoinedRow,
   resolveSlicesDir, findSliceFiles, SLICE_EXTENSION,
   splitSlice, verifySplit, writeSplitArtifacts, artifactDirectory,
-  scaffoldSlice, parseFieldsSpec, compressRepositoryAST, buildStandalone,
+  scaffoldSlice, scaffoldCrud, parseFields, compressRepositoryAST, buildStandalone,
 
   // MCP
   SynapseMcpServer

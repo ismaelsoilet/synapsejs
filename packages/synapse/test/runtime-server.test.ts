@@ -65,7 +65,7 @@ describe('client hydration', () => {
   });
 
   it('serves a real bundle for the slice', async () => {
-    const match = pageHtml.match(/src="(\/_synapse\/client\/[^"]+)"/);
+    const match = pageHtml.match(/src="(\/_synapse\/client\/(?!_vendor)[^"]+)"/);
     expect(match).not.toBeNull();
 
     const bundleUrl = (match as RegExpMatchArray)[1];

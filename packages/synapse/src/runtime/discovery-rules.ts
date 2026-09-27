@@ -12,6 +12,8 @@ export const JOB_SUFFIX = 'Job';
 export const WEBHOOK_SUFFIX = 'Webhook';
 export const LOADER_SUFFIX = 'Loader';
 export const SCHEMA_SUFFIX = 'Schema';
+export const META_SUFFIX = 'Meta';
+export const SLICE_META_EXPORT = 'sliceMeta';
 export const SLICE_DDL_EXPORT = 'sliceSchema';
 export const SLICE_ORACLE_EXPORT = 'sliceTests';
 
@@ -19,7 +21,7 @@ export const SLICE_ORACLE_EXPORT = 'sliceTests';
 export const COMPONENT_SUFFIXES = ['Trigger', 'View', 'Form', 'Component'] as const;
 
 /** Everything the server side of a slice is built from. */
-export const SERVER_ROOT_SUFFIXES = [ACTION_SUFFIX, JOB_SUFFIX, WEBHOOK_SUFFIX] as const;
+export const SERVER_ROOT_SUFFIXES = [ACTION_SUFFIX, JOB_SUFFIX, WEBHOOK_SUFFIX, META_SUFFIX] as const;
 
 /** Test-only exports, dropped from both runtime bundles. */
 export const TEST_ONLY_EXPORTS = [SLICE_ORACLE_EXPORT] as const;
@@ -50,6 +52,10 @@ export function isComponent(name: string): boolean {
 
 export function isSchema(name: string): boolean {
   return name.endsWith(SCHEMA_SUFFIX);
+}
+
+export function isMeta(name: string): boolean {
+  return name === SLICE_META_EXPORT || name.endsWith(META_SUFFIX);
 }
 
 export function isTestOnly(name: string): boolean {

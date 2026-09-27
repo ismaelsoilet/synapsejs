@@ -23,9 +23,12 @@ export {
   type DataFormProps,
   DataTable,
   type DataTableProps,
+  expandNestedObject,
   type FormField,
+  getNestedProperty,
   Pagination,
-  type PaginationProps
+  type PaginationProps,
+  setNestedProperty
 } from './client/components';
 // Context & SSR data isolation
 export {
@@ -44,6 +47,11 @@ export {
   useAction,
   useSubscription
 } from './client/hooks';
+export {
+  createTranslator,
+  type TranslateFn,
+  type TranslationDictionary
+} from './client/i18n';
 export type { Result } from './core/machine-types';
 export { type RpcTransportError, rpcCall, rpcTransportFailure } from './core/rpc-client';
 export type { SessionContext } from './core/session-context';

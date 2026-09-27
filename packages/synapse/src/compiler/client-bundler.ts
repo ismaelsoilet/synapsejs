@@ -20,12 +20,16 @@ import { isComponent } from '../runtime/discovery-rules';
 import { findSliceFiles, resolveSlicesDir, type SlicesDirError } from './slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from './slice-splitter';
 
+export const VENDOR_BUNDLE_NAME = '_vendor.js';
+export const VENDOR_BUNDLE_URL = `/_synapse/client/${VENDOR_BUNDLE_NAME}`;
+
 export interface BundleTarget {
   key: string;
   name: string;
   domain: string;
   filePath: string;
   rpcPath: string;
+  vendorSplit?: boolean;
 }
 
 export interface BuiltBundle {
@@ -55,6 +59,77 @@ export interface ClientManifest {
 
 export function clientManifestPath(baseDir: string): string {
   return path.join(baseDir, '.synapse', 'client', 'manifest.json');
+}
+
+export async function buildVendorBundle(baseDir: string): Promise<Result<BuiltBundle, BuildError>> {
+  const vendorEntryDir = path.join(baseDir, '.synapse/client-entry');
+  fs.mkdirSync(vendorEntryDir, { recursive: true });
+  const vendorEntryPath = path.join(vendorEntryDir, '_vendor.ts');
+
+  const vendorEntryContent = [
+    `import React from 'react';`,
+    `import * as ReactDOM from 'react-dom';`,
+    `import * as ReactDOMClient from 'react-dom/client';`,
+    `import * as SynapseClient from 'synapsejs/client';`,
+    ``,
+    `export default React;`,
+    `export * from 'react';`,
+    `export * from 'react-dom';`,
+    `export * from 'react-dom/client';`,
+    `export * from 'synapsejs/client';`,
+    `export { ReactDOM, ReactDOMClient, SynapseClient };`,
+    ``
+  ].join('\n');
+
+  const existingEntry = fs.existsSync(vendorEntryPath) ? fs.readFileSync(vendorEntryPath, 'utf-8') : null;
+  if (existingEntry !== vendorEntryContent) {
+    fs.writeFileSync(vendorEntryPath, vendorEntryContent, 'utf-8');
+  }
+
+  const buildDir = path.join(baseDir, '.synapse/client');
+  fs.mkdirSync(buildDir, { recursive: true });
+  const vendorFile = path.join(buildDir, VENDOR_BUNDLE_NAME);
+
+  if (fs.existsSync(vendorFile) && existingEntry === vendorEntryContent) {
+    return Ok({
+      sliceKey: '_vendor',
+      url: VENDOR_BUNDLE_URL,
+      filePath: vendorFile,
+      bytes: fs.statSync(vendorFile).size,
+      mtimeMs: fs.statSync(vendorEntryPath).mtimeMs
+    });
+  }
+
+  const production = isProduction();
+
+  try {
+    const result = await Bun.build({
+      entrypoints: [vendorEntryPath],
+      target: 'browser',
+      outdir: buildDir,
+      naming: VENDOR_BUNDLE_NAME,
+      minify: production,
+      define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
+    });
+
+    const output = result.outputs[0];
+    if (!result.success || !output) {
+      return Err({
+        code: 'BUNDLE_FAILED',
+        message: `Falha ao empacotar vendor: ${result.logs.map((log) => String(log)).join('; ') || 'sem diagnóstico'}`
+      });
+    }
+
+    return Ok({
+      sliceKey: '_vendor',
+      url: VENDOR_BUNDLE_URL,
+      filePath: output.path,
+      bytes: output.size,
+      mtimeMs: fs.statSync(vendorEntryPath).mtimeMs
+    });
+  } catch (err) {
+    return Err({ code: 'BUNDLE_FAILED', message: `_vendor: ${(err as Error).message}` });
+  }
 }
 
 export function isProduction(): boolean {
@@ -129,6 +204,14 @@ export async function buildClientBundle(
     'utf-8'
   );
 
+  const vendorSplit = target.vendorSplit ?? true;
+  if (vendorSplit) {
+    const vendorFile = path.join(baseDir, '.synapse/client', VENDOR_BUNDLE_NAME);
+    if (!fs.existsSync(vendorFile)) {
+      await buildVendorBundle(baseDir);
+    }
+  }
+
   // Em produção o bundle é minificado e usa a build de produção do React (~4x menor).
   const production = isProduction();
   const buildDir = path.join(baseDir, '.synapse/client');
@@ -140,6 +223,7 @@ export async function buildClientBundle(
       outdir: buildDir,
       naming: '[name].js',
       minify: production,
+      external: vendorSplit ? ['react', 'react-dom', 'react-dom/client', 'synapsejs/client'] : [],
       define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
     });
   } catch (err) {
@@ -235,6 +319,12 @@ export async function buildAllClientBundles(
   const slicesDir = resolution.value.slicesDir;
   const entries: BuildReportEntry[] = [];
   const built: BuiltBundle[] = [];
+
+  const vendorRes = await buildVendorBundle(appRoot);
+  if (vendorRes.ok) {
+    built.push(vendorRes.value);
+    entries.push({ slice: '_vendor', status: 'PASS', url: vendorRes.value.url, bytes: vendorRes.value.bytes });
+  }
 
   for (const file of findSliceFiles(slicesDir)) {
     const domain = path.relative(slicesDir, file).split(path.sep)[0] || 'general';
