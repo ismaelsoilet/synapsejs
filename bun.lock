@@ -88,7 +88,7 @@
     },
     "packages/synapse": {
       "name": "synapsejs",
-      "version": "0.6.0",
+      "version": "1.1.0",
       "bin": {
         "synapse": "./bin/synapse.ts",
       },
