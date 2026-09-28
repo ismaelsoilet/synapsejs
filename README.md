@@ -287,11 +287,72 @@ If two features must coordinate or share transactional state, that logic belongs
 
 ---
 
+## 🧠 Dual Cognitive Architecture: SynapseJS + Jev System One
+
+Software engineering with autonomous AI coding agents (Claude, Cursor, Windsurf, Antigravity) faces two systemic pitfalls:
+1. **System 2 Structural Friction:** Layered architectures scatter code across 5 to 7 directories, forcing agents to burn 15,000+ context tokens on hallucinated imports and cross-file coordination. SynapseJS eliminates this with **Locality of Behavior ($N = 1$)** and contiguous vertical slices (`*.slice.tsx`).
+2. **System 1 Cognitive Waste:** When an agent encounters a transient environment failure, missing dependency, or trivial syntax issue, standard autoregressive LLMs waste tens of thousands of tokens in circular "deep thought" loops trying to refactor already-working business logic.
+
+SynapseJS pairs natively with **[Jev System One](https://github.com/ismaelsoilet/jev-harness)** to provide the industry's first dual-cognitive framework for AI-assisted engineering:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        AGENT / CODING LLM                              │
+└───────────────────▲────────────────────────────────▲───────────────────┘
+                    │                                │
+       [Reflex Decisions & Gating]         [Execution & Locality N=1]
+                    │                                │
+┌───────────────────┴────────────────┐  ┌────────────┴───────────────────┐
+│        JEV-HARNESS                 │  │          SYNAPSEJS             │
+│        (System 1 Reflex)           │  │          (System 2 Structure)  │
+├────────────────────────────────────┤  ├────────────────────────────────┤
+│ • Semantic decisions in 70-300ms   │  │ • Locality of Behavior (N = 1) │
+│ • Local heuristics (< 500µs)       │  │ • Vertical slices (*.slice.tsx)│
+│ • Non-autoregressive test-gate     │  │ • Fast-Check PBT oracles       │
+│ • Circular loop abort-check        │  │ • Zero-Leak AST Splitter       │
+│ • Astra-Jev reasoning modulation   │  │ • Native MCP Server (15 tools) │
+│ • Zero-token waste on env failures │  │ • Slices DDL & auto migrations │
+└────────────────────────────────────┘  └────────────────────────────────┘
+```
+
+### ⚡ Non-Autoregressive Test Gating (`synapse test --gate`)
+
+When executing property test oracles, the `--gate` flag (or presence of `.jev.json`) triggers immediate non-autoregressive triage:
+
+```bash
+# Run slice oracles with Jev System One semantic triage
+bun run synapse test --gate
+```
+
+If a test fails due to environment or missing dependencies, Jev System One flags `skipLlm = true` with high confidence ($>0.85$), prescribing deterministic fixes (e.g. `bun install`) without wasting tens of thousands of LLM reasoning tokens:
+
+```json
+{
+  "operation": "PBT_ORACLE_TEST_SUITE",
+  "status": "FAIL",
+  "triage": {
+    "category": "env_missing",
+    "confidence": 1.0,
+    "skipLlm": true,
+    "skipLlmProb": 0.86,
+    "severityScore": 0.73,
+    "actionRecommendation": "AUTO-ACTION: Install missing dependency or check environment configuration (Do NOT call LLM)."
+  }
+}
+```
+
+### 🛡️ Zero-Config Offline Fallback
+When no remote Jev endpoint or API key is configured, Jev-Harness seamlessly falls back to **sub-millisecond local deterministic heuristics (<500µs)**, guaranteeing that your local builds, Git pre-commit hooks, and CI/CD pipelines never stall or fail.
+
+📖 *For complete architectural specifications, Astra-Jev reasoning modulation, and provider configurations, see [docs/jev-integration.md](docs/jev-integration.md).*
+
+---
+
 ## 🤖 Built for AI Coding Agents: Native Model Context Protocol (MCP)
 
 SynapseJS is the first framework built from day one to be consumed and operated by **autonomous AI agents** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **11 native MCP tools** over stdio JSON-RPC 2.0:
+Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **15 native MCP tools** over stdio JSON-RPC 2.0:
 
 ```bash
 bun run mcp
@@ -311,21 +372,25 @@ bun run mcp
 }
 ```
 
-### The 11 Native MCP Tools
+### The 15 Native MCP Tools
 
-| MCP Tool | Capability |
-|---|---|
-| `synapse_get_repo_map` | Returns compressed codebase skeleton AST (`.codebase/repo-map.d.ts`, <3000 tokens). |
-| `synapse_get_db_schema` | Returns centralized database schema catalog (`.codebase/db-schema.d.ts`) for instant query context. |
-| `synapse_check` | Runs machine diagnostics returning exact error coordinates (`file`, `line`, `col`, `code`). |
-| `synapse_split` | Runs AST splitter and asserts 0-leak client/server verification gates. |
-| `synapse_run_pbt` | Executes Fast-Check property-based tests across slices and reports broken invariants. |
-| `synapse_scaffold_slice` | Scaffolds slices using templates and the `--fields` grammar. |
-| `synapse_migrate` | Applies declarative DDL migrations idempotently to SQLite or PostgreSQL. |
-| `synapse_rollback` | Transactionally rolls back migration statements matching down blocks. |
-| `synapse_contract` | Returns the framework authoring contract, HTTP semantics, and discovery rules. |
-| `synapse_check_db_drift` | Inspects live database against slice DDLs for missing/orphan tables and columns. |
-| `synapse_diff_impact` | Computes cross-slice blast radius for code, schema, and shared module changes. |
+| MCP Tool | Domain | Capability |
+|---|---|---|
+| `synapse_get_repo_map` | System 2 | Returns compressed codebase skeleton AST (`.codebase/repo-map.d.ts`, <3000 tokens). |
+| `synapse_get_db_schema` | System 2 | Returns centralized database schema catalog (`.codebase/db-schema.d.ts`) for instant query context. |
+| `synapse_check` | System 2 | Runs machine diagnostics returning exact error coordinates (`file`, `line`, `col`, `code`). |
+| `synapse_split` | System 2 | Runs AST splitter and asserts 0-leak client/server verification gates. |
+| `synapse_run_pbt` | System 2 | Executes Fast-Check property-based tests across slices and reports broken invariants. |
+| `synapse_scaffold_slice` | System 2 | Scaffolds slices using templates and the `--fields` grammar. |
+| `synapse_migrate` | System 2 | Applies declarative DDL migrations idempotently to SQLite or PostgreSQL. |
+| `synapse_rollback` | System 2 | Transactionally rolls back migration statements matching down blocks. |
+| `synapse_contract` | System 2 | Returns the framework authoring contract, HTTP semantics, and discovery rules. |
+| `synapse_check_db_drift` | System 2 | Inspects live database against slice DDLs for missing/orphan tables and columns. |
+| `synapse_diff_impact` | System 2 | Computes cross-slice blast radius for code, schema, and shared module changes. |
+| `synapse_test_gate` | **System 1 (Jev)** | Executes PBT oracles and immediately triages failures with non-autoregressive gating to prevent LLM token waste. |
+| `synapse_abort_check` | **System 1 (Jev)** | Evaluates proposed plans and error history to detect circular refactoring loops and doomed trajectories. |
+| `synapse_verify_completion` | **System 1 (Jev)** | Adversarially verifies slice implementation and test outputs against acceptance criteria before committing. |
+| `synapse_reasoning_effort` | **System 1 (Jev)** | Dynamically modulates agent reasoning effort (Astra-Jev) to low/medium/high to conserve tokens during mechanical tasks. |
 
 ---
 
@@ -378,7 +443,7 @@ synapse start [port]                # Starts production server with graceful shu
 # Diagnostics & Safety
 synapse check [file]                # Machine diagnostics with exact line/col coordinates
 synapse split                       # Partitions all slices into shared, server, and client modules
-synapse test                        # Executes Fast-Check property test oracles under bun:test
+synapse test [--gate]               # Executes Fast-Check property test oracles (with optional Jev System 1 gating)
 
 # Database & Migrations
 synapse migrate                     # Applies pending slice DDL statements idempotently
@@ -389,7 +454,7 @@ synapse impact <target>             # Calculates blast radius across FKs, tables
 # Code Generation & AI
 synapse new-slice <domain> <name>   # Scaffolds vertical slice (templates: create, list, crud, login, 2fa, oauth)
 synapse skeleton                    # Regenerates .codebase/repo-map.d.ts & .codebase/db-schema.d.ts
-synapse mcp                         # Starts native Model Context Protocol stdio server
+synapse mcp                         # Starts native Model Context Protocol stdio server (15 tools incl. Jev System 1)
 synapse build [--standalone]        # Pre-builds client micro-bundles or standalone release
 synapse worker                      # Starts continuous background jobs queue worker
 synapse contract [--markdown]       # Emits framework authoring contract specifications

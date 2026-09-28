@@ -287,11 +287,72 @@ Se duas funcionalidades precisam transacionar juntas ou compartilhar estado, ess
 
 ---
 
+## 🧠 Arquitetura Cognitiva Dupla: SynapseJS + Jev System One
+
+A engenharia de software com agentes de codificação de IA autônomos (Claude, Cursor, Windsurf, Antigravity) enfrenta dois gargalos sistêmicos:
+1. **Fricção Estrutural de Sistema 2:** Arquiteturas em camadas dispersam código por 5 a 7 diretórios, forçando o agente a desperdiçar mais de 15.000 tokens de contexto em alucinações de importação e sincronização de arquivos. O SynapseJS resolve isso com **Locality of Behavior ($N = 1$)** e fatias verticais contíguas (`*.slice.tsx`).
+2. **Desperdício Cognitivo de Sistema 1:** Quando um agente encontra uma falha transitória de ambiente, dependência ausente ou erro sintático pontual, modelos LLM autoregressivos convencionais queimam dezenas de milhares de tokens em loops circulares de "raciocínio profundo", tentando refatorar regras de negócio que já estavam corretas.
+
+O SynapseJS opera nativamente em simbiose com o **[Jev System One](https://github.com/ismaelsoilet/jev-harness)** para fornecer a primeira arquitetura cognitiva de duas camadas da indústria:
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                        AGENT / CODING LLM                              │
+└───────────────────▲────────────────────────────────▲───────────────────┘
+                    │                                │
+       [Decisões Reflexas & Gating]        [Execução & Locality N=1]
+                    │                                │
+┌───────────────────┴────────────────┐  ┌────────────┴───────────────────┐
+│        JEV-HARNESS                 │  │          SYNAPSEJS             │
+│        (Sistema 1 Cognitivo)       │  │          (Sistema 2 Estrutural)│
+├────────────────────────────────────┤  ├────────────────────────────────┤
+│ • Decisões semânticas em 70-300ms  │  │ • Locality of Behavior (N = 1) │
+│ • Heurísticas locais (< 500µs)     │  │ • Fatias verticais (*.slice.tsx│
+│ • Triagem de testes (test-gate)    │  │ • Oráculos PBT com fast-check  │
+│ • Aborto de loops (abort-check)    │  │ • AST Splitter (zero data-leak)│
+│ • Modulação de raciocínio Astra-Jev│  │ • MCP Server Nativo (15 tools) │
+│ • Zero desperdício em erros de env │  │ • Migrações DDL por fatia & PBT│
+└────────────────────────────────────┘  └────────────────────────────────┘
+```
+
+### ⚡ Portão Semântico de Testes (`synapse test --gate`)
+
+Ao rodar os oráculos de teste das fatias, a flag `--gate` (ou a presença de `.jev.json`) ativa automaticamente a triagem não-autoregressiva:
+
+```bash
+# Executa os oráculos com triagem semântica Jev System One
+bun run synapse test --gate
+```
+
+Se um teste falhar por problemas de ambiente ou dependência ausente, o Jev System One sinaliza `skipLlm = true` com alta confiança ($>0.85$), prescrevendo a correção determinística (ex: `bun install`) sem desperdiçar tokens de raciocínio da LLM:
+
+```json
+{
+  "operation": "PBT_ORACLE_TEST_SUITE",
+  "status": "FAIL",
+  "triage": {
+    "category": "env_missing",
+    "confidence": 1.0,
+    "skipLlm": true,
+    "skipLlmProb": 0.86,
+    "severityScore": 0.73,
+    "actionRecommendation": "AUTO-ACTION: Install missing dependency or check environment configuration (Do NOT call LLM)."
+  }
+}
+```
+
+### 🛡️ Modo Offline Determinístico (Zero-Config)
+Caso não haja conexão de rede ou credenciais remotas configuradas, o Jev-Harness executa instantaneamente via **heurísticas locais determinísticas (<500µs)**, assegurando que builds locais, hooks de pre-commit do Git e esteiras de CI/CD nunca fiquem bloqueados.
+
+📖 *Para especificações detalhadas de arquitetura, modulação de raciocínio Astra-Jev e configuração de provedores, veja [docs/jev-integration.md](docs/jev-integration.md).*
+
+---
+
 ## 🤖 Feito para Agentes de IA: Servidor Nativo MCP (Model Context Protocol)
 
 O SynapseJS é o primeiro framework concebido desde o primeiro dia para ser operado com eficácia por **agentes de codificação de IA autônomos** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **11 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
+Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **15 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
 
 ```bash
 bun run mcp
@@ -311,21 +372,25 @@ bun run mcp
 }
 ```
 
-### As 11 Ferramentas MCP Nativas
+### As 15 Ferramentas MCP Nativas
 
-| Ferramenta MCP | Capacidade |
-|---|---|
-| `synapse_get_repo_map` | Retorna o esqueleto comprimido do codebase em AST (`.codebase/repo-map.d.ts`, <3000 tokens). |
-| `synapse_get_db_schema` | Retorna o catálogo centralizado de schemas de banco (`.codebase/db-schema.d.ts`) para consultas imediatas. |
-| `synapse_check` | Executa diagnósticos estáticos retornando coordenadas exatas de erro (`file`, `line`, `col`, `code`). |
-| `synapse_split` | Executa o particionamento de fatias e valida os gates anti-vazamento (Zero-Leak). |
-| `synapse_run_pbt` | Roda testes baseados em propriedades Fast-Check e identifica invariantes violados. |
-| `synapse_scaffold_slice` | Cria novas fatias usando templates e gramática de `--fields`. |
-| `synapse_migrate` | Aplica migrações declarativas de forma idempotente em SQLite ou PostgreSQL. |
-| `synapse_rollback` | Desfaz alterações de schema de forma transacional usando blocos down. |
-| `synapse_contract` | Expõe a especificação completa de contratos do framework, semântica HTTP e regras de nomenclatura. |
-| `synapse_check_db_drift` | Compara o banco de dados em tempo real com as fatias para detectar tabelas e colunas órfãs ou faltantes. |
-| `synapse_diff_impact` | Calcula o raio de impacto de alterações em schemas, chaves estrangeiras e módulos compartilhados. |
+| Ferramenta MCP | Domínio | Capacidade |
+|---|---|---|
+| `synapse_get_repo_map` | Sistema 2 | Retorna o esqueleto comprimido do codebase em AST (`.codebase/repo-map.d.ts`, <3000 tokens). |
+| `synapse_get_db_schema` | Sistema 2 | Retorna o catálogo centralizado de schemas de banco (`.codebase/db-schema.d.ts`) para consultas imediatas. |
+| `synapse_check` | Sistema 2 | Executa diagnósticos estáticos retornando coordenadas exatas de erro (`file`, `line`, `col`, `code`). |
+| `synapse_split` | Sistema 2 | Executa o particionamento de fatias e valida os gates anti-vazamento (Zero-Leak). |
+| `synapse_run_pbt` | Sistema 2 | Roda testes baseados em propriedades Fast-Check e identifica invariantes violados. |
+| `synapse_scaffold_slice` | Sistema 2 | Cria novas fatias usando templates e gramática de `--fields`. |
+| `synapse_migrate` | Sistema 2 | Aplica migrações declarativas de forma idempotente em SQLite ou PostgreSQL. |
+| `synapse_rollback` | Sistema 2 | Desfaz alterações de schema de forma transacional usando blocos down. |
+| `synapse_contract` | Sistema 2 | Expõe a especificação completa de contratos do framework, semântica HTTP e regras de nomenclatura. |
+| `synapse_check_db_drift` | Sistema 2 | Compara o banco de dados em tempo real com as fatias para detectar tabelas e colunas órfãs ou faltantes. |
+| `synapse_diff_impact` | Sistema 2 | Calcula o raio de impacto de alterações em schemas, chaves estrangeiras e módulos compartilhados. |
+| `synapse_test_gate` | **Sistema 1 (Jev)** | Executa oráculos PBT e tria falhas imediatamente com gating não-autoregressivo para evitar desperdício de tokens. |
+| `synapse_abort_check` | **Sistema 1 (Jev)** | Avalia planos propostos e histórico de erros para detectar loops de refatoração circulares e trajetórias condenadas. |
+| `synapse_verify_completion` | **Sistema 1 (Jev)** | Verifica adversarialmente a implementação da fatia e saídas de teste contra critérios de aceitação antes de comitar. |
+| `synapse_reasoning_effort` | **Sistema 1 (Jev)** | Modula dinamicamente o esforço de raciocínio do modelo (Astra-Jev) para economizar tokens em etapas mecânicas. |
 
 ---
 
@@ -378,7 +443,7 @@ synapse start [porta]               # Inicia servidor de produção com graceful
 # Diagnósticos e Segurança
 synapse check [arquivo]             # Diagnósticos estáticos com coordenadas exatas de linha/coluna
 synapse split                       # Particiona fatias em módulos shared, server e client
-synapse test                        # Executa oráculos de teste de propriedades sob bun:test
+synapse test [--gate]               # Executa oráculos de teste de propriedades (com gating opcional Jev System 1)
 
 # Banco de Dados e Migrações
 synapse migrate                     # Aplica instruções de DDL pendentes de forma idempotente
@@ -389,7 +454,7 @@ synapse impact <alvo>               # Calcula o raio de impacto entre FKs, tabel
 # Geração de Código e IA
 synapse new-slice <domínio> <nome>  # Cria fatia vertical (templates: create, list, crud, login, 2fa, oauth)
 synapse skeleton                    # Regenera .codebase/repo-map.d.ts e .codebase/db-schema.d.ts
-synapse mcp                         # Inicia o servidor Model Context Protocol via stdio
+synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (15 ferramentas incl. Jev System 1)
 synapse build [--standalone]        # Pré-compila micro-bundles de browser ou pacote standalone
 synapse worker                      # Inicia worker contínuo para filas de background jobs
 synapse contract [--markdown]       # Emite especificação técnica de contratos do framework
