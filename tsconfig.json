@@ -33,7 +33,8 @@
     "examples/enterprise-crm/scripts/**/*",
     "examples/helpdesk-slices/src/**/*",
     "examples/helpdesk-conventional/src/**/*",
-    "packages/synapse/templates/starter/src/**/*"
+    "packages/synapse/templates/starter/src/**/*",
+    "scripts/**/*"
   ],
   "exclude": [
     "node_modules",

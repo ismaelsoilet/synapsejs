@@ -12,6 +12,7 @@
     "mcp": "synapse mcp",
     "skeleton": "synapse skeleton",
     "test": "synapse test",
+    "test:gate": "synapse test --gate",
     "new-slice": "synapse new-slice",
     "split": "synapse split",
     "build": "synapse build",

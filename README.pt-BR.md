@@ -12,8 +12,9 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-359%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="359 Testes Passando"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-11%20Ferramentas%20Nativas-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-365%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="365 Testes Passando"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP"></a>
+  <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Valida%C3%A7%C3%A3o-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
 </p>
@@ -95,13 +96,14 @@ A CLI gera instantaneamente:
 
 ---
 
-## 🌟 Os 6 Pilares Arquiteturais
+## 🌟 Os 7 Pilares Arquiteturais
 
 | Pilar | Como o SynapseJS Resolve |
 |---|---|
 | **⚡ Velocidade Brutal** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Entrega **>48.000 req/s** com latência p50 sub-milissegundo e cold-start imediato. |
 | **🛡️ Splitter Isomórfico Zero-Leak** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates de compilação bloqueiam rigorosamente SQL, segredos ou globais do Bun de chegarem ao browser. |
-| **🤖 Servidor MCP Nativo (11 Ferramentas)** | Servidor **Model Context Protocol** de primeira classe (`bun run mcp`). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto e rodam testes via JSON-RPC. |
+| **🤖 Servidor MCP Nativo (15 Ferramentas)** | Servidor **Model Context Protocol** de primeira classe (`bun run mcp`). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🧠 Simbiose Sistema 1 + Sistema 2** | Integração nativa com o harness de decisão não-autoregressivo [Jev System One](https://github.com/ismaelsoilet/jev-harness). Tria falhas de teste em 70-300ms (<500µs local), aborta trajetórias condenadas em loops de refatoração e modula dinamicamente o esforço de raciocínio (Astra-Jev). |
 | **🔄 Realtime SSE e Pub/Sub Distribuído** | Gateway nativo Server-Sent Events (`GET /_synapse/sse/:topic*`) com heartbeat automático de 15 segundos, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
 | **🗄️ Migrações Declarativas e Rollback** | O DDL vive nas fatias e é rastreado declaração por declaração com hash SHA-256. Suporta demarcações reversíveis `-- up:` / `-- down:` e rollback transacional atômico (`synapse rollback`). |
 | **🔒 Segurança Funcional e Oráculos PBT** | Zero exceptions não tratadas em tempo de execução: erros são valores de união tipados em `Result<T, E>`. Cada fatia traz oráculos matemáticos integrados com `fast-check`. |

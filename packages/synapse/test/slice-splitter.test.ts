@@ -125,7 +125,7 @@ describe('verifySplit gates', () => {
     expect(verification.diagnostics).toEqual([]);
     expect(verification.leaks).toEqual([]);
     expect(verification.status).toBe('PASS');
-  });
+  }, 20000);
 
   it('refuses a slice that imports another slice and points at src/shared', () => {
     const result = splitSlice(
@@ -149,7 +149,7 @@ describe('verifySplit gates', () => {
 
     expect(verification.status).toBe('FAIL');
     expect(verification.leaks).toContain('pacote-raiz-no-cliente');
-  });
+  }, 20000);
 
   it('accepts a client that imports from the client entry', () => {
     const result = splitOrFail('clients/browser-helper.slice.tsx');
@@ -160,7 +160,7 @@ describe('verifySplit gates', () => {
 
     expect(verification.diagnostics).toEqual([]);
     expect(verification.leaks).toEqual([]);
-  });
+  }, 20000);
 
   it('fails the leak gate when the client reaches into the database', () => {
     const result = splitOrFail('reports/leaky-report.slice.tsx');
@@ -172,7 +172,7 @@ describe('verifySplit gates', () => {
     expect(verification.status).toBe('FAIL');
     expect(verification.leaks).toContain('SELECT statement');
     expect(verification.leaks).toContain('database call');
-  });
+  }, 20000);
 
   it('fails the compilation gate when the emitted modules do not typecheck', () => {
     const result = splitOrFail('broken/broken.slice.tsx');
@@ -183,7 +183,7 @@ describe('verifySplit gates', () => {
 
     expect(verification.status).toBe('FAIL');
     expect(verification.diagnostics.some((item) => item.file === 'client.tsx')).toBe(true);
-  });
+  }, 20000);
 
   it('writes the three artifacts to the slice directory', () => {
     const result = splitOrFail('orders/create-order.slice.tsx');

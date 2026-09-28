@@ -9,6 +9,7 @@
  *   bun run study --report
  */
 
+import { type TestTriageResult, triageTestFailure } from '@ismaelsoilet/jev-harness';
 import * as fs from 'fs';
 import * as path from 'path';
 import { STACKS, STUDY_TASKS, type StudyStack } from './tasks';
@@ -21,6 +22,7 @@ interface GateResult {
   command: string;
   exitCode: number;
   output: string;
+  triage?: TestTriageResult;
 }
 
 interface DiffStats {
@@ -137,10 +139,17 @@ async function record(): Promise<never> {
   const gates: GateResult[] = [];
   for (const command of stack.gates) {
     const result = await run(command, appDir);
+    let triage: TestTriageResult | undefined;
+    if (result.exitCode !== 0) {
+      try {
+        triage = await triageTestFailure(result.output);
+      } catch {}
+    }
     gates.push({
       command: command.join(' '),
       exitCode: result.exitCode,
-      output: result.output.trim().slice(-400)
+      output: result.output.trim().slice(-400),
+      triage
     });
   }
 
@@ -219,6 +228,18 @@ function report(): never {
           (invalidated > 0 ? ` (${invalidated} entrada invalidada por defeito de medição)` : '')
       );
     }
+  }
+
+  const allGates = attempts.flatMap((a) => a.gates);
+  const totalTriaged = allGates.filter((g) => g.triage).length;
+  const skipLlmCount = allGates.filter((g) => g.triage?.skipLlm).length;
+  const estimatedTokensSaved = skipLlmCount * 35000;
+
+  if (totalTriaged > 0) {
+    lines.push('');
+    lines.push(
+      `> ⚡ **Jev System One Telemetria:** ${totalTriaged} falha(s) triada(s) | ${skipLlmCount} resolvida(s) deterministicamente sem LLM (~${estimatedTokensSaved.toLocaleString()} tokens economizados)`
+    );
   }
 
   process.stdout.write(`${lines.join('\n')}\n`);

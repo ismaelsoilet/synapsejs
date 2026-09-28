@@ -6,6 +6,7 @@
  * Preserves Locality of Behavior (LoB): each slice owns its own table contracts!
  */
 
+import { type AbortGateResult, shouldAbortTrajectory } from '@ismaelsoilet/jev-harness';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
@@ -34,6 +35,7 @@ export interface MigrationReport {
   code?: SlicesDirErrorCode;
   message?: string;
   candidates?: string[];
+  abortSignal?: AbortGateResult;
 }
 
 export interface BidirectionalDdl {
@@ -404,13 +406,28 @@ export async function runSliceMigrations(
       }
     }
 
+    let abortSignal: AbortGateResult | undefined;
+    if (hasFailure) {
+      try {
+        const failureDetails = migrations
+          .filter((m) => m.status === 'FAILED')
+          .map((m) => `Slice ${m.slice}: ${m.error}`)
+          .join('\n');
+        abortSignal = await shouldAbortTrajectory(
+          `Apply sliceSchema migrations across discovered slices in ${baseDir}`,
+          failureDetails
+        );
+      } catch {}
+    }
+
     return {
       status: hasFailure ? 'FAIL' : 'PASS',
       totalDiscovered: migrations.length,
       appliedCount,
       skippedCount,
       statementsApplied: statementsAppliedTotal,
-      migrations
+      migrations,
+      abortSignal
     };
   } finally {
     if (isPostgres) {

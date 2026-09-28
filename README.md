@@ -12,8 +12,9 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-359%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="359 Tests Passing"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-11%20Native%20Tools-purple?style=for-the-badge&logo=anthropic" alt="MCP Server"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-365%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="365 Tests Passing"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-15%20Native%20Tools-purple?style=for-the-badge&logo=anthropic" alt="MCP Server"></a>
+  <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Validation-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
 </p>
@@ -95,13 +96,14 @@ The CLI instantly generates:
 
 ---
 
-## 🌟 The 6 Architectural Pillars
+## 🌟 The 7 Architectural Pillars
 
 | Pillar | How SynapseJS Solves It |
 |---|---|
 | **⚡ Brutal Velocity** | Built directly on native **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Delivers **>48,000 req/s** with sub-millisecond p50 latency and instant cold-starts. |
 | **🛡️ Zero-Leak AST Splitter** | Type-checker reachability partitions slices into `shared.tsx`, `server.ts`, and `client.tsx`. Compile-time gates strictly prevent SQL, secrets, or Bun globals from ever reaching the browser bundle. |
-| **🤖 Native MCP Server (11 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, and run tests via standard JSON-RPC. |
+| **🤖 Native MCP Server (15 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🧠 System 1 + System 2 Symbiosis** | Native integration with [Jev System One](https://github.com/ismaelsoilet/jev-harness) non-autoregressive decision harness. Triages test failures in 70-300ms (<500µs local), halts circular refactoring doom loops, and dynamically modulates reasoning effort (Astra-Jev). |
 | **🔄 Realtime SSE & Distributed Pub/Sub** | Native Server-Sent Events gateway (`GET /_synapse/sse/:topic*`) with automatic 15-second heartbeat keep-alive, client hook `useSubscription`, and multi-instance PostgreSQL `LISTEN/NOTIFY` pub/sub. |
 | **🗄️ Declarative Schema & Rollbacks** | SQL migrations live in slices. Tracked statement-by-statement with SHA-256 idempotency. Supports bidirectional `-- up:` / `-- down:` demarcations and transactional rollbacks (`synapse rollback`). |
 | **🔒 Functional Safety & PBT Oracles** | No uncaught runtime exceptions: errors are typed values using `Result<T, E>`. Every slice includes mathematical verification oracles using `fast-check` property-based testing. |

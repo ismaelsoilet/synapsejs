@@ -534,7 +534,11 @@ async function main() {
     }
 
     case 'test': {
-      const report = await runSliceOracles(root);
+      const enableGate =
+        process.argv.includes('--gate') ||
+        fs.existsSync(path.join(root, '.jev.json')) ||
+        Boolean(process.env.JEV_ACTIVE || process.env.JEV_PROVIDER || process.env.TYPESAFE_API_KEY);
+      const report = await runSliceOracles(root, { enableJevTriage: enableGate });
 
       process.stdout.write(`${JSON.stringify({ operation: 'PBT_ORACLE_TEST_SUITE', ...report }, null, 2)}\n`);
       process.exit(report.status === 'PASS' ? 0 : 1);

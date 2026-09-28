@@ -1,0 +1,6 @@
+{
+  "provider": "opencode",
+  "model": "typesafe/jev",
+  "skip_llm_threshold": 0.65,
+  "abort_threshold": 0.70
+}

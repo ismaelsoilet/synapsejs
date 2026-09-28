@@ -1,0 +1,1 @@
+unit_id,requirement_id,artifact_path,snapshot_id,contract_version,environment_id,check_kind,required,role,method_id,status,result,evidence_id,evidence_locator,evidence_snapshot,observed_at,reuse_reason,applicability_evidence,applicability_checked_at,finding_ids

@@ -9,6 +9,7 @@
  * Nothing here may report PASS when no invariant was executed.
  */
 
+import { type TestTriageResult, triageTestFailure } from '@ismaelsoilet/jev-harness';
 import * as fs from 'fs';
 import * as path from 'path';
 import { findSliceFiles, resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
@@ -42,6 +43,7 @@ export interface OracleReport {
   code?: OracleErrorCode;
   message?: string;
   candidates?: string[];
+  triage?: TestTriageResult;
 }
 
 export interface JunitSuite {
@@ -154,6 +156,8 @@ export function oracleWrapperSource(importPath: string, sliceName: string): stri
 export interface OracleRunOptions {
   /** Injected by tests: runs a command and returns its exit code and output. */
   spawn?: (args: string[], cwd: string) => Promise<{ exitCode: number; output: string }>;
+  /** Enable Jev System One semantic test triage on failures. Default: true */
+  enableJevTriage?: boolean;
 }
 
 async function defaultSpawn(args: string[], cwd: string): Promise<{ exitCode: number; output: string }> {
@@ -241,6 +245,12 @@ export async function runSliceOracles(
   );
 
   if (!fs.existsSync(reportPath)) {
+    let triageResult: TestTriageResult | undefined;
+    if (options.enableJevTriage !== false) {
+      try {
+        triageResult = await triageTestFailure(output.trim() || `O runner Bun test falhou com exit ${exitCode}`);
+      } catch {}
+    }
     return {
       status: 'FAIL',
       totalSlices: wrappers.size,
@@ -249,7 +259,8 @@ export async function runSliceOracles(
       passedCases: 0,
       results: [],
       code: 'RUNNER_FAILED',
-      message: `O runner não produziu relatório (exit ${exitCode}). ${output.trim().slice(-400)}`.trim()
+      message: `O runner não produziu relatório (exit ${exitCode}). ${output.trim().slice(-400)}`.trim(),
+      triage: triageResult
     };
   }
 
@@ -268,6 +279,12 @@ export async function runSliceOracles(
   const passedSlices = results.filter((item) => item.passed).length;
 
   if (totalCases === 0) {
+    let triageResult: TestTriageResult | undefined;
+    if (options.enableJevTriage !== false) {
+      try {
+        triageResult = await triageTestFailure(`Nenhum invariante foi executado em ${results.length} fatia(s).`);
+      } catch {}
+    }
     return {
       status: 'FAIL',
       slicesDir: path.relative(root, slicesDir),
@@ -277,17 +294,34 @@ export async function runSliceOracles(
       passedCases: 0,
       results,
       code: 'NO_CASES',
-      message: `Nenhum invariante foi executado em ${results.length} fatia(s).`
+      message: `Nenhum invariante foi executado em ${results.length} fatia(s).`,
+      triage: triageResult
     };
   }
 
+  const isPass = passedSlices === results.length;
+  let triageResult: TestTriageResult | undefined;
+  if (!isPass && options.enableJevTriage !== false) {
+    try {
+      const failedSummaries = results
+        .filter((r) => !r.passed)
+        .flatMap((r) =>
+          r.cases.filter((c) => !c.passed).map((c) => `[${r.slice}] ${c.name}: ${c.message || 'assertion failed'}`)
+        )
+        .join('\n');
+      const failureTrace = failedSummaries || output.trim() || 'Slice oracle invariants failed';
+      triageResult = await triageTestFailure(failureTrace);
+    } catch {}
+  }
+
   return {
-    status: passedSlices === results.length ? 'PASS' : 'FAIL',
+    status: isPass ? 'PASS' : 'FAIL',
     slicesDir: path.relative(root, slicesDir),
     totalSlices: results.length,
     passedSlices,
     totalCases,
     passedCases,
-    results
+    results,
+    triage: triageResult
   };
 }

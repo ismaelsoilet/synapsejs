@@ -6,6 +6,16 @@
  * directly to AI Agents (Cursor, Claude Code, Windsurf, Antigravity) via JSON-RPC 2.0 over stdio.
  */
 
+import {
+  type AbortGateResult,
+  modulateReasoningEffort,
+  type ReasoningEffortResult,
+  shouldAbortTrajectory,
+  type TestTriageResult,
+  triageTestFailure,
+  type VerificationResult,
+  verifyStepCompletion
+} from '@ismaelsoilet/jev-harness';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
@@ -80,7 +90,7 @@ export class SynapseMcpServer {
             },
             serverInfo: {
               name: 'synapse-mcp',
-              version: '1.1.0'
+              version: '1.2.0'
             }
           }
         };
@@ -199,6 +209,67 @@ export class SynapseMcpServer {
                   properties: {
                     targetSlice: { type: 'string', description: 'Optional target slice to rollback' },
                     steps: { type: 'number', description: 'Number of recent migrations to rollback (default: 1)' }
+                  }
+                }
+              },
+              {
+                name: 'synapse_test_gate',
+                description:
+                  'Execute Fast-Check PBT oracles and immediately triage failures with Jev System One semantic test-gate to prevent LLM token waste',
+                inputSchema: {
+                  type: 'object',
+                  properties: {}
+                }
+              },
+              {
+                name: 'synapse_abort_check',
+                description:
+                  'Evaluate plan and error history with Jev System One to detect doomed trajectories, circular loops, or high-risk refactor dead ends',
+                inputSchema: {
+                  type: 'object',
+                  required: ['plan', 'history'],
+                  properties: {
+                    plan: { type: 'string', description: 'Proposed implementation plan or architectural change' },
+                    history: { type: 'string', description: 'Recent attempt history, error logs, or failure reasons' }
+                  }
+                }
+              },
+              {
+                name: 'synapse_verify_completion',
+                description:
+                  'Verify slice implementation and test outputs against acceptance criteria using Jev System One before committing work',
+                inputSchema: {
+                  type: 'object',
+                  required: ['criteria', 'output'],
+                  properties: {
+                    criteria: { type: 'string', description: 'Acceptance criteria or requirement specifications' },
+                    output: {
+                      type: 'string',
+                      description: 'Actual implementation summary, test output, or slice behavior'
+                    }
+                  }
+                }
+              },
+              {
+                name: 'synapse_reasoning_effort',
+                description:
+                  'Dynamically modulate agent reasoning effort (Astra-Jev) to low/medium/high based on step context (lowering effort for mechanical commands like split/migrate/skeleton)',
+                inputSchema: {
+                  type: 'object',
+                  required: ['context'],
+                  properties: {
+                    context: {
+                      type: 'string',
+                      description: 'Immediate command or task context, e.g. "synapse split", "git commit"'
+                    },
+                    provider: {
+                      type: 'string',
+                      description: 'Target LLM provider, e.g. "deepseek", "anthropic", "openai"'
+                    },
+                    sessionContextTokens: {
+                      type: 'number',
+                      description: 'Estimated session context token count to protect prompt cache'
+                    }
                   }
                 }
               }
@@ -503,6 +574,29 @@ export class SynapseMcpServer {
               steps: args.steps
             });
             contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_test_gate') {
+            const report = await runSliceOracles(this.root, { enableJevTriage: true });
+            contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_abort_check') {
+            const plan = String(args.plan || '');
+            const history = String(args.history || '');
+            const result: AbortGateResult = await shouldAbortTrajectory(plan, history);
+            contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_verify_completion') {
+            const criteria = String(args.criteria || '');
+            const output = String(args.output || '');
+            const result: VerificationResult = await verifyStepCompletion(criteria, output);
+            contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_reasoning_effort') {
+            const context = String(args.context || '');
+            const provider = args.provider ? String(args.provider) : undefined;
+            const sessionContextTokens =
+              typeof args.sessionContextTokens === 'number' ? args.sessionContextTokens : undefined;
+            const result: ReasoningEffortResult = await modulateReasoningEffort(context, {
+              provider,
+              sessionContextTokens
+            });
+            contentText = JSON.stringify(result, null, 2);
           } else {
             return {
               jsonrpc: '2.0',

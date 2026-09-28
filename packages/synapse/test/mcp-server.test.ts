@@ -52,7 +52,7 @@ async function runMcp(
 }
 
 describe('SynapseMcpServer over stdio', () => {
-  it('completes the JSON-RPC handshake and lists its eight tools', async () => {
+  it('completes the JSON-RPC handshake and lists its tools including Jev System One', async () => {
     const { responses } = await runMcp([
       { jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2024-11-05', capabilities: {} } },
       { jsonrpc: '2.0', method: 'notifications/initialized' },
@@ -69,6 +69,7 @@ describe('SynapseMcpServer over stdio', () => {
     const list = responses.find((r) => r.id === 2);
     const toolNames = list?.result.tools.map((t: { name: string }) => t.name).sort();
     expect(toolNames).toEqual([
+      'synapse_abort_check',
       'synapse_check',
       'synapse_check_db_drift',
       'synapse_contract',
@@ -76,10 +77,13 @@ describe('SynapseMcpServer over stdio', () => {
       'synapse_get_db_schema',
       'synapse_get_repo_map',
       'synapse_migrate',
+      'synapse_reasoning_effort',
       'synapse_rollback',
       'synapse_run_pbt',
       'synapse_scaffold_slice',
-      'synapse_split'
+      'synapse_split',
+      'synapse_test_gate',
+      'synapse_verify_completion'
     ]);
     expect(list?.result.tools.every((t: { description?: string }) => Boolean(t.description))).toBe(true);
   });

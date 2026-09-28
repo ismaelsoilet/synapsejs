@@ -5,6 +5,7 @@
     "": {
       "name": "synapsejs",
       "dependencies": {
+        "@ismaelsoilet/jev-harness": "^0.2.1",
         "@ismaelsoilet/synapsejs": "workspace:*",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
@@ -88,11 +89,12 @@
     },
     "packages/synapse": {
       "name": "@ismaelsoilet/synapsejs",
-      "version": "1.1.0",
+      "version": "1.2.0",
       "bin": {
         "synapse": "./bin/synapse.ts",
       },
       "dependencies": {
+        "@ismaelsoilet/jev-harness": "^0.2.1",
         "@sinclair/typebox": "^0.34.40",
         "fast-check": "^3.23.2",
         "postgres": "^3.4.9",
@@ -108,6 +110,8 @@
     },
   },
   "packages": {
+    "@ismaelsoilet/jev-harness": ["@ismaelsoilet/jev-harness@0.2.1", "", { "bin": { "jev-harness": "bin/cli.js" } }, "sha512-Pvl5+4AsTva8ZuqIggnIU97I9gbCV1YT6z8N6XZOj4m5ZVDrc/bg7qrNI3FQah37a2LmLWpYsrbIdiwuWFk2Gg=="],
+
     "@ismaelsoilet/synapsejs": ["@ismaelsoilet/synapsejs@workspace:packages/synapse"],
 
     "@sinclair/typebox": ["@sinclair/typebox@0.34.52", "", {}, "sha512-XiMQh7qqVlxZzcVD+kkGMNGMzcTrDMLWI7S4x7z1MkCkbDPrekpZXEUK0eZqZFMuHQg2a2DZOcDIh9o5v3Gonw=="],

@@ -993,7 +993,7 @@ ${this.renderStylesheets()}
               {
                 status,
                 framework: 'SynapseJS',
-                version: '1.1.0',
+                version: '1.2.0',
                 uptime: process.uptime(),
                 database: dbHealthy ? 'connected' : 'disconnected',
                 ...(dbError ? { databaseError: dbError } : {}),
