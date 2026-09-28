@@ -740,9 +740,12 @@ ${this.renderStylesheets()}
   {
     "imports": {
       "react": "/_synapse/client/_vendor.js",
+      "react/jsx-runtime": "/_synapse/client/_vendor.js",
+      "react/jsx-dev-runtime": "/_synapse/client/_vendor.js",
       "react-dom": "/_synapse/client/_vendor.js",
       "react-dom/client": "/_synapse/client/_vendor.js",
-      "synapsejs/client": "/_synapse/client/_vendor.js"
+      "synapsejs/client": "/_synapse/client/_vendor.js",
+      "@ismaelsoilet/synapsejs/client": "/_synapse/client/_vendor.js"
     }
   }
   </script>
