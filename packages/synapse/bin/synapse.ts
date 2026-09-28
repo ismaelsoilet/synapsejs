@@ -611,7 +611,7 @@ async function main() {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
               content = content.replace(
                 /"(@ismaelsoilet\/)?synapsejs":\s*"[^"]+"/g,
-                '"@ismaelsoilet/synapsejs": "^1.1.0"'
+                '"@ismaelsoilet/synapsejs": "^1.1.1"'
               );
             }
             fs.writeFileSync(d, content, 'utf-8');
