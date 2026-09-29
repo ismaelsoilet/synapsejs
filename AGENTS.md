@@ -57,6 +57,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run split` | `{"status":"PASS","slices":[{status,diagnostics,leaks}]}` | gates per slice, for all slice apps |
 | `synapse build --standalone` | `{"status":"PASS","operation":"BUILD_STANDALONE",...}` | compiles self-contained deployment package in `.synapse/standalone/` |
 | `synapse new-slice <domain> <name> --fields="..."` | `{"status":"PASS","operation":"SCAFFOLD_SLICE",...}` | scaffolds slice with TypeBox, DDL, Action, UI and PBT |
+| `synapse new-shared <name>` | `{"status":"PASS","operation":"SCAFFOLD_SHARED",...}` | scaffolds shared domain module in `src/shared/<name>.ts` with transactional pattern |
 | `bun run test:slices` | `{"status":"PASS","totalCases":N,...}` | per-invariant results for the CRM example |
 | `bun run test:helpdesk` | same shape | per-invariant results for the help-desk slice app |
 | `bun run test:helpdesk-conventional` | exit 0 | the adoption app's own `bun test` suite |
@@ -157,6 +158,12 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 34. `Universal useAction Hook` — `useAction(actionFn?, options?)` with automatic action discovery from `SynapseContext` and reactive callbacks (`onSuccess`, `onError`).
 35. `Detailed Schema Validation` — `validateSchema(schema, payload)` returning actionable path diagnostics instead of opaque errors; tolerant TypeBox contracts via `{ additionalProperties: true }`.
 36. `Hot-Reloading & Bundle Cache-Busting` — Timestamp-based versioning (`?v=<timestamp>`) on slice bundles and module imports eliminating browser caching stalls during dev.
+37. `Full-Duplex Realtime WebSockets` — `defineSocket<TIn, TOut>()` and `useWebSocket()` with native Bun WebSocket upgrades at `/_synapse/ws/<domain>/<name>`.
+38. `Hierarchical Sub-Slice Composition & Outlets` — `<SubSlice name="...">` and `<SliceOutlet>` allowing slices to embed or transclude other slice views dynamically without direct code imports.
+39. `In-Memory SSR Micro-Cache & ISR` — `defineCache({ ttlSeconds, staleWhileRevalidate })` integrated in loaders and SSR pipeline.
+40. `Shared Vendor Chunks via Import Maps` — `compiler.vendorChunks` config automatically externalizes React, ReactDOM, and shared runtime libraries into CDN/cached vendor files.
+41. `Standardized Shared Module Scaffolding` — `synapse new-shared <name>` scaffolding clean, type-safe business modules in `src/shared/` to enforce domain isolation.
+42. `SQLite WAL Pragmas & Concurrency Tuning` — Auto-configured `busy_timeout = 5000`, `synchronous = NORMAL`, `cache_size = -64000`, and `temp_store = MEMORY` for 10.7x throughput increase (4,000+ req/s).
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
@@ -240,7 +247,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.4.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.5.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.
@@ -267,7 +274,7 @@ A server action referenced by a component contributes **only its wire signature*
   pushed, so `npm publish` has never run — that is the remaining unknown of the release path.
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
-  of the build now). 27 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
+  of the build now). 63 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
   JSON-RPC payloads, the SQL boundary, test assertions) plus 2 `noUnusedImports`
   that are a Biome 2.5.14 false positive (a `type` specifier inside a mixed import that the typecheck
   proves is used — `Cannot find name 'Static'` when removed), silenced in place with a
@@ -282,8 +289,8 @@ A server action referenced by a component contributes **only its wire signature*
 
 ```bash
 bun install
-bun run lint                        # Biome: 0 errors, 27 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (359 tests across 49 files)
+bun run lint                        # Biome: 0 errors, 63 accepted dynamic boundary warnings
+bun test packages/synapse/test      # framework suite (397 tests across 54 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map

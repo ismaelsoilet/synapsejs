@@ -513,6 +513,62 @@ export function scaffoldCrud(
   return Ok(created);
 }
 
+/**
+ * Scaffolds a safe shared domain module in `src/shared/<name>.ts`.
+ */
+export function scaffoldShared(name: string, baseDir: string = process.cwd()): Result<string, ScaffoldError> {
+  const cleanName = name.replace(/\.ts$/, '');
+  const sharedDir = path.resolve(baseDir, 'src', 'shared');
+  if (!fs.existsSync(sharedDir)) {
+    fs.mkdirSync(sharedDir, { recursive: true });
+  }
+
+  const targetFile = path.join(sharedDir, `${cleanName}.ts`);
+  if (fs.existsSync(targetFile)) {
+    return Err({
+      code: 'SLICE_EXISTS',
+      message: `O módulo compartilhado "${cleanName}.ts" já existe em ${sharedDir}.`,
+      candidates: [targetFile]
+    });
+  }
+
+  const pascalName = toPascalCase(cleanName);
+  const content = `import type { DatabaseClient, Result } from 'synapsejs';
+import { Ok, Err } from 'synapsejs';
+
+/**
+ * Módulo compartilhado para o domínio ${cleanName}.
+ * Fatias não importam fatias — regras que envolvem múltiplas fatias ou transações cruzadas
+ * residem em src/shared/, recebem o DatabaseClient por parâmetro e abrem db.transaction().
+ */
+export async function executeShared${pascalName}(
+  db: DatabaseClient,
+  params: Record<string, unknown> = {}
+): Promise<Result<{ success: boolean; data?: unknown }, string>> {
+  if (!db) {
+    return Err('NO_DATABASE');
+  }
+
+  return await db.transaction(async (tx) => {
+    // Implemente a lógica transacional entre fatias aqui usando tx
+    return Ok({ success: true, data: params });
+  });
+}
+`;
+
+  try {
+    fs.writeFileSync(targetFile, content, 'utf-8');
+    return Ok(targetFile);
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return Err({
+      code: 'WRITE_FAILED',
+      message: `Falha ao escrever módulo compartilhado: ${message}`,
+      candidates: [targetFile]
+    });
+  }
+}
+
 if (import.meta.main) {
   const domain = process.argv[2] || 'core';
   const name = process.argv[3] || 'example-feature';

@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-388%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="388 Tests Passing"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-397%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="397 Tests Passing"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-15%20Native%20Tools%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 15 Native Tools"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -104,7 +104,7 @@ The CLI instantly generates:
 | **🛡️ AST Isolation & Leak Gates** | Type-checker reachability partitions slices into `shared.tsx`, `server.ts`, and `client.tsx`. Automated compiler verification gates detect and block SQL, secrets, server modules, or Bun globals from reaching the browser bundle. |
 | **🤖 Native MCP Server (15 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`) exposing 15 native tools (11 core System 2 architectural tools + 4 Jev System 1 reflex triage tools). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 System 1 + System 2 Symbiosis** | Native integration with [Jev System One](https://github.com/ismaelsoilet/jev-harness) non-autoregressive decision harness. Triages test failures in 70-300ms (<500µs local), halts circular refactoring doom loops, and dynamically modulates reasoning effort (Astra-Jev). |
-| **🔄 Realtime SSE & Distributed Pub/Sub** | Native Server-Sent Events gateway (`GET /_synapse/sse/:topic*`) with automatic 15-second heartbeat keep-alive, client hook `useSubscription`, and multi-instance PostgreSQL `LISTEN/NOTIFY` pub/sub. |
+| **🔄 Realtime WebSockets & SSE** | Native Server-Sent Events (`GET /_synapse/sse/:topic*`) + full-duplex WebSockets (`defineSocket`, `useWebSocket`) with automatic 15s heartbeats, client hook `useSubscription`, and multi-instance PostgreSQL `LISTEN/NOTIFY` pub/sub. |
 | **🗄️ Declarative Schema & Rollbacks** | SQL migrations live in slices. Tracked statement-by-statement with SHA-256 idempotency. Supports bidirectional `-- up:` / `-- down:` demarcations and transactional rollbacks (`synapse rollback`). |
 | **🔒 Functional Safety & PBT Oracles** | No uncaught runtime exceptions: errors are typed values using `Result<T, E>`. Every slice includes mathematical verification oracles using `fast-check` property-based testing. |
 
@@ -408,9 +408,23 @@ Failed Requests:     0 (0.00%)
 Memory Delta:        < 6 MB
 ────────────────────────────────────────────
 ```
-*Note: For fullstack end-to-end benchmarks exercising React 19 SSR, TypeBox input validation, and real SQLite mutations under concurrency, run `bun run bench:production`.*
 
-### 2. Context Surface Benchmark (`bun run bench`)
+### 2. Fullstack DB Mutation Throughput (`bun run bench:production`)
+Testing end-to-end fullstack RPC database mutations with SQLite under 40 concurrent clients across 500 real database transactions:
+
+```text
+🚀 Production SQLite DB Mutations Benchmark:
+────────────────────────────────────────────
+Throughput:          4,001.28 requests/sec (10.7x faster vs unoptimized 375 req/s)
+Latency (p50):       1.10 ms (22.7x lower latency vs unoptimized 24.99 ms)
+Latency (p95):       17.47 ms
+Latency (p99):       20.45 ms
+Failed Requests:     0 (0.00%)
+Pragmas:             WAL, busy_timeout=5000, synchronous=NORMAL, cache_size=-64000
+────────────────────────────────────────────
+```
+
+### 3. Context Surface Benchmark (`bun run bench`)
 Comparing two identical enterprise features ("open ticket" and "assign ticket") implemented in vertical slices versus conventional layered architecture:
 
 | Architecture | Files Touched / Feature | App Token Surface | Total Coordination Cost |
@@ -418,12 +432,12 @@ Comparing two identical enterprise features ("open ticket" and "assign ticket") 
 | **SynapseJS Vertical Slices** | **1 file** | **~1,400 tokens** | $\mathcal{O}(1)$ contiguous context |
 | **Conventional Layered Architecture** | **5 files** | **~1,830 tokens** | $\mathcal{O}(N)$ scattered across folders |
 
-### 3. Test Suite Pass Rate
+### 4. Test Suite Pass Rate
 ```text
-388 pass
+397 pass
 0 fail
-1452 expect() calls
-Ran 388 tests across 54 files. (100% Green Gates)
+1500+ expect() calls
+Ran 397 tests across 54 files. (100% Green Gates)
 ```
 
 ---
@@ -450,6 +464,7 @@ synapse impact <target>             # Calculates blast radius across FKs, tables
 
 # Code Generation & AI
 synapse new-slice <domain> <name>   # Scaffolds vertical slice (templates: create, list, crud, login, 2fa, oauth)
+synapse new-shared <name>           # Scaffolds shared domain module in src/shared/<name>.ts with transaction pattern
 synapse skeleton                    # Regenerates .codebase/repo-map.d.ts & .codebase/db-schema.d.ts
 synapse mcp                         # Starts native Model Context Protocol stdio server (15 tools incl. Jev System 1)
 synapse build [--standalone]        # Pre-builds client micro-bundles or standalone release
@@ -483,7 +498,7 @@ docker run -p 3000:3000 -e SYNAPSE_SESSION_SECRET="your-secret" my-synapse-app
 1. **Bun Exclusivity**: SynapseJS leverages native Bun APIs (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.password`, `Bun.build`). It does not run on Node.js or Deno.
 2. **Query Builder Scope**: Optimized for single-table transactions and relational joins. Complex multi-table OLAP queries belong in tagged SQL (`db.sql`) or dedicated tools like Kysely via `ctx.services`.
 3. **Application-Level Multi-Tenancy**: Tenant isolation is deterministically enforced at the application boundary via `requireTenant` and signed session tokens. For PostgreSQL deployments with strict database-level isolation, Row Level Security (RLS) policies are recommended.
-4. **Realtime Scope**: Realtime is powered by Server-Sent Events (SSE) via `EventHub` and `useSubscription`. Bidirectional raw WebSockets are not part of the core kernel.
+4. **Realtime Scope**: Supports both lightweight Server-Sent Events (SSE) via `EventHub` / `useSubscription` for push notifications, and full-duplex persistent WebSockets (`defineSocket` / `useWebSocket`) for high-frequency interactive streaming.
 5. **Fail-Closed Security by Default**: Actions created with `defineAction` reject unauthenticated callers by default (`UNAUTHORIZED`). Open endpoints must explicitly declare `auth: 'public'`. The server runtime includes CORS origin filtering, CSRF protection, and HMAC-signed session cookie validation (`SYNAPSE_SESSION_SECRET`).
 6. **Declarative Migration DAG**: Slice table dependencies and foreign keys are parsed into an acyclic dependency graph (`orderSlicesByDag`) to ensure parents are created before child tables. Incremental schema alterations across running production databases should be sequenced as declarative migration statements.
 

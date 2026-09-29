@@ -1,6 +1,6 @@
 {
   "name": "@ismaelsoilet/synapsejs",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Bun-only fullstack framework where a feature is a single contiguous file",
   "main": "src/index.ts",
   "types": "src/index.ts",

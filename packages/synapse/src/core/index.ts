@@ -1,5 +1,6 @@
 export * from './action-context';
 export * from './action-definition';
+export * from './cache';
 export * from './config';
 export * from './database-client';
 export * from './database-factory';
@@ -14,3 +15,4 @@ export * from './session-token';
 export * from './sqlite-client';
 export * from './storage';
 export * from './validation';
+export * from './websocket';

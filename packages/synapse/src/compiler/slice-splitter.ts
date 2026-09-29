@@ -603,7 +603,8 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
       message:
         `Uma fatia não importa outra: ${path.basename(sliceFilePath)} alcança ` +
         `${path.relative(process.cwd(), illegalImport)}. Mova o código comum para ` +
-        'src/shared/<nome>.ts, receba o db por parâmetro e chame de dentro das duas fatias.',
+        'src/shared/<nome>.ts, receba o db por parâmetro e chame de dentro das duas fatias. ' +
+        'Dica: use `synapse new-shared <nome>` para criar um módulo compartilhado seguro em src/shared/.',
       candidates: [illegalImport]
     });
   }

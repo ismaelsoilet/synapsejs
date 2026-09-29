@@ -35,12 +35,15 @@ import {
   optimizeImage,
   resetDatabaseInstance,
   type SessionContext,
-  type SynapseConfig
+  type SliceCacheConfig,
+  type SliceSocketDefinition,
+  type SynapseConfig,
+  type SynapseWebSocket
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { verifySessionToken } from '../core/session-token';
 import { serializeClientProps } from './client-entry';
-import { isAction, isComponent, isJob, isLoader, isMeta, isWebhook } from './discovery-rules';
+import { isAction, isCache, isComponent, isJob, isLoader, isMeta, isSocket, isWebhook } from './discovery-rules';
 import { getEventHub } from './event-hub';
 import { QueueEngine } from './queue-engine';
 import { TokenBucketRateLimiter } from './rate-limiter';
@@ -71,6 +74,7 @@ export interface DiscoveredSlice {
   routePath: string;
   rpcPath: string;
   webhookPath: string;
+  wsPath: string;
   filePath: string;
   actionFn?: (payload: unknown, dbOrCtx?: any, session?: SessionContext, extraCtx?: ActionContext) => Promise<any>;
   componentFn?: React.ComponentType<any>;
@@ -82,6 +86,10 @@ export interface DiscoveredSlice {
   metaFn?: (props: Record<string, unknown>, context: SliceLoaderContext) => SliceMetadata | Promise<SliceMetadata>;
   /** Optional Webhook handler receiving rawBody and ActionContext */
   webhookFn?: (event: WebhookEvent, ctx: ActionContext) => Promise<any>;
+  /** Optional SSR cache and ISR policy */
+  cacheConfig?: SliceCacheConfig;
+  /** Optional bidirectional WebSocket handler */
+  socketDef?: SliceSocketDefinition;
 }
 
 /**
@@ -250,6 +258,31 @@ export class SynapseServer {
   private layoutComponent: React.ComponentType<any> | null = null;
   private domainLayouts: Map<string, React.ComponentType<any>> = new Map();
   private rateLimiter: TokenBucketRateLimiter;
+  private ssrCache = new Map<
+    string,
+    {
+      html: string;
+      expiresAt: number;
+      staleUntil: number;
+      ttlSeconds: number;
+      swrSeconds: number;
+      tags: string[];
+    }
+  >();
+
+  public invalidateCache(tags?: string[]): void {
+    if (!tags || tags.length === 0) {
+      this.ssrCache.clear();
+      return;
+    }
+    const tagSet = new Set(tags);
+    for (const [key, entry] of this.ssrCache.entries()) {
+      if (entry.tags.some((t) => tagSet.has(t))) {
+        this.ssrCache.delete(key);
+      }
+    }
+  }
+
   private metrics = {
     startTime: Date.now(),
     totalRequests: 0,
@@ -261,10 +294,13 @@ export class SynapseServer {
   };
   public port: number;
 
-  constructor(baseDir: string = process.cwd(), port: number = 3000, db?: DatabaseClient) {
+  constructor(baseDir: string = process.cwd(), port: number = 3000, db?: DatabaseClient, config?: SynapseConfig) {
     this.baseDir = baseDir;
     this.port = port;
     this.db = db || getDatabase();
+    if (config) {
+      this.config = { ...config };
+    }
     this.rateLimiter = new TokenBucketRateLimiter();
     this.queueEngine = new QueueEngine({
       dbPath: path.join(this.baseDir, '.synapse/queue.sqlite'),
@@ -321,7 +357,8 @@ export class SynapseServer {
       tenantId: session.tenantId,
       services: (this.config.services as Record<string, unknown>) || {},
       logger: createDefaultLogger(sliceName),
-      enqueue: (jobOrName, payload, options) => this.queueEngine.enqueue(jobOrName, payload, options)
+      enqueue: (jobOrName, payload, options) => this.queueEngine.enqueue(jobOrName, payload, options),
+      invalidateCache: (tags) => this.invalidateCache(tags)
     });
   }
 
@@ -409,6 +446,8 @@ export class SynapseServer {
         let loaderFn: any = null;
         let webhookFn: any = null;
         let metaFn: any = null;
+        let cacheConfig: any = null;
+        let socketDef: any = null;
 
         for (const [exportName, val] of Object.entries(mod)) {
           if (
@@ -419,6 +458,12 @@ export class SynapseServer {
             'handler' in (val as Record<string, unknown>)
           ) {
             this.queueEngine.registerJob(val as any);
+          }
+          if (isCache(exportName) && val && typeof val === 'object') {
+            cacheConfig = val;
+          }
+          if (isSocket(exportName) && val && typeof val === 'object') {
+            socketDef = val;
           }
           if (typeof val !== 'function') {
             continue;
@@ -444,13 +489,16 @@ export class SynapseServer {
           routePath,
           rpcPath,
           webhookPath: `/_synapse/webhooks/${domain}/${name}`,
+          wsPath: `/_synapse/ws/${domain}/${name}`,
           filePath: file,
           actionFn,
           componentFn,
           componentExport,
           loaderFn,
           metaFn,
-          webhookFn
+          webhookFn,
+          cacheConfig,
+          socketDef
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
@@ -656,7 +704,8 @@ export class SynapseServer {
         filePath: slice.filePath,
         rpcPath: slice.rpcPath
       },
-      this.baseDir
+      this.baseDir,
+      { vendorPackages: this.config.compiler?.vendorPackages }
     );
 
     if (!built.ok) {
@@ -691,6 +740,103 @@ export class SynapseServer {
       elements.push('  <link rel="stylesheet" href="/synapse.css">');
     }
     return elements.join('\n');
+  }
+
+  /**
+   * Renders the slice SSR component tree and packages the complete HTML shell
+   */
+  private async renderSliceHtml(
+    slice: DiscoveredSlice,
+    req: Request,
+    url: URL,
+    matchedLocale?: string
+  ): Promise<{ html: string; dataProps: Record<string, unknown>; meta?: SliceMetadata }> {
+    const session = this.sessionFrom(req);
+    const actionCtx = this.createActionContext(slice.name, session);
+    const params = Object.fromEntries(url.searchParams.entries());
+    const dataProps: Record<string, unknown> = {
+      ...params,
+      ...(matchedLocale ? { locale: matchedLocale } : {})
+    };
+    let loaderError: string | null = null;
+
+    const loaderCtx: SliceLoaderContext = {
+      url: url.toString(),
+      params,
+      db: this.db,
+      session,
+      ctx: actionCtx,
+      services: (this.config.services as Record<string, unknown>) || {},
+      locale: matchedLocale
+    };
+
+    if (slice.loaderFn) {
+      try {
+        const loaded = await slice.loaderFn(loaderCtx);
+        Object.assign(dataProps, loaded);
+      } catch (err) {
+        loaderError = err instanceof Error ? err.message : String(err);
+        console.error(`[SynapseServer] Loader de ${slice.key} falhou: ${loaderError}`);
+      }
+    }
+
+    let meta: SliceMetadata | undefined;
+    if (slice.metaFn && !loaderError) {
+      try {
+        meta = await slice.metaFn(dataProps, loaderCtx);
+      } catch (err) {
+        console.error(`[SynapseServer] sliceMeta de ${slice.key} falhou:`, err);
+      }
+    }
+
+    const clientUrl = loaderError ? null : await this.ensureClientBundle(slice);
+
+    const renderProps: Record<string, unknown> = {
+      ...dataProps,
+      ...(slice.actionFn
+        ? {
+            onSubmitAction: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx),
+            action: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx)
+          }
+        : {})
+    };
+
+    let contentHtml: string;
+    if (loaderError) {
+      contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${escapeHtml(loaderError)}</div>`;
+    } else if (slice.componentFn) {
+      try {
+        const sliceEl = React.createElement(slice.componentFn, renderProps);
+        const domainLayout = this.domainLayouts.get(slice.domain);
+        const treeWithDomainLayout = domainLayout
+          ? React.createElement(domainLayout, { session, url: url.toString() }, sliceEl)
+          : sliceEl;
+        const treeWithLayout = this.layoutComponent
+          ? React.createElement(this.layoutComponent, { session, url: url.toString() }, treeWithDomainLayout)
+          : treeWithDomainLayout;
+        const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
+        contentHtml = renderToString(rootEl);
+      } catch (e: any) {
+        const errMessage = e instanceof Error ? e.message : String(e);
+        contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${escapeHtml(errMessage)}</div>`;
+      }
+    } else {
+      contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
+    }
+
+    const hasCustomLayout = Boolean(this.layoutComponent || this.domainLayouts.get(slice.domain));
+    const html = this.renderHtmlShell(
+      meta?.title || slice.name,
+      contentHtml,
+      slice.name,
+      serializeClientProps(dataProps),
+      clientUrl,
+      meta,
+      matchedLocale || 'pt-BR',
+      hasCustomLayout
+    );
+
+    return { html, dataProps, meta };
   }
 
   /**
@@ -737,6 +883,22 @@ export class SynapseServer {
     }
     const metaSection = metaTags.length > 0 ? `\n${metaTags.join('\n')}` : '';
 
+    const vendorImports: Record<string, string> = {
+      react: '/_synapse/client/_vendor.js',
+      'react/jsx-runtime': '/_synapse/client/_vendor.js',
+      'react/jsx-dev-runtime': '/_synapse/client/_vendor.js',
+      'react-dom': '/_synapse/client/_vendor.js',
+      'react-dom/client': '/_synapse/client/_vendor.js',
+      'synapsejs/client': '/_synapse/client/_vendor.js',
+      '@ismaelsoilet/synapsejs/client': '/_synapse/client/_vendor.js'
+    };
+    if (this.config.compiler?.vendorPackages) {
+      for (const pkg of this.config.compiler.vendorPackages) {
+        vendorImports[pkg] = '/_synapse/client/_vendor.js';
+      }
+    }
+    const importMapScript = `  <script type="importmap">\n  ${JSON.stringify({ imports: vendorImports }, null, 4).split('\n').join('\n  ')}\n  </script>`;
+
     if (hasLayout) {
       return `<!DOCTYPE html>
 <html lang="${escapeHtml(locale)}" class="min-h-full">
@@ -745,19 +907,7 @@ export class SynapseServer {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>${metaSection}
 ${this.renderStylesheets()}
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "/_synapse/client/_vendor.js",
-      "react/jsx-runtime": "/_synapse/client/_vendor.js",
-      "react/jsx-dev-runtime": "/_synapse/client/_vendor.js",
-      "react-dom": "/_synapse/client/_vendor.js",
-      "react-dom/client": "/_synapse/client/_vendor.js",
-      "synapsejs/client": "/_synapse/client/_vendor.js",
-      "@ismaelsoilet/synapsejs/client": "/_synapse/client/_vendor.js"
-    }
-  }
-  </script>
+${importMapScript}
   <script type="module" src="/_synapse/client/_vendor.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; }
@@ -782,19 +932,7 @@ ${this.renderStylesheets()}
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${pageTitle}</title>${metaSection}
 ${this.renderStylesheets()}
-  <script type="importmap">
-  {
-    "imports": {
-      "react": "/_synapse/client/_vendor.js",
-      "react/jsx-runtime": "/_synapse/client/_vendor.js",
-      "react/jsx-dev-runtime": "/_synapse/client/_vendor.js",
-      "react-dom": "/_synapse/client/_vendor.js",
-      "react-dom/client": "/_synapse/client/_vendor.js",
-      "synapsejs/client": "/_synapse/client/_vendor.js",
-      "@ismaelsoilet/synapsejs/client": "/_synapse/client/_vendor.js"
-    }
-  }
-  </script>
+${importMapScript}
   <script type="module" src="/_synapse/client/_vendor.js"></script>
   <style>
     body { font-family: 'Inter', sans-serif; }
@@ -947,6 +1085,10 @@ ${this.renderStylesheets()}
     this.config = {
       ...loadedConfig,
       ...this.config,
+      compiler: {
+        ...(loadedConfig.compiler || {}),
+        ...(this.config?.compiler || {})
+      },
       plugins: [...(loadedConfig.plugins || []), ...(this.config?.plugins || [])]
     };
 
@@ -966,6 +1108,46 @@ ${this.renderStylesheets()}
 
     this.httpServer = Bun.serve({
       port: this.port,
+      websocket: {
+        open: async (ws: any) => {
+          const socketDef = ws.data?.socketDef;
+          if (socketDef?.onOpen) {
+            try {
+              await socketDef.onOpen(ws);
+            } catch (err) {
+              console.error(`[SynapseServer] Erro no onOpen do WebSocket (${ws.data?.sliceKey}):`, err);
+            }
+          }
+        },
+        message: async (ws: any, message: any) => {
+          const socketDef = ws.data?.socketDef;
+          if (socketDef?.onMessage) {
+            try {
+              let parsed = message;
+              if (typeof message === 'string') {
+                try {
+                  parsed = JSON.parse(message);
+                } catch {
+                  // mantém texto puro
+                }
+              }
+              await socketDef.onMessage(ws, parsed);
+            } catch (err) {
+              console.error(`[SynapseServer] Erro no onMessage do WebSocket (${ws.data?.sliceKey}):`, err);
+            }
+          }
+        },
+        close: async (ws: any, code: number, reason: string) => {
+          const socketDef = ws.data?.socketDef;
+          if (socketDef?.onClose) {
+            try {
+              await socketDef.onClose(ws, code, reason);
+            } catch (err) {
+              console.error(`[SynapseServer] Erro no onClose do WebSocket (${ws.data?.sliceKey}):`, err);
+            }
+          }
+        }
+      },
       fetch: async (req: Request) => {
         if (this.config.plugins) {
           for (const plugin of this.config.plugins) {
@@ -982,6 +1164,38 @@ ${this.renderStylesheets()}
           const url = new URL(req.url);
           const pathname = url.pathname;
           const startedAt = performance.now();
+
+          // WebSocket Upgrade for slices: /_synapse/ws/:domain/:name
+          if (pathname.startsWith('/_synapse/ws/')) {
+            const target = pathname.slice('/_synapse/ws/'.length);
+            const resolved = this.resolveSlice(target);
+            if (!resolved.ok) {
+              return new Response(JSON.stringify({ error: resolved.message }), {
+                status: resolved.status,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            const socketDef = resolved.slice.socketDef;
+            if (!socketDef) {
+              return new Response(JSON.stringify({ error: `Fatia ${resolved.slice.key} não declara sliceSocket` }), {
+                status: 404,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+            const session = this.sessionFrom(req);
+            const upgraded = (this.httpServer as any)?.upgrade(req, {
+              data: {
+                id: crypto.randomUUID(),
+                sliceKey: resolved.slice.key,
+                socketDef,
+                session
+              }
+            });
+            if (upgraded) {
+              return undefined as any;
+            }
+            return new Response('Falha no upgrade de WebSocket', { status: 400 });
+          }
 
           // Arquivos estáticos primeiro: `public/` do app, estritamente contido no diretório.
           if (!pathname.startsWith('/_synapse/') && pathname !== '/') {
@@ -1436,7 +1650,7 @@ ${this.renderStylesheets()}
             const bundleFilename = path.basename(pathname);
             const bundleFile = path.join(this.baseDir, '.synapse/client', bundleFilename);
             if (!fs.existsSync(bundleFile) && bundleFilename === VENDOR_BUNDLE_NAME) {
-              await buildVendorBundle(this.baseDir);
+              await buildVendorBundle(this.baseDir, this.config.compiler?.vendorPackages);
             }
             if (!fs.existsSync(bundleFile)) {
               this.logRequest(req, pathname, 404, startedAt);
@@ -1476,94 +1690,77 @@ ${this.renderStylesheets()}
           if (resolvedSlice) {
             const slice = resolvedSlice;
             const session = this.sessionFrom(req);
-            const actionCtx = this.createActionContext(slice.name, session);
-            const params = Object.fromEntries(url.searchParams.entries());
-            const dataProps: Record<string, unknown> = {
-              ...params,
-              ...(matchedLocale ? { locale: matchedLocale } : {})
-            };
-            let loaderError: string | null = null;
+            const cacheConfig = slice.cacheConfig;
+            const cacheKey = `${pathname}${url.search}`;
+            const now = Date.now();
 
-            const loaderCtx: SliceLoaderContext = {
-              url: url.toString(),
-              params,
-              db: this.db,
-              session,
-              ctx: actionCtx,
-              services: (this.config.services as Record<string, unknown>) || {},
-              locale: matchedLocale
-            };
+            if (cacheConfig && req.method === 'GET') {
+              const cached = this.ssrCache.get(cacheKey);
+              if (cached) {
+                if (now < cached.expiresAt) {
+                  this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
+                  return new Response(cached.html, {
+                    headers: {
+                      'Content-Type': 'text/html; charset=utf-8',
+                      'X-Synapse-Cache': 'HIT',
+                      'Cache-Control': `public, max-age=${cached.ttlSeconds}, stale-while-revalidate=${cached.swrSeconds}`
+                    }
+                  });
+                }
+                if (now < cached.staleUntil) {
+                  this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
+                  // Revalidação em background (ISR / Stale-While-Revalidate)
+                  (async () => {
+                    try {
+                      const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale);
+                      const ttl = cacheConfig.ttlSeconds;
+                      const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
+                      this.ssrCache.set(cacheKey, {
+                        html: fresh.html,
+                        expiresAt: Date.now() + ttl * 1000,
+                        staleUntil: Date.now() + (ttl + swr) * 1000,
+                        ttlSeconds: ttl,
+                        swrSeconds: swr,
+                        tags: cacheConfig.tags || []
+                      });
+                    } catch (err) {
+                      console.error(`[SynapseServer] Revalidação ISR em background de ${slice.key} falhou:`, err);
+                    }
+                  })();
 
-            if (slice.loaderFn) {
-              try {
-                const loaded = await slice.loaderFn(loaderCtx);
-                Object.assign(dataProps, loaded);
-              } catch (err) {
-                loaderError = err instanceof Error ? err.message : String(err);
-                console.error(`[SynapseServer] Loader de ${slice.key} falhou: ${loaderError}`);
+                  return new Response(cached.html, {
+                    headers: {
+                      'Content-Type': 'text/html; charset=utf-8',
+                      'X-Synapse-Cache': 'STALE',
+                      'Cache-Control': `public, max-age=${cached.ttlSeconds}, stale-while-revalidate=${cached.swrSeconds}`
+                    }
+                  });
+                }
               }
             }
 
-            let meta: SliceMetadata | undefined;
-            if (slice.metaFn && !loaderError) {
-              try {
-                meta = await slice.metaFn(dataProps, loaderCtx);
-              } catch (err) {
-                console.error(`[SynapseServer] sliceMeta de ${slice.key} falhou:`, err);
-              }
-            }
-
-            const clientUrl = loaderError ? null : await this.ensureClientBundle(slice);
-
-            const renderProps: Record<string, unknown> = {
-              ...dataProps,
-              ...(slice.actionFn
-                ? {
-                    onSubmitAction: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx),
-                    action: (payload: unknown) => slice.actionFn?.(payload, actionCtx, session, actionCtx)
-                  }
-                : {})
+            const { html } = await this.renderSliceHtml(slice, req, url, matchedLocale);
+            const headers: Record<string, string> = {
+              'Content-Type': 'text/html; charset=utf-8'
             };
 
-            let contentHtml: string;
-            if (loaderError) {
-              contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${escapeHtml(loaderError)}</div>`;
-            } else if (slice.componentFn) {
-              try {
-                const sliceEl = React.createElement(slice.componentFn, renderProps);
-                const domainLayout = this.domainLayouts.get(slice.domain);
-                const treeWithDomainLayout = domainLayout
-                  ? React.createElement(domainLayout, { session, url: url.toString() }, sliceEl)
-                  : sliceEl;
-                const treeWithLayout = this.layoutComponent
-                  ? React.createElement(this.layoutComponent, { session, url: url.toString() }, treeWithDomainLayout)
-                  : treeWithDomainLayout;
-                const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
-                contentHtml = renderToString(rootEl);
-              } catch (e: any) {
-                const errMessage = e instanceof Error ? e.message : String(e);
-                contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${escapeHtml(errMessage)}</div>`;
-              }
-            } else {
-              contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
+            if (cacheConfig && req.method === 'GET') {
+              const ttl = cacheConfig.ttlSeconds;
+              const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
+              this.ssrCache.set(cacheKey, {
+                html,
+                expiresAt: now + ttl * 1000,
+                staleUntil: now + (ttl + swr) * 1000,
+                ttlSeconds: ttl,
+                swrSeconds: swr,
+                tags: cacheConfig.tags || []
+              });
+              headers['X-Synapse-Cache'] = 'MISS';
+              headers['Cache-Control'] = `public, max-age=${ttl}, stale-while-revalidate=${swr}`;
             }
 
             this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
-
-            const hasCustomLayout = Boolean(this.layoutComponent || this.domainLayouts.get(slice.domain));
-            const html = this.renderHtmlShell(
-              meta?.title || slice.name,
-              contentHtml,
-              slice.name,
-              serializeClientProps(dataProps),
-              clientUrl,
-              meta,
-              matchedLocale || 'pt-BR',
-              hasCustomLayout
-            );
-            return new Response(html, {
-              headers: { 'Content-Type': 'text/html; charset=utf-8' }
-            });
+            return new Response(html, { headers });
           }
 
           this.logRequest(req, pathname, 404, startedAt);

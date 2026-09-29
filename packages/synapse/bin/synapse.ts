@@ -28,7 +28,7 @@ import { generateDatabaseSchemaCatalog } from '../src/compiler/db-schema-generat
 import { analyzeImpact } from '../src/compiler/impact-analyzer';
 import { rollbackSliceMigrations, runSliceMigrations } from '../src/compiler/migration-runner';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
-import { scaffoldCrud, scaffoldSlice } from '../src/compiler/scaffolder';
+import { scaffoldCrud, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
 import { checkSchemaDrift } from '../src/compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
@@ -431,6 +431,53 @@ async function main() {
             status: 'PASS',
             operation: 'SCAFFOLD_SLICE',
             domain,
+            name,
+            createdPath: path.relative(root, created.value)
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(0);
+      break;
+    }
+
+    case 'new-shared': {
+      const name = process.argv[3];
+      if (!name) {
+        process.stderr.write(
+          `${JSON.stringify({
+            status: 'ERROR',
+            message: 'Nome do módulo compartilhado ausente. Uso: synapse new-shared <nome>'
+          })}\n`
+        );
+        process.exit(1);
+      }
+
+      const root = process.env.SYNAPSE_ROOT || process.cwd();
+      const created = scaffoldShared(name, root);
+
+      if (!created.ok) {
+        process.stderr.write(
+          `${JSON.stringify(
+            {
+              status: 'ERROR',
+              operation: 'SCAFFOLD_SHARED',
+              code: created.error.code,
+              message: created.error.message
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: 'PASS',
+            operation: 'SCAFFOLD_SHARED',
             name,
             createdPath: path.relative(root, created.value)
           },

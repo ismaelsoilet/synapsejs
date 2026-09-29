@@ -45,6 +45,13 @@ export interface SynapseConfig<TServices = Record<string, unknown>> {
    * Infrastructure lifecycle plugins (onBootstrap, onRequest, onResponse, onMigrate).
    */
   plugins?: SynapsePlugin[];
+
+  /**
+   * Compiler and client bundler configuration.
+   */
+  compiler?: {
+    vendorPackages?: string[];
+  };
 }
 
 export function defineConfig<TServices = Record<string, unknown>>(

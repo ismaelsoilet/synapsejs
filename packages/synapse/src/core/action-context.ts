@@ -56,6 +56,9 @@ export interface ActionContext<TServices = Record<string, unknown>> extends Data
   /** Broadcasts a real-time event to SSE subscribers */
   readonly broadcast: BroadcastFn;
 
+  /** Invalidates SSR cache entries by tag or completely */
+  readonly invalidateCache: (tags?: string[]) => void;
+
   /** Lazy adapter for Kysely (if configured or requested) */
   readonly kysely?: unknown;
 }
@@ -83,6 +86,7 @@ export interface ActionContextOptions<TServices = Record<string, unknown>> {
   enqueue?: EnqueueFn;
   storage?: StorageClient;
   broadcast?: BroadcastFn;
+  invalidateCache?: (tags?: string[]) => void;
   kysely?: unknown;
 }
 
@@ -102,6 +106,7 @@ export function createActionContext<TServices = Record<string, unknown>>(
     enqueue = async () => 'job_noop',
     storage = getStorage(),
     broadcast = (topic: string, data: unknown) => getEventHub().publish(topic, data),
+    invalidateCache = () => {},
     kysely
   } = options;
 
@@ -115,6 +120,7 @@ export function createActionContext<TServices = Record<string, unknown>>(
     enqueue,
     storage,
     broadcast,
+    invalidateCache,
     kysely,
 
     // DatabaseClient proxy methods

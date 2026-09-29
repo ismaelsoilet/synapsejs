@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-388%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="388 Testes Passando"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-397%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="397 Testes Passando"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 15 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -104,7 +104,7 @@ A CLI gera instantaneamente:
 | **🛡️ Isolamento AST e Gates de Vazamento** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates automatizados do compilador detectam e bloqueiam SQL, segredos, módulos de servidor ou globais do Bun de chegarem ao browser. |
 | **🤖 Servidor MCP Nativo (15 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 15 ferramentas (11 do núcleo arquitetural Sistema 2 + 4 de triagem reflexa Jev Sistema 1). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 Simbiose Sistema 1 + Sistema 2** | Integração nativa com o harness de decisão não-autoregressivo [Jev System One](https://github.com/ismaelsoilet/jev-harness). Tria falhas de teste em 70-300ms (<500µs local), aborta trajetórias condenadas em loops de refatoração e modula dinamicamente o esforço de raciocínio (Astra-Jev). |
-| **🔄 Realtime SSE e Pub/Sub Distribuído** | Gateway nativo Server-Sent Events (`GET /_synapse/sse/:topic*`) com heartbeat automático de 15 segundos, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
+| **🔄 Realtime WebSockets e SSE** | Gateway Server-Sent Events (`GET /_synapse/sse/:topic*`) + WebSockets full-duplex (`defineSocket`, `useWebSocket`) com keep-alive automático a cada 15s, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
 | **🗄️ Migrações Declarativas e Rollback** | O DDL vive nas fatias e é rastreado declaração por declaração com hash SHA-256. Suporta demarcações reversíveis `-- up:` / `-- down:` e rollback transacional atômico (`synapse rollback`). |
 | **🔒 Segurança Funcional e Oráculos PBT** | Zero exceptions não tratadas em tempo de execução: erros são valores de união tipados em `Result<T, E>`. Cada fatia traz oráculos matemáticos integrados com `fast-check`. |
 
@@ -408,9 +408,23 @@ Falhas/Erros:        0 (0,00%)
 Delta de Memória:    < 6 MB
 ────────────────────────────────────────────
 ```
-*Nota: Para benchmarks de ponta a ponta com SSR em React 19, validação de input com TypeBox e mutações reais em SQLite, execute `bun run bench:production`.*
 
-### 2. Benchmark de Superfície de Contexto (`bun run bench`)
+### 2. Vazão de Mutações de Banco em Produção (`bun run bench:production`)
+Teste de ponta a ponta de mutações fullstack via RPC e SQLite sob 40 clientes simultâneos executando 500 transações reais:
+
+```text
+🚀 Benchmark de Mutações SQLite em Produção:
+────────────────────────────────────────────
+Vazão (Throughput):  4.001,28 requisições/segundo (10.7x mais rápido vs 375 req/s não otimizado)
+Latência (p50):      1,10 ms (latência 22.7x menor vs 24,99 ms não otimizado)
+Latência (p95):      17,47 ms
+Latência (p99):      20,45 ms
+Falhas/Erros:        0 (0,00%)
+Pragmas Ativos:      WAL, busy_timeout=5000, synchronous=NORMAL, cache_size=-64000
+────────────────────────────────────────────
+```
+
+### 3. Benchmark de Superfície de Contexto (`bun run bench`)
 Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir chamado") implementadas em fatias verticais contra arquitetura em camadas tradicional:
 
 | Arquitetura | Arquivos Tocados / Feature | Superfície de Tokens da Aplicação | Custo de Coordenação |
@@ -418,12 +432,12 @@ Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir 
 | **Fatias Verticais SynapseJS** | **1 arquivo** | **~1.400 tokens** | $\mathcal{O}(1)$ contexto contíguo |
 | **Arquitetura Tradicional em Camadas** | **5 arquivos** | **~1.830 tokens** | $\mathcal{O}(N)$ espalhado em várias pastas |
 
-### 3. Taxa de Aprovação da Suíte de Testes
+### 4. Taxa de Aprovação da Suíte de Testes
 ```text
-388 pass
+397 pass
 0 fail
-1452 chamadas expect()
-388 testes executados em 54 arquivos. (100% Gates Verdes)
+1500+ chamadas expect()
+397 testes executados em 54 arquivos. (100% Gates Verdes)
 ```
 
 ---
@@ -450,6 +464,7 @@ synapse impact <alvo>               # Calcula o raio de impacto entre FKs, tabel
 
 # Geração de Código e IA
 synapse new-slice <domínio> <nome>  # Cria fatia vertical (templates: create, list, crud, login, 2fa, oauth)
+synapse new-shared <nome>           # Cria módulo de domínio compartilhado em src/shared/<nome>.ts com transação
 synapse skeleton                    # Regenera .codebase/repo-map.d.ts e .codebase/db-schema.d.ts
 synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (15 ferramentas incl. Jev System 1)
 synapse build [--standalone]        # Pré-compila micro-bundles de browser ou pacote standalone
@@ -483,7 +498,7 @@ docker run -p 3000:3000 -e SYNAPSE_SESSION_SECRET="seu-segredo" meu-app-synapse
 1. **Exclusividade Bun**: O SynapseJS aproveita diretamente as APIs nativas do Bun (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.password`, `Bun.build`). Não executa em Node.js ou Deno.
 2. **Escopo do Query Builder**: Otimizado para transações de tabela única e joins relacionais tipados. Consultas analíticas complexas (OLAP) pertencem ao SQL parametrizado (`db.sql`) ou a ferramentas dedicadas como Kysely via `ctx.services`.
 3. **Multi-Tenancy em Nível de Aplicação**: O isolamento de tenants é garantido na borda da aplicação via `requireTenant` e tokens de sessão assinados. Para bancos PostgreSQL que exijam isolamento estrito no próprio motor de banco, recomenda-se o uso de Row Level Security (RLS).
-4. **Escopo Realtime**: O realtime opera via Server-Sent Events (SSE) através do `EventHub` e do hook `useSubscription`. WebSockets bidirecionais contínuos não fazem parte do núcleo.
+4. **Escopo Realtime**: Suporta tanto Server-Sent Events (SSE) leves via `EventHub` / `useSubscription` para notificações push, quanto WebSockets full-duplex persistentes (`defineSocket` / `useWebSocket`) para streaming interativo de alta frequência.
 5. **Segurança Fail-Closed por Padrão**: Ações declaradas com `defineAction` rejeitam chamadas anônimas por padrão (`UNAUTHORIZED`), exigindo `auth: 'public'` para liberação explícita. O runtime do servidor inclui filtragem de CORS, mitigação contra CSRF e validação de cookies/sessões assinadas com HMAC (`SYNAPSE_SESSION_SECRET`).
 6. **DAG Declarativo de Migrações**: Dependências e chaves estrangeiras entre tabelas de fatias são mapeadas num grafo acíclico (`orderSlicesByDag`), garantindo que pais sejam criados antes de filhos. Alterações incrementais (`ALTER TABLE`) em produção devem ser registradas como declarações de migração versionadas.
 

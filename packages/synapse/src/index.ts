@@ -65,7 +65,13 @@ export {
   parseOracleJunit,
   runSliceOracles
 } from './compiler/oracle-runner';
-export { type ScaffoldError, type ScaffoldErrorCode, scaffoldCrud, scaffoldSlice } from './compiler/scaffolder';
+export {
+  type ScaffoldError,
+  type ScaffoldErrorCode,
+  scaffoldCrud,
+  scaffoldShared,
+  scaffoldSlice
+} from './compiler/scaffolder';
 export { orderSlicesByDag, parseTableDependencies } from './compiler/schema-dag';
 export {
   checkSchemaDrift,

@@ -53,6 +53,18 @@ export {
   type TranslateFn,
   type TranslationDictionary
 } from './client/i18n';
+export {
+  SliceOutlet,
+  type SliceOutletProps,
+  SliceOutletProvider,
+  type SliceOutletProviderProps
+} from './client/outlet';
+export { SubSlice, type SubSliceProps } from './client/sub-slice';
+export {
+  type UseWebSocketOptions,
+  type UseWebSocketResult,
+  useWebSocket
+} from './client/use-websocket';
 export type { Result } from './core/machine-types';
 export { type RpcTransportError, rpcCall, rpcTransportFailure } from './core/rpc-client';
 export type { SessionContext } from './core/session-context';

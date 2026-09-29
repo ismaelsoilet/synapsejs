@@ -21,7 +21,9 @@ Features are listed with the command that fails when they break. Nothing is docu
 without one — see the repository's `AGENTS.md` for the full contract.
 
 **Stable:** vertical slices (N = 1) · `Result<T, E>` flows · TypeBox JIT contracts · declarative
-`sliceSchema` migrations with DAG topological ordering · embedded SQLite (WAL, prepared-statement cache, CTE-safe) ·
+`sliceSchema` migrations with DAG topological ordering · bidirectional `-- up:` / `-- down:` rollbacks (`synapse rollback`) · embedded SQLite (WAL, tuned busy_timeout & cache pragmas delivering 4,000+ req/s, CTE-safe) ·
+full-duplex WebSockets (`defineSocket` + `useWebSocket`) · hierarchical sub-slice composition & outlets (`<SubSlice>`, `<SliceOutlet>`) · in-memory SSR micro-cache & ISR (`defineCache`) ·
+vendor bundle code-splitting via Import Maps (`compiler.vendorChunks`) · standardized shared domain modules (`synapse new-shared`) ·
 isomorphic Query Builder with parameterized relational joins and sub-object nesting (`nestJoinedRow`) · centralized Schema Catalog (`.codebase/db-schema.d.ts`) ·
 declarative UI primitives & hooks (`DataTable`, `DataForm`, `useAction`, `useLoaderData`, `useSubscription`, `SynapseProvider`) ·
 realtime SSE gateway (`EventHub` + `ctx.broadcast`) · schema drift detector (`synapse db-drift`) · AST diff & cross-slice impact analysis (`synapse impact`) ·
@@ -31,9 +33,9 @@ with rawBody preservation · B2B multi-tenancy & IDOR prevention (`requireTenant
 and Turbo Morphing router · explicit RBAC via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery
 that never reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton map ·
 scaffolder with `--fields` grammar and templates (create, list, update, delete, login, oauth-github, crud) · standalone production bundler (`synapse build --standalone`) ·
-MCP stdio server with 10 tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks.
+MCP stdio server with 11 native tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks.
 
-**Roadmap:** down-migrations / DDL rollbacks, multi-region distributed cache adapters (Redis/Dragonfly).
+**Roadmap:** multi-region distributed cache adapters (Redis/Dragonfly), clustering.
 
 The repository README carries a measured context-surface benchmark of the same two features
 implemented with and without the slice convention, including what the numbers do not show.
@@ -182,11 +184,13 @@ import {
 
   // Declarative UI Primitives, Hooks & i18n
   DataTable, DataForm, Button, Card, Badge, Pagination,
-  SynapseProvider, useAction, useLoaderData, useSubscription, useSession, useSynapseContext,
+  SliceOutlet, SliceOutletProvider, SubSlice,
+  SynapseProvider, useAction, useLoaderData, useSubscription, useWebSocket, useSession, useSynapseContext,
   createTranslator,
 
-  // Realtime SSE Gateway
+  // Realtime & Cache Gateways
   EventHub, getEventHub, resetEventHub,
+  defineSocket, defineCache,
 
   // Compiler, Scaffolding, Schemas, Drift & Diagnostics
   runSliceMigrations, rollbackSliceMigrations, runMachineVerifications,
@@ -194,7 +198,7 @@ import {
   checkSchemaDrift, analyzeImpact, nestJoinedRow,
   resolveSlicesDir, findSliceFiles, SLICE_EXTENSION,
   splitSlice, verifySplit, writeSplitArtifacts, artifactDirectory,
-  scaffoldSlice, scaffoldCrud, parseFields, compressRepositoryAST, buildStandalone,
+  scaffoldSlice, scaffoldCrud, scaffoldShared, parseFields, compressRepositoryAST, buildStandalone,
 
   // MCP
   SynapseMcpServer

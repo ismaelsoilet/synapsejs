@@ -61,10 +61,15 @@ export function clientManifestPath(baseDir: string): string {
   return path.join(baseDir, '.synapse', 'client', 'manifest.json');
 }
 
-export async function buildVendorBundle(baseDir: string): Promise<Result<BuiltBundle, BuildError>> {
+export async function buildVendorBundle(
+  baseDir: string,
+  vendorPackages: string[] = []
+): Promise<Result<BuiltBundle, BuildError>> {
   const vendorEntryDir = path.join(baseDir, '.synapse/client-entry');
   fs.mkdirSync(vendorEntryDir, { recursive: true });
   const vendorEntryPath = path.join(vendorEntryDir, '_vendor.ts');
+
+  const extraExports = (vendorPackages || []).map((pkg) => `export * from '${pkg}';`).join('\n');
 
   const vendorEntryContent = [
     `import React from 'react';`,
@@ -73,6 +78,7 @@ export async function buildVendorBundle(baseDir: string): Promise<Result<BuiltBu
     `import * as SynapseClient from 'synapsejs/client';`,
     `import * as jsxRuntime from 'react/jsx-runtime';`,
     `import * as jsxDevRuntime from 'react/jsx-dev-runtime';`,
+    ...(extraExports ? [extraExports] : []),
     ``,
     `export default React;`,
     `export * from 'react';`,
@@ -209,7 +215,8 @@ export function componentExportOf(module: Record<string, unknown>): string | und
 
 export async function buildClientBundle(
   target: BundleTarget,
-  baseDir: string
+  baseDir: string,
+  options?: { vendorPackages?: string[] }
 ): Promise<Result<BuiltBundle, BuildError>> {
   // Uma fatia que não carrega não pode derrubar o build inteiro: ela vira FAIL com o motivo.
   let sliceModule: Record<string, unknown>;
@@ -311,7 +318,7 @@ export async function buildClientBundle(
   if (vendorSplit) {
     const vendorFile = path.join(baseDir, '.synapse/client', VENDOR_BUNDLE_NAME);
     if (!fs.existsSync(vendorFile)) {
-      await buildVendorBundle(baseDir);
+      await buildVendorBundle(baseDir, options?.vendorPackages);
     }
   }
 
@@ -334,7 +341,8 @@ export async function buildClientBundle(
             'react-dom',
             'react-dom/client',
             'synapsejs/client',
-            '@ismaelsoilet/synapsejs/client'
+            '@ismaelsoilet/synapsejs/client',
+            ...(options?.vendorPackages || [])
           ]
         : [],
       define: { 'process.env.NODE_ENV': production ? '"production"' : '"development"' }
@@ -421,7 +429,8 @@ export interface BuildReportEntry {
  * component and fails to produce a bundle is a broken build.
  */
 export async function buildAllClientBundles(
-  appRoot: string
+  appRoot: string,
+  options?: { vendorPackages?: string[] }
 ): Promise<Result<{ entries: BuildReportEntry[]; manifestFile: string }, SlicesDirError>> {
   const resolution = resolveSlicesDir(appRoot);
 
@@ -433,7 +442,7 @@ export async function buildAllClientBundles(
   const entries: BuildReportEntry[] = [];
   const built: BuiltBundle[] = [];
 
-  const vendorRes = await buildVendorBundle(appRoot);
+  const vendorRes = await buildVendorBundle(appRoot, options?.vendorPackages);
   if (vendorRes.ok) {
     built.push(vendorRes.value);
     entries.push({ slice: '_vendor', status: 'PASS', url: vendorRes.value.url, bytes: vendorRes.value.bytes });
@@ -446,7 +455,8 @@ export async function buildAllClientBundles(
 
     const bundle = await buildClientBundle(
       { key, name, domain, filePath: file, rpcPath: `/_synapse/rpc/${domain}/${name}` },
-      appRoot
+      appRoot,
+      options
     );
 
     if (bundle.ok) {
