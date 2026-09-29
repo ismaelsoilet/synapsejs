@@ -1,4 +1,5 @@
 export * from './action-context';
+export * from './action-definition';
 export * from './config';
 export * from './database-client';
 export * from './database-factory';

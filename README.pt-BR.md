@@ -12,8 +12,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-365%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="365 Testes Passando"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-388%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="388 Testes Passando"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 15 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Valida%C3%A7%C3%A3o-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
@@ -59,7 +59,7 @@ O SynapseJS elimina essa dispersão arquitetural por completo: **uma funcionalid
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-Um **Splitter Isomórfico** baseado em AST decompõe o código de servidor (SQL, credenciais, mutações) do código de navegador (React, stubs RPC) em tempo de compilação com **gates criptográficos anti-vazamento (Zero-Leak)**.
+Um **Splitter Isomórfico** baseado em AST decompõe o código de servidor (SQL, credenciais, mutações) do código de navegador (React, stubs RPC) em tempo de compilação com **isolamento AST rigoroso e gates automatizados de verificação de vazamento**.
 
 ---
 
@@ -100,9 +100,9 @@ A CLI gera instantaneamente:
 
 | Pilar | Como o SynapseJS Resolve |
 |---|---|
-| **⚡ Velocidade Brutal** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Entrega **>48.000 req/s** com latência p50 sub-milissegundo e cold-start imediato. |
-| **🛡️ Splitter Isomórfico Zero-Leak** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates de compilação bloqueiam rigorosamente SQL, segredos ou globais do Bun de chegarem ao browser. |
-| **🤖 Servidor MCP Nativo (15 Ferramentas)** | Servidor **Model Context Protocol** de primeira classe (`bun run mcp`). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **⚡ Motor de Alta Vazão** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Entrega **53.191 req/s** de roteamento HTTP base com latência p50 sub-milissegundo sob alta concorrência. |
+| **🛡️ Isolamento AST e Gates de Vazamento** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates automatizados do compilador detectam e bloqueiam SQL, segredos, módulos de servidor ou globais do Bun de chegarem ao browser. |
+| **🤖 Servidor MCP Nativo (15 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 15 ferramentas (11 do núcleo arquitetural Sistema 2 + 4 de triagem reflexa Jev Sistema 1). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 Simbiose Sistema 1 + Sistema 2** | Integração nativa com o harness de decisão não-autoregressivo [Jev System One](https://github.com/ismaelsoilet/jev-harness). Tria falhas de teste em 70-300ms (<500µs local), aborta trajetórias condenadas em loops de refatoração e modula dinamicamente o esforço de raciocínio (Astra-Jev). |
 | **🔄 Realtime SSE e Pub/Sub Distribuído** | Gateway nativo Server-Sent Events (`GET /_synapse/sse/:topic*`) com heartbeat automático de 15 segundos, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
 | **🗄️ Migrações Declarativas e Rollback** | O DDL vive nas fatias e é rastreado declaração por declaração com hash SHA-256. Suporta demarcações reversíveis `-- up:` / `-- down:` e rollback transacional atômico (`synapse rollback`). |
@@ -126,6 +126,7 @@ import {
   type SessionContext,
   requireAuth,
   defineJob,
+  defineAction,
   DataTable,
   Button
 } from 'synapsejs';
@@ -168,27 +169,22 @@ export const notifyStaffJob = defineJob<{ ticketId: string }>({
   }
 });
 
-// 5. Server Action (No servidor: mutação; no browser: compilada em stub RPC)
-export async function createTicketAction(
-  payload: unknown,
-  db?: DatabaseClient,
-  session?: SessionContext
-): Promise<TicketOutput> {
-  const auth = requireAuth(session, ['support']);
-  if (!auth.ok) return Err(auth.error);
-  if (!db) return Err('NO_DATABASE');
-  if (!Value.Check(TicketInputSchema, payload)) return Err('INVALID_SCHEMA');
+// 5. Server Action (Fail-Closed por padrão, validação automática TypeBox e binding RPC)
+export const createTicketAction = defineAction({
+  input: TicketInputSchema,
+  auth: ['support'], // Fail-Closed: exige sessão autenticada com papel 'support'. Use auth: 'public' para rotas públicas.
+  handler: async ({ input, db, session }): Promise<TicketOutput> => {
+    if (!db) return Err('NO_DATABASE');
+    const ticketId = crypto.randomUUID();
 
-  const input = payload as TicketInput;
-  const ticketId = crypto.randomUUID();
+    await db.query(
+      `INSERT INTO tickets (id, subject, priority, status) VALUES ($1, $2, $3, 'OPEN')`,
+      [ticketId, input.subject, input.priority]
+    );
 
-  await db.query(
-    `INSERT INTO tickets (id, subject, priority, status) VALUES ($1, $2, $3, 'OPEN')`,
-    [ticketId, input.subject, input.priority]
-  );
-
-  return Ok({ ticketId });
-}
+    return Ok({ ticketId });
+  }
+});
 
 // 6. SSR Data Loader (Executado no servidor antes de enviar o HTML)
 export async function createTicketLoader(ctx: { db: DatabaseClient; session: SessionContext }) {
@@ -398,11 +394,11 @@ bun run mcp
 
 Para assegurar total transparência, todas as métricas abaixo foram geradas por scripts automatizados presentes no repositório:
 
-### 1. Concorrência e Vazão HTTP (`bun run bench:concurrency`)
-Medição do servidor HTTP nativo `Bun.serve` sob concorrência de 50 conexões simultâneas ao longo de 1.000 requisições:
+### 1. Concorrência e Roteamento HTTP Base (`bun run bench:concurrency`)
+Medição do roteamento base do servidor HTTP nativo `Bun.serve` (`/_synapse/api/health`) sob concorrência de 50 conexões simultâneas ao longo de 1.000 requisições:
 
 ```text
-🚀 Resultados do Benchmark de Concorrência:
+🚀 Resultados do Benchmark de Concorrência (Roteamento HTTP Base):
 ────────────────────────────────────────────
 Vazão (Throughput):  53.191 requisições/segundo
 Latência (p50):      0,53 ms
@@ -412,6 +408,7 @@ Falhas/Erros:        0 (0,00%)
 Delta de Memória:    < 6 MB
 ────────────────────────────────────────────
 ```
+*Nota: Para benchmarks de ponta a ponta com SSR em React 19, validação de input com TypeBox e mutações reais em SQLite, execute `bun run bench:production`.*
 
 ### 2. Benchmark de Superfície de Contexto (`bun run bench`)
 Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir chamado") implementadas em fatias verticais contra arquitetura em camadas tradicional:
@@ -423,10 +420,10 @@ Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir 
 
 ### 3. Taxa de Aprovação da Suíte de Testes
 ```text
-359 pass
+388 pass
 0 fail
-1351 chamadas expect()
-359 testes executados em 49 arquivos. (100% Gates Verdes)
+1452 chamadas expect()
+388 testes executados em 54 arquivos. (100% Gates Verdes)
 ```
 
 ---
@@ -485,8 +482,10 @@ docker run -p 3000:3000 -e SYNAPSE_SESSION_SECRET="seu-segredo" meu-app-synapse
 
 1. **Exclusividade Bun**: O SynapseJS aproveita diretamente as APIs nativas do Bun (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.password`, `Bun.build`). Não executa em Node.js ou Deno.
 2. **Escopo do Query Builder**: Otimizado para transações de tabela única e joins relacionais tipados. Consultas analíticas complexas (OLAP) pertencem ao SQL parametrizado (`db.sql`) ou a ferramentas dedicadas como Kysely via `ctx.services`.
-3. **Multi-Tenancy em Nível de Aplicação**: O isolamento de tenants é garantido na borda da aplicação via `requireTenant` e tokens de sessão assinados.
+3. **Multi-Tenancy em Nível de Aplicação**: O isolamento de tenants é garantido na borda da aplicação via `requireTenant` e tokens de sessão assinados. Para bancos PostgreSQL que exijam isolamento estrito no próprio motor de banco, recomenda-se o uso de Row Level Security (RLS).
 4. **Escopo Realtime**: O realtime opera via Server-Sent Events (SSE) através do `EventHub` e do hook `useSubscription`. WebSockets bidirecionais contínuos não fazem parte do núcleo.
+5. **Segurança Fail-Closed por Padrão**: Ações declaradas com `defineAction` rejeitam chamadas anônimas por padrão (`UNAUTHORIZED`), exigindo `auth: 'public'` para liberação explícita. O runtime do servidor inclui filtragem de CORS, mitigação contra CSRF e validação de cookies/sessões assinadas com HMAC (`SYNAPSE_SESSION_SECRET`).
+6. **DAG Declarativo de Migrações**: Dependências e chaves estrangeiras entre tabelas de fatias são mapeadas num grafo acíclico (`orderSlicesByDag`), garantindo que pais sejam criados antes de filhos. Alterações incrementais (`ALTER TABLE`) em produção devem ser registradas como declarações de migração versionadas.
 
 ---
 

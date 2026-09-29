@@ -1,6 +1,6 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "private": true,
   "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",
@@ -34,6 +34,7 @@
     "split": "bun --cwd apps/crm split && bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",
     "bench": "bun run scripts/bench-context.ts",
     "bench:concurrency": "bun scripts/bench-concurrency.ts",
+    "bench:production": "bun scripts/bench-production.ts",
     "new-slice": "bun --cwd examples/enterprise-crm new-slice",
     "build": "bun test packages/synapse/test && bun run packages/synapse/bin/synapse.ts check && bun --cwd examples/enterprise-crm skeleton && bun --cwd examples/enterprise-crm split && bun --cwd examples/helpdesk-slices split",
     "new": "bun run packages/synapse/bin/synapse.ts new",

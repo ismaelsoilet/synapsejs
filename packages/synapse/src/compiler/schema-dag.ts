@@ -25,26 +25,30 @@ export function parseTableDependencies(ddl: string): { created: string[]; refere
   const created: string[] = [];
   const referenced: string[] = [];
 
-  // Match CREATE TABLE [IF NOT EXISTS] <name>
-  const createRegex = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([a-zA-Z0-9_]+)["'`]?/gi;
-  let match: RegExpExecArray | null = createRegex.exec(ddl);
+  // Strip SQL comments to avoid false-positive dependencies
+  const cleanDdl = ddl.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
+
+  // Match CREATE TABLE [IF NOT EXISTS] [schema.]<name>
+  const createRegex =
+    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(?:["'`]?[a-zA-Z0-9_]+["'`]?\.)?["'`]?([a-zA-Z0-9_]+)["'`]?/gi;
+  let match: RegExpExecArray | null = createRegex.exec(cleanDdl);
   while (match !== null) {
     const tableName = match[1].toLowerCase();
     if (!created.includes(tableName)) {
       created.push(tableName);
     }
-    match = createRegex.exec(ddl);
+    match = createRegex.exec(cleanDdl);
   }
 
-  // Match REFERENCES <name>
-  const refRegex = /REFERENCES\s+["'`]?([a-zA-Z0-9_]+)["'`]?/gi;
-  let refMatch: RegExpExecArray | null = refRegex.exec(ddl);
+  // Match REFERENCES [schema.]<name>[(columns)]
+  const refRegex = /REFERENCES\s+(?:["'`]?[a-zA-Z0-9_]+["'`]?\.)?["'`]?([a-zA-Z0-9_]+)["'`]?/gi;
+  let refMatch: RegExpExecArray | null = refRegex.exec(cleanDdl);
   while (refMatch !== null) {
     const tableName = refMatch[1].toLowerCase();
     if (!created.includes(tableName) && !referenced.includes(tableName)) {
       referenced.push(tableName);
     }
-    refMatch = refRegex.exec(ddl);
+    refMatch = refRegex.exec(cleanDdl);
   }
 
   return { created, referenced };

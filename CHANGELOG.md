@@ -1,5 +1,28 @@
 # Changelog
 
+## 1.4.0 — Security Hardening, Fail-Closed Actions & Ground-Truth Benchmarks (Wave 6)
+
+- **Fail-Closed Actions by Default (`defineAction`)**:
+  - Introduced the `defineAction` primitive in `packages/synapse/src/core/action-definition.ts` and exported it from the package root.
+  - Fail-Closed by default: actions require an authenticated session and matching roles unless explicitly configured with `auth: 'public'`. Omission of auth rejects calls with `UNAUTHORIZED` or `FORBIDDEN` before executing the handler.
+  - Automatic TypeBox JIT schema validation: incoming payloads are validated against the declared TypeBox schema before entering the action handler, eliminating repetitive manual `Value.Check` and unsafe type casting.
+
+- **Adversarial Hardening of the AST Splitter**:
+  - Enhanced leak detection patterns in `slice-splitter.ts` against obfuscated access to secrets (`process['env']`, `const { env } = process`), Node.js server module imports (`node:fs`, `child_process`, etc.), dynamic code evaluation (`eval()`, `new Function()`), and leaked DDL statements (`ALTER/DROP TABLE`).
+  - Added comprehensive adversarial test suite (`packages/synapse/test/splitter-adversarial.test.ts`) covering 5 adversarial injection scenarios.
+
+- **Topological Schema DAG Robustification**:
+  - Sanitized DDL parsing in `schema-dag.ts` by stripping single-line (`--`) and multi-line (`/* */`) SQL comments before dependency graph generation, preventing false circular dependency cycles.
+  - Added support for PostgreSQL/SQLite schema-qualified and quoted identifiers (`public."users"`, `REFERENCES auth."accounts"`).
+
+- **Ground-Truth Production Benchmarks**:
+  - Implemented `scripts/bench-production.ts` and `bun run bench:production` measuring real under-load performance on React 19 SSR with layouts and RPC database mutations with SQLite and TypeBox validation under concurrency.
+
+- **Documentation & Metrics Alignment**:
+  - Synchronized README badges and test counters to the real monorepo test suite (388 tests, 100% passing across 54 files).
+  - Clarified MCP architecture: 15 native tools (11 System 2 architecture tools + 4 System 1 Jev cognitive reflex tools).
+  - Documented built-in production security mechanisms: CORS, CSRF, signed session tokens (`SYNAPSE_SESSION_SECRET`), and topological migration ordering.
+
 ## 1.3.0 — UI Freedom, Layout Hydration & Developer Autonomy (Wave 5)
 
 - **Neutral HTML Shell for Custom UI & Theming**:

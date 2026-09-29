@@ -75,11 +75,19 @@ const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'UPDATE statement', pattern: /\bUPDATE\s+\w+\s+SET\b/i },
   { label: 'DELETE statement', pattern: /\bDELETE\s+FROM\b/i },
   { label: 'CREATE TABLE statement', pattern: /\bCREATE\s+TABLE\b/i },
+  { label: 'ALTER TABLE statement', pattern: /\bALTER\s+TABLE\b/i },
+  { label: 'DROP TABLE statement', pattern: /\bDROP\s+TABLE\b/i },
   { label: 'database call', pattern: /\bdb\s*\.\s*(?:query|findMany|findOne|insert|update|delete|sql|sqlOne)\b/ },
   { label: 'sliceSchema symbol', pattern: /\bsliceSchema\b/ },
   { label: 'test runner import', pattern: /from\s+['"]bun:test['"]/ },
-  { label: 'process.env access', pattern: /\bprocess\.env\b/ },
-  { label: 'Bun global', pattern: /\bBun\./ }
+  { label: 'process.env access', pattern: /\bprocess\s*(?:\.\s*env|\[\s*['"]env['"]\s*\])/ },
+  { label: 'process destructuring', pattern: /\b(?:const|let|var)\s*\{[^}]*\benv\b[^}]*\}\s*=\s*process\b/ },
+  { label: 'Bun global', pattern: /\bBun\./ },
+  {
+    label: 'node server module import',
+    pattern: /from\s+['"](?:node:)?(?:fs|child_process|cluster|dgram|dns|net|tls|v8|vm)['"]/
+  },
+  { label: 'dynamic code evaluation', pattern: /\b(?:eval|new\s+Function)\s*\(/ }
 ];
 
 interface DeclEntry {

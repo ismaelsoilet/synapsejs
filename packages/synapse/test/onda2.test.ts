@@ -233,12 +233,14 @@ export function FaqView() {
       // Configure a restrictive rate limit for this test
       const rateLimiter = server.rateLimitEngine;
       rateLimiter.reset();
+      (rateLimiter as any).capacity = 5;
+      (rateLimiter as any).refillRate = 0.001; // Avoid race condition under heavy CPU load
 
       try {
         const clientIpHeader = '198.51.100.42';
 
-        // Drain bucket (capacity 150 by default, so consume 150 times directly or set low capacity)
-        for (let i = 0; i < 150; i++) {
+        // Drain bucket
+        for (let i = 0; i < 5; i++) {
           rateLimiter.consume(clientIpHeader);
         }
 

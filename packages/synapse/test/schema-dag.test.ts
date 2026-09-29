@@ -24,6 +24,26 @@ describe('Schema DAG & Topological Migration Ordering (Fase F)', () => {
     expect(referenced).toEqual(['customers']);
   });
 
+  test('parseTableDependencies ignores commented REFERENCES and handles schema-qualified/quoted names', () => {
+    const ddl = `
+      -- Old reference that should be ignored: REFERENCES legacy_users(id)
+      /* Multi-line comment:
+         REFERENCES deprecated_table(id)
+      */
+      CREATE TABLE IF NOT EXISTS public."user_profiles" (
+        id TEXT PRIMARY KEY,
+        account_id TEXT REFERENCES auth."accounts"(id)
+      );
+    `;
+
+    const { created, referenced } = parseTableDependencies(ddl);
+
+    expect(created).toEqual(['user_profiles']);
+    expect(referenced).toEqual(['accounts']);
+    expect(referenced).not.toContain('legacy_users');
+    expect(referenced).not.toContain('deprecated_table');
+  });
+
   test('orderSlicesByDag orders parent slices before child slices referencing foreign keys', () => {
     const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-dag-'));
 
