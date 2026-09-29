@@ -26,25 +26,29 @@ import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import {
   type ActionContext,
   AnonymousSession,
+  BoundedLruCache,
   createActionContext,
   createDefaultLogger,
   createSession,
   type DatabaseClient,
   getDatabase,
   loadSynapseConfig,
+  normalizeCacheKey,
   optimizeImage,
   resetDatabaseInstance,
   type SessionContext,
   type SliceCacheConfig,
   type SliceSocketDefinition,
   type SynapseConfig,
-  type SynapseWebSocket
+  type SynapseWebSocket,
+  serializeCookie
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { verifySessionToken } from '../core/session-token';
 import { serializeClientProps } from './client-entry';
 import { isAction, isCache, isComponent, isJob, isLoader, isMeta, isSocket, isWebhook } from './discovery-rules';
 import { getEventHub } from './event-hub';
+import { validateExternalUrl } from './network-guard';
 import { QueueEngine } from './queue-engine';
 import { TokenBucketRateLimiter } from './rate-limiter';
 import { saveUpload } from './uploads';
@@ -258,17 +262,14 @@ export class SynapseServer {
   private layoutComponent: React.ComponentType<any> | null = null;
   private domainLayouts: Map<string, React.ComponentType<any>> = new Map();
   private rateLimiter: TokenBucketRateLimiter;
-  private ssrCache = new Map<
-    string,
-    {
-      html: string;
-      expiresAt: number;
-      staleUntil: number;
-      ttlSeconds: number;
-      swrSeconds: number;
-      tags: string[];
-    }
-  >();
+  private ssrCache: BoundedLruCache<{
+    html: string;
+    expiresAt: number;
+    staleUntil: number;
+    ttlSeconds: number;
+    swrSeconds: number;
+    tags: string[];
+  }>;
 
   public invalidateCache(tags?: string[]): void {
     if (!tags || tags.length === 0) {
@@ -301,7 +302,8 @@ export class SynapseServer {
     if (config) {
       this.config = { ...config };
     }
-    this.rateLimiter = new TokenBucketRateLimiter();
+    this.rateLimiter = new TokenBucketRateLimiter({ maxBuckets: 10_000 });
+    this.ssrCache = new BoundedLruCache(this.config.cache?.maxEntries || 1000);
     this.queueEngine = new QueueEngine({
       dbPath: path.join(this.baseDir, '.synapse/queue.sqlite'),
       logger: createDefaultLogger('QueueEngine')
@@ -311,10 +313,13 @@ export class SynapseServer {
   /**
    * Gracefully shuts down the HTTP server and closes database connections.
    */
-  async stop(): Promise<void> {
+  async stop(drainTimeoutMs = 5000): Promise<void> {
     if (this.httpServer) {
-      this.httpServer.stop(true);
+      this.httpServer.stop(false);
       this.httpServer = null;
+    }
+    if (drainTimeoutMs > 0) {
+      await new Promise((resolve) => setTimeout(resolve, Math.min(drainTimeoutMs, 200)));
     }
     this.rateLimiter.close();
     this.queueEngine.close();
@@ -508,6 +513,13 @@ export class SynapseServer {
     }
 
     return this.slices.size;
+  }
+
+  /**
+   * Registers a slice directly on this server instance (useful for programmatic slices and testing).
+   */
+  public registerSlice(slice: DiscoveredSlice): void {
+    this.slices.set(slice.key, slice);
   }
 
   /**
@@ -750,7 +762,13 @@ export class SynapseServer {
     req: Request,
     url: URL,
     matchedLocale?: string
-  ): Promise<{ html: string; dataProps: Record<string, unknown>; meta?: SliceMetadata }> {
+  ): Promise<{
+    html: string;
+    dataProps: Record<string, unknown>;
+    meta?: SliceMetadata;
+    hasError?: boolean;
+    error?: string;
+  }> {
     const session = this.sessionFrom(req);
     const actionCtx = this.createActionContext(slice.name, session);
     const params = Object.fromEntries(url.searchParams.entries());
@@ -789,8 +807,6 @@ export class SynapseServer {
       }
     }
 
-    const clientUrl = loaderError ? null : await this.ensureClientBundle(slice);
-
     const renderProps: Record<string, unknown> = {
       ...dataProps,
       ...(slice.actionFn
@@ -802,7 +818,11 @@ export class SynapseServer {
     };
 
     let contentHtml: string;
+    let hasError = false;
+    let renderError: string | null = loaderError;
+
     if (loaderError) {
+      hasError = true;
       contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${escapeHtml(loaderError)}</div>`;
     } else if (slice.componentFn) {
       try {
@@ -817,12 +837,16 @@ export class SynapseServer {
         const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
         contentHtml = renderToString(rootEl);
       } catch (e: any) {
+        hasError = true;
         const errMessage = e instanceof Error ? e.message : String(e);
+        renderError = errMessage;
         contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${escapeHtml(errMessage)}</div>`;
       }
     } else {
       contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
     }
+
+    const clientUrl = hasError ? null : await this.ensureClientBundle(slice);
 
     const hasCustomLayout = Boolean(this.layoutComponent || this.domainLayouts.get(slice.domain));
     const html = this.renderHtmlShell(
@@ -836,7 +860,7 @@ export class SynapseServer {
       hasCustomLayout
     );
 
-    return { html, dataProps, meta };
+    return { html, dataProps, meta, hasError, error: renderError || undefined };
   }
 
   /**
@@ -1323,11 +1347,19 @@ ${this.renderStylesheets()}
             pathname.startsWith('/_synapse/files/') ||
             pathname.startsWith('/_synapse/webhooks/')
           ) {
-            const clientKey =
-              req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-              req.headers.get('cf-connecting-ip') ||
-              req.headers.get('authorization') ||
-              'global';
+            const trustProxy = process.env.SYNAPSE_TRUST_PROXY !== 'false' && this.config.trustProxy !== false;
+            let clientIp: string;
+            if (trustProxy) {
+              clientIp =
+                req.headers.get('cf-connecting-ip') ||
+                req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+                this.httpServer?.requestIP(req)?.address ||
+                '127.0.0.1';
+            } else {
+              clientIp = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
+            }
+            const authHeader = req.headers.get('authorization');
+            const clientKey = authHeader || clientIp;
 
             const rateResult = this.rateLimiter.consume(clientKey);
             if (!rateResult.allowed) {
@@ -1396,8 +1428,37 @@ ${this.renderStylesheets()}
               );
             }
 
+            const maxRpcBytes = this.config.maxRpcPayloadBytes ?? 5 * 1024 * 1024; // 5 MB
+            const rpcContentLengthHeader = req.headers.get('content-length');
+            const rpcContentLength = rpcContentLengthHeader ? parseInt(rpcContentLengthHeader, 10) : NaN;
+            if (Number.isFinite(rpcContentLength) && rpcContentLength > maxRpcBytes) {
+              this.logRequest(req, pathname, 413, startedAt, undefined, 'rpc_error');
+              return Response.json(
+                {
+                  ok: false,
+                  error: 'PAYLOAD_TOO_LARGE',
+                  message: `Payload RPC excede o limite máximo permitido de ${maxRpcBytes} bytes.`
+                },
+                { status: 413, headers: cors ?? undefined }
+              );
+            }
+
+            let body: unknown;
             try {
-              const body = await req.json();
+              body = await req.json();
+            } catch {
+              this.logRequest(req, pathname, 400, startedAt, undefined, 'rpc_error');
+              return Response.json(
+                {
+                  ok: false,
+                  error: 'INVALID_JSON_PAYLOAD',
+                  message: 'Payload da requisição não é um JSON válido.'
+                },
+                { status: 400, headers: cors ?? undefined }
+              );
+            }
+
+            try {
               const session = this.sessionFrom(req);
               const actionCtx = this.createActionContext(slice.name, session);
 
@@ -1406,7 +1467,16 @@ ${this.renderStylesheets()}
               const metricType = result.ok ? 'rpc_success' : 'rpc_error';
               this.logRequest(req, pathname, status, startedAt, session, metricType);
 
-              return Response.json(result, { status, headers: cors ?? undefined });
+              const headers = new Headers(cors ?? {});
+              headers.set('Content-Type', 'application/json');
+
+              if (actionCtx._pendingCookies && actionCtx._pendingCookies.length > 0) {
+                for (const cookie of actionCtx._pendingCookies) {
+                  headers.append('Set-Cookie', serializeCookie(cookie.name, cookie.value, cookie.options));
+                }
+              }
+
+              return new Response(JSON.stringify(result), { status, headers });
             } catch (err: any) {
               this.logRequest(req, pathname, 500, startedAt, undefined, 'rpc_error');
               return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });
@@ -1442,6 +1512,21 @@ ${this.renderStylesheets()}
               return Response.json(
                 { ok: false, error: `A fatia '${slice.key}' não exporta nenhum *Webhook handler.` },
                 { status: 404 }
+              );
+            }
+
+            const maxWebhookBytes = this.config.maxWebhookPayloadBytes ?? 10 * 1024 * 1024; // 10 MB
+            const webhookContentLengthHeader = req.headers.get('content-length');
+            const webhookContentLength = webhookContentLengthHeader ? parseInt(webhookContentLengthHeader, 10) : NaN;
+            if (Number.isFinite(webhookContentLength) && webhookContentLength > maxWebhookBytes) {
+              this.logRequest(req, pathname, 413, startedAt);
+              return Response.json(
+                {
+                  ok: false,
+                  error: 'PAYLOAD_TOO_LARGE',
+                  message: `Payload Webhook excede o limite máximo permitido de ${maxWebhookBytes} bytes.`
+                },
+                { status: 413, headers: cors ?? undefined }
               );
             }
 
@@ -1601,17 +1686,45 @@ ${this.renderStylesheets()}
               let mimeType = 'image/jpeg';
 
               if (fileUrl.startsWith('http://') || fileUrl.startsWith('https://')) {
+                const allowedDomains =
+                  this.config.imageOptimizer?.allowedDomains ||
+                  (process.env.SYNAPSE_ALLOWED_IMAGE_DOMAINS
+                    ? process.env.SYNAPSE_ALLOWED_IMAGE_DOMAINS.split(',').map((s) => s.trim())
+                    : undefined);
+
+                const validation = await validateExternalUrl(fileUrl, { allowedDomains });
+                if (!validation.ok) {
+                  return Response.json(
+                    { ok: false, error: validation.error || 'FORBIDDEN_TARGET_URL' },
+                    { status: 403, headers: cors ?? undefined }
+                  );
+                }
+
                 const res = await fetch(fileUrl);
                 if (!res.ok) {
-                  return Response.json({ ok: false, error: 'FETCH_IMAGE_FAILED' }, { status: 502 });
+                  return Response.json(
+                    { ok: false, error: 'FETCH_IMAGE_FAILED' },
+                    { status: 502, headers: cors ?? undefined }
+                  );
                 }
                 buffer = new Uint8Array(await res.arrayBuffer());
                 mimeType = res.headers.get('content-type') || mimeType;
               } else {
+                const publicDir = path.resolve(this.baseDir, 'public');
                 const cleanRel = fileUrl.replace(/^\/+/, '');
-                const candidate = path.resolve(this.baseDir, cleanRel);
+                const candidate = path.resolve(publicDir, cleanRel);
+
+                if (!candidate.startsWith(publicDir + path.sep) && candidate !== publicDir) {
+                  return Response.json(
+                    { ok: false, error: 'FORBIDDEN_FILE_PATH' },
+                    { status: 403, headers: cors ?? undefined }
+                  );
+                }
                 if (!fs.existsSync(candidate) || !fs.statSync(candidate).isFile()) {
-                  return Response.json({ ok: false, error: 'IMAGE_NOT_FOUND' }, { status: 404 });
+                  return Response.json(
+                    { ok: false, error: 'IMAGE_NOT_FOUND' },
+                    { status: 404, headers: cors ?? undefined }
+                  );
                 }
                 buffer = new Uint8Array(await Bun.file(candidate).arrayBuffer());
               }
@@ -1691,7 +1804,9 @@ ${this.renderStylesheets()}
             const slice = resolvedSlice;
             const session = this.sessionFrom(req);
             const cacheConfig = slice.cacheConfig;
-            const cacheKey = `${pathname}${url.search}`;
+            const cacheKey = cacheConfig
+              ? normalizeCacheKey(url, cacheConfig.allowedParams)
+              : `${pathname}${url.search}`;
             const now = Date.now();
 
             if (cacheConfig && req.method === 'GET') {
@@ -1713,16 +1828,18 @@ ${this.renderStylesheets()}
                   (async () => {
                     try {
                       const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale);
-                      const ttl = cacheConfig.ttlSeconds;
-                      const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
-                      this.ssrCache.set(cacheKey, {
-                        html: fresh.html,
-                        expiresAt: Date.now() + ttl * 1000,
-                        staleUntil: Date.now() + (ttl + swr) * 1000,
-                        ttlSeconds: ttl,
-                        swrSeconds: swr,
-                        tags: cacheConfig.tags || []
-                      });
+                      if (!fresh.hasError) {
+                        const ttl = cacheConfig.ttlSeconds;
+                        const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
+                        this.ssrCache.set(cacheKey, {
+                          html: fresh.html,
+                          expiresAt: Date.now() + ttl * 1000,
+                          staleUntil: Date.now() + (ttl + swr) * 1000,
+                          ttlSeconds: ttl,
+                          swrSeconds: swr,
+                          tags: cacheConfig.tags || []
+                        });
+                      }
                     } catch (err) {
                       console.error(`[SynapseServer] Revalidação ISR em background de ${slice.key} falhou:`, err);
                     }
@@ -1739,7 +1856,19 @@ ${this.renderStylesheets()}
               }
             }
 
-            const { html } = await this.renderSliceHtml(slice, req, url, matchedLocale);
+            const { html, hasError } = await this.renderSliceHtml(slice, req, url, matchedLocale);
+
+            if (hasError) {
+              this.logRequest(req, pathname, 500, startedAt, session, 'ssr');
+              return new Response(html, {
+                status: 500,
+                headers: {
+                  'Content-Type': 'text/html; charset=utf-8',
+                  'X-Robots-Tag': 'noindex, nofollow'
+                }
+              });
+            }
+
             const headers: Record<string, string> = {
               'Content-Type': 'text/html; charset=utf-8'
             };

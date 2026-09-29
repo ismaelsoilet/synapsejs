@@ -164,6 +164,14 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 40. `Shared Vendor Chunks via Import Maps` — `compiler.vendorChunks` config automatically externalizes React, ReactDOM, and shared runtime libraries into CDN/cached vendor files.
 41. `Standardized Shared Module Scaffolding` — `synapse new-shared <name>` scaffolding clean, type-safe business modules in `src/shared/` to enforce domain isolation.
 42. `SQLite WAL Pragmas & Concurrency Tuning` — Auto-configured `busy_timeout = 5000`, `synchronous = NORMAL`, `cache_size = -64000`, and `temp_store = MEMORY` for 10.7x throughput increase (4,000+ req/s).
+43. `Network Guard & SSRF Protection` — `isPrivateOrReservedIp` and `validateExternalUrl` preventing private network exploitation, loopback probes, and DNS rebinding; path traversal immunity on static image optimization.
+44. `Anti-Spoofing & LRU Rate Limiting` — Bounded LRU token bucket limiter with `trustProxy` IP resolution protecting against proxy spoofing and memory exhaustion.
+45. `Bounded LRU SSR Micro-Cache` — `BoundedLruCache` with parameter normalization (sorting keys, stripping tracking params) and deterministic LRU eviction.
+46. `Payload Size Guards & Malformed JSON Protection` — Strict HTTP 413 rejections for RPC (`maxRpcPayloadBytes`) and Webhooks (`maxWebhookPayloadBytes`), HTTP 400 with `INVALID_JSON_PAYLOAD`.
+47. `SQLite Queue Zombie Job Recovery` — Atomic locking with `locked_at` timestamp and automatic recovery of orphaned/crashed worker tasks past visibility timeout.
+48. `HTTP 500 SSR Error Isolation` — Non-200 status code, `X-Robots-Tag: noindex, nofollow`, and client script suppression on server-side loader/render crashes.
+49. `Secure HttpOnly Session Cookies` — `ctx.setCookie` with automatic `HttpOnly`, `SameSite=Lax`, and `Secure` attributes directly emitted in RPC response headers.
+50. `Graceful HTTP Shutdown` — In-flight request draining (`drainTimeoutMs`) preventing connection drops on SIGTERM/SIGINT.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
@@ -247,7 +255,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.5.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.6.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.

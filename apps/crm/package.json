@@ -5,6 +5,7 @@
   "type": "module",
   "description": "CRM de verdade construído sobre o SynapseJS: campo de provas do framework em cenários reais",
   "scripts": {
+    "start": "synapse start",
     "dev": "synapse dev",
     "check": "synapse check",
     "migrate": "synapse migrate",

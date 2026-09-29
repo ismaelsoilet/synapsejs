@@ -33,7 +33,8 @@ with rawBody preservation · B2B multi-tenancy & IDOR prevention (`requireTenant
 and Turbo Morphing router · explicit RBAC via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery
 that never reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton map ·
 scaffolder with `--fields` grammar and templates (create, list, update, delete, login, oauth-github, crud) · standalone production bundler (`synapse build --standalone`) ·
-MCP stdio server with 11 native tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks.
+MCP stdio server with 11 native tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks ·
+SSRF & Network Guard (`validateExternalUrl`, `isPrivateOrReservedIp`) · anti-spoofing & bounded LRU rate limiting · bounded LRU SSR micro-cache with parameter normalization · strict payload size guards (RPC 5MB, Webhook 10MB) & malformed JSON protection · SQLite queue zombie job recovery with `locked_at` visibility timeout · HTTP 500 SSR error isolation & bundle suppression · secure HttpOnly cookies (`ctx.setCookie`) · graceful HTTP shutdown (`server.stop` with connection drain).
 
 **Roadmap:** multi-node distributed cache adapters (Redis/Dragonfly cluster sync), multi-host worker clustering.
 

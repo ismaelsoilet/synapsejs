@@ -52,6 +52,35 @@ export interface SynapseConfig<TServices = Record<string, unknown>> {
   compiler?: {
     vendorPackages?: string[];
   };
+
+  /**
+   * Trust proxy headers (cf-connecting-ip, x-forwarded-for) for rate limiting and IP resolution.
+   */
+  trustProxy?: boolean;
+
+  /**
+   * Max allowed payload bytes for RPC POST requests (default: 5MB).
+   */
+  maxRpcPayloadBytes?: number;
+
+  /**
+   * Max allowed payload bytes for Webhook POST requests (default: 10MB).
+   */
+  maxWebhookPayloadBytes?: number;
+
+  /**
+   * SSR Cache settings.
+   */
+  cache?: {
+    maxEntries?: number;
+  };
+
+  /**
+   * Image optimizer security settings.
+   */
+  imageOptimizer?: {
+    allowedDomains?: string[];
+  };
 }
 
 export function defineConfig<TServices = Record<string, unknown>>(

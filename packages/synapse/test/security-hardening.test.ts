@@ -172,7 +172,7 @@ describe('Reflected XSS Sanitization (V-04)', () => {
     const response = await fetch(`${base}/tickets/view-tickets?fail=1&marker=${encodeURIComponent(xssPayload)}`);
     const html = await response.text();
 
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(500);
     expect(html).toContain('Falha no loader de tickets/view-tickets');
     expect(html).not.toContain('<img src=x onerror=alert(1)>');
   });

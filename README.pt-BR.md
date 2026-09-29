@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-397%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="397 Testes Passando"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-414%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="414 Testes Passando"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 15 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -310,6 +310,21 @@ export const sliceCache = defineCache({
 
 ---
 
+## 🛡️ Endurecimento para Produção & Resiliência (v1.6.0)
+
+O SynapseJS v1.6.0 introduz proteções de resiliência de nível corporativo projetadas para implantações de confiança zero em produção:
+
+- **SSRF & Network Guard**: `validateExternalUrl` e `isPrivateOrReservedIp` bloqueiam ativamente ataques de SSRF (Server-Side Request Forgery) direcionados a loopback, CIDRs privados IPv4/IPv6, endpoints de metadados de nuvem (`169.254.169.254`, AWS, GCP, Azure) e ataques de DNS rebinding. Otimização de imagens estáticas impõe contenção estrita ao diretório `public/`.
+- **Anti-Spoofing & Rate Limiting Limitado (LRU)**: O limitador de taxa Token Bucket adota despejo LRU (limitado a 10.000 buckets) e resolução de IP no nível do socket (`trustProxy`), prevenindo esgotamento de memória e ataques de negação de serviço por spoofing de cabeçalhos.
+- **Micro-Cache SSR com LRU Delimitado**: O cache em memória impõe limites de armazenamento com LRU e normaliza URLs ordenando parâmetros de query e removendo tokens de rastreamento/anúncios (`utm_*`, `fbclid`, `gclid`).
+- **Limites Estritos de Carga Útil**: Rejeição automática HTTP 413 para payloads RPC que excedem o limite (`maxRpcPayloadBytes`, 5MB) e Webhooks (`maxWebhookPayloadBytes`, 10MB), com retorno HTTP 400 em JSON malformado.
+- **Recuperação Automática de Jobs Zumbis**: As filas de background em SQLite e PostgreSQL rastreiam carimbos de data/hora `locked_at` para recuperar automaticamente tarefas abandonadas quando workers sofrem falhas ou crash.
+- **Isolamento de Erros SSR**: Falhas de renderização ou em loaders retornam HTTP 500 com `X-Robots-Tag: noindex, nofollow` e suprimem tags de script do bundle cliente, prevenindo descompassos de hidratação e indexação indevida por motores de busca.
+- **Propagação Segura de Cookies HttpOnly**: Actions podem definir cookies via `ctx.setCookie('name', 'val', { httpOnly: true, secure: true })`, propagados pelo Synapse nos cabeçalhos de resposta RPC via `Set-Cookie`.
+- **Graceful Shutdown**: `synapse start` e `server.stop(drainTimeoutMs)` drenam conexões ativas em uma janela de 5 segundos durante deploys contínuos e reinicializações de contêineres.
+
+---
+
 ## 🧠 Arquitetura Cognitiva Dupla: SynapseJS + Jev System One
 
 A engenharia de software com agentes de codificação de IA autônomos (Claude, Cursor, Windsurf, Antigravity) enfrenta dois gargalos sistêmicos:
@@ -461,10 +476,10 @@ Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir 
 
 ### 4. Taxa de Aprovação da Suíte de Testes
 ```text
-397 pass
+414 pass
 0 fail
-1500+ chamadas expect()
-397 testes executados em 54 arquivos. (100% Gates Verdes)
+1592 chamadas expect()
+414 testes executados em 55 arquivos. (100% Gates Verdes)
 ```
 
 ---

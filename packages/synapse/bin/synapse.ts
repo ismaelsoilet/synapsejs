@@ -754,7 +754,7 @@ async function main() {
         `${JSON.stringify(
           {
             framework: 'SynapseJS',
-            version: '1.1.0',
+            version: '1.6.0',
             runtime: 'Bun + Bun.serve',
             database: 'Embedded SQLite (WAL) and PostgreSQL, both verified',
             protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
@@ -924,6 +924,26 @@ async function main() {
                 feature: 'Token revocation, TOTP 2FA, image optimization & plugin hooks',
                 status: 'stable',
                 evidence: 'bun test packages/synapse/test/onda4.test.ts'
+              },
+              {
+                feature: 'SSRF & Private Network Guard',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
+              },
+              {
+                feature: 'Bounded LRU SSR Cache & Query Normalization',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
+              },
+              {
+                feature: 'SQLite Queue Zombie Job Visibility Recovery',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
+              },
+              {
+                feature: 'HttpOnly Cookie Authentication via ActionContext',
+                status: 'stable',
+                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
               }
             ],
             commands: [

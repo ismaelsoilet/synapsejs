@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-397%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="397 Tests Passing"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-414%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="414 Tests Passing"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-15%20Native%20Tools%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 15 Native Tools"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -310,6 +310,21 @@ export const sliceCache = defineCache({
 
 ---
 
+## 🛡️ Production Hardening & Resilience (v1.6.0)
+
+SynapseJS v1.6.0 introduces enterprise-grade resilience guards designed for zero-trust production deployments:
+
+- **SSRF & Network Guard**: `validateExternalUrl` and `isPrivateOrReservedIp` actively block server-side request forgery targeting loopback, private IPv4/IPv6 CIDRs, cloud metadata endpoints (`169.254.169.254`, AWS, GCP, Azure), and DNS rebinding attacks. Static image optimization enforces strict public directory containment.
+- **Anti-Spoofing & Bounded Rate Limiting**: The token bucket rate limiter uses LRU eviction (bounded to 10,000 buckets) and socket-level IP resolution (`trustProxy` validation), preventing memory exhaustion and header-spoofing DoS attacks.
+- **Bounded LRU SSR Cache**: In-memory micro-cache bounds storage with LRU eviction and normalizes URLs by sorting query parameters and stripping ad/tracking tokens (`utm_*`, `fbclid`, `gclid`).
+- **Strict Payload Guards**: Automated HTTP 413 rejection for oversized RPC payloads (`maxRpcPayloadBytes`, 5MB) and Webhook payloads (`maxWebhookPayloadBytes`, 10MB), with clean HTTP 400 on malformed JSON bodies.
+- **Zombie Job Auto-Recovery**: SQLite and PostgreSQL queue engines track `locked_at` timestamps to automatically reclaim orphaned jobs when workers crash, preventing silent pipeline starvation.
+- **SSR Error Isolation**: Loader and rendering crashes return HTTP 500 with `X-Robots-Tag: noindex, nofollow` and suppress client bundle script tags, preventing client-side hydration thrashing and search engine poisoning.
+- **Secure HttpOnly Cookie Propagation**: Actions can set cookies via `ctx.setCookie('name', 'val', { httpOnly: true, secure: true })`, which Synapse propagates in RPC response headers via `Set-Cookie`.
+- **Graceful Shutdown**: `synapse start` and `server.stop(drainTimeoutMs)` drain in-flight connections within a 5-second window during rolling deployments and container restarts.
+
+---
+
 ## 🧠 Dual Cognitive Architecture: SynapseJS + Jev System One
 
 Software engineering with autonomous AI coding agents (Claude, Cursor, Windsurf, Antigravity) faces two systemic pitfalls:
@@ -461,10 +476,10 @@ Comparing two identical enterprise features ("open ticket" and "assign ticket") 
 
 ### 4. Test Suite Pass Rate
 ```text
-397 pass
+414 pass
 0 fail
-1500+ expect() calls
-Ran 397 tests across 54 files. (100% Green Gates)
+1592 expect() calls
+Ran 414 tests across 55 files. (100% Green Gates)
 ```
 
 ---

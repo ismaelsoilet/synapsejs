@@ -31,6 +31,42 @@ export type EnqueueFn = <TPayload>(
 
 export type BroadcastFn = (topic: string, data: unknown) => number;
 
+export interface CookieOptions {
+  httpOnly?: boolean;
+  secure?: boolean;
+  sameSite?: 'lax' | 'strict' | 'none';
+  maxAge?: number;
+  path?: string;
+  domain?: string;
+}
+
+export interface PendingCookie {
+  name: string;
+  value: string;
+  options?: CookieOptions;
+}
+
+export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
+  const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
+  if (options.maxAge !== undefined) {
+    parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
+  }
+  if (options.domain) {
+    parts.push(`Domain=${options.domain}`);
+  }
+  parts.push(`Path=${options.path || '/'}`);
+  if (options.secure) {
+    parts.push('Secure');
+  }
+  if (options.httpOnly) {
+    parts.push('HttpOnly');
+  }
+  if (options.sameSite) {
+    parts.push(`SameSite=${options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1).toLowerCase()}`);
+  }
+  return parts.join('; ');
+}
+
 export interface ActionContext<TServices = Record<string, unknown>> extends DatabaseClient {
   /** Underlying Database Client */
   readonly db: DatabaseClient;
@@ -58,6 +94,12 @@ export interface ActionContext<TServices = Record<string, unknown>> extends Data
 
   /** Invalidates SSR cache entries by tag or completely */
   readonly invalidateCache: (tags?: string[]) => void;
+
+  /** Sets an HTTP response cookie (e.g. HttpOnly session token) */
+  readonly setCookie: (name: string, value: string, options?: CookieOptions) => void;
+
+  /** Internal list of pending cookies to be set on the response */
+  readonly _pendingCookies?: PendingCookie[];
 
   /** Lazy adapter for Kysely (if configured or requested) */
   readonly kysely?: unknown;
@@ -110,6 +152,11 @@ export function createActionContext<TServices = Record<string, unknown>>(
     kysely
   } = options;
 
+  const pendingCookies: PendingCookie[] = [];
+  const setCookie = (name: string, value: string, options?: CookieOptions) => {
+    pendingCookies.push({ name, value, options });
+  };
+
   const context: ActionContext<TServices> = {
     // ActionContext properties
     db,
@@ -121,6 +168,8 @@ export function createActionContext<TServices = Record<string, unknown>>(
     storage,
     broadcast,
     invalidateCache,
+    setCookie,
+    _pendingCookies: pendingCookies,
     kysely,
 
     // DatabaseClient proxy methods

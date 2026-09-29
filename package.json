@@ -1,6 +1,6 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",
@@ -17,6 +17,7 @@
   ],
   "scripts": {
     "postinstall": "node -e \"const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }\"",
+    "start": "bun run packages/synapse/bin/synapse.ts start",
     "dev": "bun --cwd examples/enterprise-crm dev",
     "check": "bun run packages/synapse/bin/synapse.ts check",
     "check:template": "bun --cwd packages/synapse/templates/starter check",

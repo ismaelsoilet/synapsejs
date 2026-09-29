@@ -18,6 +18,8 @@ export interface RateLimitOptions {
   refillRate?: number;
   /** Inactivity window in ms before bucket is evicted (default: 60,000ms = 1m) */
   idleTimeoutMs?: number;
+  /** Maximum tracked buckets in memory before LRU eviction (default: 10,000) */
+  maxBuckets?: number;
 }
 
 export interface RateLimitResult {
@@ -37,6 +39,7 @@ export class TokenBucketRateLimiter {
   private capacity: number;
   private refillRate: number;
   private idleTimeoutMs: number;
+  private maxBuckets: number;
   private buckets: Map<string, Bucket> = new Map();
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -47,6 +50,7 @@ export class TokenBucketRateLimiter {
     this.refillRate = options.refillRate ?? (Number.isFinite(envRps) && envRps > 0 ? envRps : 100);
     this.capacity = options.capacity ?? (Number.isFinite(envBurst) && envBurst > 0 ? envBurst : 150);
     this.idleTimeoutMs = options.idleTimeoutMs ?? 60_000;
+    this.maxBuckets = options.maxBuckets ?? 10_000;
 
     // Run background prune of idle buckets every minute
     this.cleanupTimer = setInterval(() => this.pruneIdleBuckets(), this.idleTimeoutMs);
@@ -63,11 +67,21 @@ export class TokenBucketRateLimiter {
     let bucket = this.buckets.get(key);
 
     if (!bucket) {
+      if (this.buckets.size >= this.maxBuckets) {
+        const oldest = this.buckets.keys().next().value;
+        if (oldest !== undefined) {
+          this.buckets.delete(oldest);
+        }
+      }
       bucket = {
         tokens: this.capacity,
         lastRefill: now,
         lastAccess: now
       };
+      this.buckets.set(key, bucket);
+    } else {
+      // Move to end to track recency (LRU)
+      this.buckets.delete(key);
       this.buckets.set(key, bucket);
     }
 

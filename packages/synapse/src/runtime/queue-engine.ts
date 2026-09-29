@@ -31,6 +31,7 @@ export interface JobRecord {
   run_at: number;
   created_at: number;
   updated_at: number;
+  locked_at?: number | null;
   last_error: string | null;
 }
 
@@ -38,15 +39,19 @@ export interface QueueEngineOptions {
   /** Path to SQLite database file or ':memory:' */
   dbPath?: string;
   logger?: StructuredLogger;
+  /** Inactivity window in ms before a 'running' job without heartbeat is recovered (default: 300_000ms = 5m) */
+  visibilityTimeoutMs?: number;
 }
 
 export class QueueEngine {
   private db: Database;
   private registry: Map<string, JobDefinition<unknown>> = new Map();
   private logger: StructuredLogger;
+  private visibilityTimeoutMs: number;
 
   constructor(options: QueueEngineOptions = {}) {
     this.logger = options.logger || createDefaultLogger('QueueEngine');
+    this.visibilityTimeoutMs = options.visibilityTimeoutMs ?? 300_000;
     const dbPath = options.dbPath || path.join(process.cwd(), '.synapse/queue.sqlite');
 
     if (dbPath !== ':memory:') {
@@ -80,11 +85,22 @@ export class QueueEngine {
         run_at INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
+        locked_at INTEGER,
         last_error TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_synapse_jobs_pending 
       ON _synapse_jobs (status, run_at, priority DESC);
     `);
+    try {
+      this.db.run('ALTER TABLE _synapse_jobs ADD COLUMN locked_at INTEGER;');
+    } catch {
+      // Column already exists
+    }
+    try {
+      this.db.run('CREATE INDEX IF NOT EXISTS idx_synapse_jobs_stale ON _synapse_jobs (status, locked_at);');
+    } catch {
+      // Index already exists
+    }
   }
 
   /**
@@ -123,23 +139,28 @@ export class QueueEngine {
   }
 
   /**
-   * Atomically claims the next pending job eligible for execution.
+   * Atomically claims the next pending job eligible for execution, or recovers
+   * any stale 'running' job whose worker has died (visibility timeout exceeded).
    */
-  claimNextJob(): JobRecord | null {
+  claimNextJob(visibilityTimeoutMs?: number): JobRecord | null {
     const now = Date.now();
+    const timeout = visibilityTimeoutMs ?? this.visibilityTimeoutMs;
+    const staleThreshold = now - timeout;
+
     const stmt = this.db.prepare(`
       UPDATE _synapse_jobs
-      SET status = 'running', updated_at = ?1
+      SET status = 'running', locked_at = ?1, updated_at = ?1
       WHERE id = (
         SELECT id FROM _synapse_jobs
-        WHERE status = 'pending' AND run_at <= ?1
+        WHERE (status = 'pending' AND run_at <= ?1)
+           OR (status = 'running' AND (locked_at IS NULL OR locked_at < ?2))
         ORDER BY priority DESC, run_at ASC, created_at ASC
         LIMIT 1
       )
       RETURNING *;
     `);
 
-    const row = stmt.get(now) as JobRecord | undefined;
+    const row = stmt.get(now, staleThreshold) as JobRecord | undefined;
     return row || null;
   }
 
@@ -166,7 +187,7 @@ export class QueueEngine {
       this.logger.error(errorMsg);
       const updateStmt = this.db.prepare(`
         UPDATE _synapse_jobs
-        SET status = 'failed', attempts = ?1, updated_at = ?2, last_error = ?3
+        SET status = 'failed', locked_at = NULL, attempts = ?1, updated_at = ?2, last_error = ?3
         WHERE id = ?4
       `);
       updateStmt.run(attempts, now, errorMsg, job.id);
@@ -180,7 +201,7 @@ export class QueueEngine {
       const errorMsg = `Falha ao desserializar payload JSON do job: ${String(parseErr)}`;
       const updateStmt = this.db.prepare(`
         UPDATE _synapse_jobs
-        SET status = 'failed', attempts = ?1, updated_at = ?2, last_error = ?3
+        SET status = 'failed', locked_at = NULL, attempts = ?1, updated_at = ?2, last_error = ?3
         WHERE id = ?4
       `);
       updateStmt.run(attempts, now, errorMsg, job.id);
@@ -199,7 +220,7 @@ export class QueueEngine {
       await jobDef.handler(parsedPayload, actionCtx);
       const completeStmt = this.db.prepare(`
         UPDATE _synapse_jobs
-        SET status = 'completed', attempts = ?1, updated_at = ?2, last_error = NULL
+        SET status = 'completed', locked_at = NULL, attempts = ?1, updated_at = ?2, last_error = NULL
         WHERE id = ?3
       `);
       completeStmt.run(attempts, now, job.id);
@@ -214,14 +235,14 @@ export class QueueEngine {
         const nextRunAt = now + backoffMs;
         const retryStmt = this.db.prepare(`
           UPDATE _synapse_jobs
-          SET status = 'pending', attempts = ?1, run_at = ?2, updated_at = ?3, last_error = ?4
+          SET status = 'pending', locked_at = NULL, attempts = ?1, run_at = ?2, updated_at = ?3, last_error = ?4
           WHERE id = ?5
         `);
         retryStmt.run(attempts, nextRunAt, now, errorMsg, job.id);
       } else {
         const failStmt = this.db.prepare(`
           UPDATE _synapse_jobs
-          SET status = 'failed', attempts = ?1, updated_at = ?2, last_error = ?3
+          SET status = 'failed', locked_at = NULL, attempts = ?1, updated_at = ?2, last_error = ?3
           WHERE id = ?4
         `);
         failStmt.run(attempts, now, errorMsg, job.id);

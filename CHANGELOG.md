@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.6.0 — Production Hardening, Zero-Trust Resilience & Operational Reliability (Wave 8)
+
+- **Network Guard & SSRF Protection (Component 1)**:
+  - Added `packages/synapse/src/runtime/network-guard.ts` with `isPrivateOrReservedIp` and `validateExternalUrl`.
+  - Blocks DNS rebinding, loopback, private IPv4/IPv6 CIDRs, and cloud metadata endpoints (`169.254.169.254`, AWS IMDSv1/v2, GCP, Azure, Oracle Cloud).
+  - Hardened static image optimization (`/_synapse/images/optimize`) with strict domain allowlisting and directory containment preventing path traversal.
+
+- **Anti-Spoofing & Bounded Rate Limiting (Component 2)**:
+  - Implemented bounded bucket storage within `TokenBucketRateLimiter` (default 10,000 buckets) with deterministic LRU eviction.
+  - Hardened IP address resolution against header spoofing via `trustProxy` configuration, preventing shared anonymous bucket DoS.
+
+- **Bounded LRU SSR Micro-Cache & Normalization (Component 3)**:
+  - Bounded in-memory SSR micro-cache storage with deterministic LRU eviction (default 1,000 entries).
+  - Added URL normalization via `normalizeCacheKey`: sorts query parameters and strips ad/tracking tokens (`utm_*`, `fbclid`, `gclid`).
+
+- **Strict Payload Guards & Malformed JSON Protection (Component 4)**:
+  - Added payload size limits: `maxRpcPayloadBytes` (5MB) and `maxWebhookPayloadBytes` (10MB) returning HTTP 413 Payload Too Large.
+  - Safe body parsing returning HTTP 400 Bad Request with `INVALID_JSON_PAYLOAD` on malformed JSON bodies.
+
+- **SQLite Queue Zombie Job Recovery (Component 5)**:
+  - Added `locked_at INTEGER` timestamp column and `idx_synapse_jobs_stale` index to SQLite `_synapse_jobs` table.
+  - `claimNextJob` automatically detects and reclaims orphaned/crashed worker tasks past visibility timeout.
+
+- **HTTP 500 SSR Error Isolation & Hydration Safety (Component 6)**:
+  - Server-side loader and React rendering exceptions return HTTP 500 status code.
+  - Injects `X-Robots-Tag: noindex, nofollow` to prevent search engine indexing of error states.
+  - Suppresses client bundle script tag to avoid client-side hydration crashes on unrecoverable server errors.
+
+- **Secure HttpOnly Cookie Authentication (Component 7)**:
+  - Added `ctx.setCookie(name, value, options)` and `serializeCookie` in `action-context.ts`.
+  - Propagates cookies with `HttpOnly`, `SameSite=Lax`, and `Secure` attributes directly in RPC response headers via `Set-Cookie`.
+
+- **Graceful HTTP Shutdown & Docker Production Script (Component 8 & 9)**:
+  - Enhanced `server.stop(drainTimeoutMs)` with in-flight connection draining window (5000ms default).
+  - Added root and package `"start"` scripts: `synapse start` launching production server with graceful SIGTERM/SIGINT handling.
+
+- **Test Suite Pass Rate**:
+  - Expanded test suite to **414 automated tests** across **55 files** (100% green gates).
+  - Added `packages/synapse/test/production-hardening.test.ts` covering all 8 hardening components.
+
 ## 1.5.0 — Real-Time WebSockets, Sub-Slice Composition, SSR Micro-Cache & High-Concurrency SQLite (Wave 7)
 
 - **SQLite Write Concurrency & Throughput Acceleration (Deficiência 1)**:
