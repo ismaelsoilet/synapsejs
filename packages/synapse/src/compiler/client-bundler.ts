@@ -258,12 +258,51 @@ export async function buildClientBundle(
   const entryPath = path.join(entryDir, `${target.domain}-${target.name}.tsx`);
   const modulePath = path.relative(entryDir, path.join(outDir, clientArtifact.fileName)).split(path.sep).join('/');
 
+  // Detect optional root and domain layouts for isomorphic hydration
+  let rootLayoutPath: string | undefined;
+  let domainLayoutPath: string | undefined;
+
+  let currentDir = path.dirname(target.filePath);
+  let slicesDir: string | null = null;
+  while (currentDir && currentDir !== baseDir && currentDir !== path.dirname(currentDir)) {
+    if (path.basename(currentDir) === 'slices') {
+      slicesDir = currentDir;
+      break;
+    }
+    currentDir = path.dirname(currentDir);
+  }
+
+  if (slicesDir) {
+    const rootCandidates = [path.join(slicesDir, '_layout.tsx'), path.join(slicesDir, 'layout.tsx')];
+    for (const cand of rootCandidates) {
+      if (fs.existsSync(cand)) {
+        const rel = path.relative(entryDir, cand).split(path.sep).join('/');
+        rootLayoutPath = rel.startsWith('.') ? rel : `./${rel}`;
+        break;
+      }
+    }
+
+    const domainDir = path.dirname(target.filePath);
+    if (domainDir !== slicesDir) {
+      const domainCandidates = [path.join(domainDir, '_layout.tsx'), path.join(domainDir, 'layout.tsx')];
+      for (const cand of domainCandidates) {
+        if (fs.existsSync(cand)) {
+          const rel = path.relative(entryDir, cand).split(path.sep).join('/');
+          domainLayoutPath = rel.startsWith('.') ? rel : `./${rel}`;
+          break;
+        }
+      }
+    }
+  }
+
   fs.writeFileSync(
     entryPath,
     clientEntrySource({
       componentName: componentExport,
       clientModulePath: `./${modulePath}`,
-      rpcPath: target.rpcPath
+      rpcPath: target.rpcPath,
+      rootLayoutPath,
+      domainLayoutPath
     }),
     'utf-8'
   );

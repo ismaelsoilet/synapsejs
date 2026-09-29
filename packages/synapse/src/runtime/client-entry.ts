@@ -17,6 +17,8 @@ export interface ClientEntryOptions {
   rpcPath: string;
   rootId?: string;
   actionPropNames?: string[];
+  rootLayoutPath?: string;
+  domainLayoutPath?: string;
 }
 
 export const CLIENT_ROOT_ID = 'synapse-root';
@@ -26,14 +28,25 @@ export function clientEntrySource(options: ClientEntryOptions): string {
   const rootId = options.rootId ?? CLIENT_ROOT_ID;
   const propNames = options.actionPropNames ?? ['onSubmitAction', 'action'];
   const actionWires = propNames
-    .map((name) => `      ${name}: (payload: unknown) => rpcCall(${JSON.stringify(options.rpcPath)}, payload)`)
+    .map((name) => `        ${name}: (payload: unknown) => rpcCall(${JSON.stringify(options.rpcPath)}, payload)`)
     .join(',\n');
 
-  return [
+  const layoutImports: string[] = [];
+  if (options.rootLayoutPath) {
+    layoutImports.push(`import * as RootLayoutModule from ${JSON.stringify(options.rootLayoutPath)};`);
+  }
+  if (options.domainLayoutPath) {
+    layoutImports.push(`import * as DomainLayoutModule from ${JSON.stringify(options.domainLayoutPath)};`);
+  }
+
+  const hasLayouts = Boolean(options.rootLayoutPath || options.domainLayoutPath);
+
+  const lines = [
     `// [SYNAPSE-JS GENERATED CLIENT ENTRY] hydrates the slice in the browser`,
     `import React from 'react';`,
     `import { hydrateRoot } from 'react-dom/client';`,
-    `import { rpcCall } from 'synapsejs/client';`,
+    `import { rpcCall, SynapseProvider } from 'synapsejs/client';`,
+    ...layoutImports,
     `import { ${options.componentName} } from ${JSON.stringify(options.clientModulePath)};`,
     ``,
     `export function hydrate() {`,
@@ -41,19 +54,49 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     `  const props = (scope[${JSON.stringify(CLIENT_PROPS_GLOBAL)}] ?? {}) as Record<string, unknown>;`,
     `  const root = document.getElementById(${JSON.stringify(rootId)});`,
     `  if (root) {`,
-    `    hydrateRoot(`,
-    `      root,`,
-    `      React.createElement(${options.componentName}, {`,
-    `        ...props,`,
+    `    const sliceElement = React.createElement(${options.componentName}, {`,
+    `      ...props,`,
     `${actionWires}`,
-    `      })`,
-    `    );`,
-    `  }`,
-    `}`,
-    ``,
-    `hydrate();`,
-    ``
-  ].join('\n');
+    `    });`
+  ];
+
+  if (hasLayouts) {
+    if (options.domainLayoutPath) {
+      lines.push(
+        `    const DomainLayout = (DomainLayoutModule as any).default || (DomainLayoutModule as any).Layout || null;`
+      );
+    }
+    if (options.rootLayoutPath) {
+      lines.push(
+        `    const RootLayout = (RootLayoutModule as any).default || (RootLayoutModule as any).Layout || null;`
+      );
+    }
+    let treeExpr = 'sliceElement';
+    if (options.domainLayoutPath) {
+      treeExpr = `(typeof DomainLayout === 'function' ? React.createElement(DomainLayout, { ...props }, ${treeExpr}) : ${treeExpr})`;
+    }
+    if (options.rootLayoutPath) {
+      treeExpr = `(typeof RootLayout === 'function' ? React.createElement(RootLayout, { ...props }, ${treeExpr}) : ${treeExpr})`;
+    }
+    lines.push(`    const treeWithLayout = ${treeExpr};`);
+    lines.push(`    hydrateRoot(`);
+    lines.push(`      root,`);
+    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, treeWithLayout)`);
+    lines.push(`    );`);
+  } else {
+    lines.push(`    hydrateRoot(`);
+    lines.push(`      root,`);
+    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, sliceElement)`);
+    lines.push(`    );`);
+  }
+
+  lines.push(`  }`);
+  lines.push(`}`);
+  lines.push(``);
+  lines.push(`hydrate();`);
+  lines.push(``);
+
+  return lines.join('\n');
 }
 
 /**

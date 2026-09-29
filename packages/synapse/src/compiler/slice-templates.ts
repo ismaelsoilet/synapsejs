@@ -88,7 +88,7 @@ export const ${names.schemaName} = Type.Object({
   query: Type.Optional(Type.String({ maxLength: 60 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   offset: Type.Optional(Type.Integer({ minimum: 0 }))
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================
@@ -236,7 +236,7 @@ export const ${names.schemaName} = Type.Object({
   query: Type.Optional(Type.String({ maxLength: 60 })),
   limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
   offset: Type.Optional(Type.Integer({ minimum: 0 }))
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // A tabela pertence a outra fatia desta mesma feature.
@@ -450,7 +450,7 @@ function updateTemplate(names: TemplateNames): string {
 export const ${names.schemaName} = Type.Object({
   id: Type.String({ minLength: 1 }),
   name: Type.Optional(Type.String({ minLength: 2, maxLength: 120 }))
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================
@@ -657,7 +657,7 @@ function deleteTemplate(names: TemplateNames): string {
 // ============================================================================
 export const ${names.schemaName} = Type.Object({
   id: Type.String({ minLength: 1 })
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================
@@ -806,7 +806,7 @@ import { storeSession } from 'synapsejs/client';
 export const ${names.schemaName} = Type.Object({
   email: Type.String({ minLength: 3, maxLength: 200 }),
   password: Type.String({ minLength: 8, maxLength: 200 })
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================
@@ -1075,7 +1075,7 @@ import {
 export const ${names.schemaName} = Type.Object({
   code: Type.String({ minLength: 1, maxLength: 500 }),
   state: Type.Optional(Type.String({ maxLength: 500 }))
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================
@@ -1353,7 +1353,7 @@ import { signSessionToken } from 'synapsejs';
 export const ${names.schemaName} = Type.Object({
   userId: Type.String({ minLength: 1 }),
   code: Type.String({ minLength: 6, maxLength: 6 })
-});
+}, { additionalProperties: true });
 export type ${names.inputName} = Static<typeof ${names.schemaName}>;
 
 // ============================================================================

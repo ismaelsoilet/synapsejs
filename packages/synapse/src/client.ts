@@ -41,6 +41,7 @@ export {
 } from './client/context';
 // Reactive Action & Realtime Subscription Hooks
 export {
+  type UseActionOptions,
   type UseActionResult,
   type UseSubscriptionOptions,
   type UseSubscriptionResult,

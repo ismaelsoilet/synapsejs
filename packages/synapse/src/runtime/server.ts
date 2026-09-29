@@ -356,7 +356,8 @@ export class SynapseServer {
     for (const cand of layoutCandidates) {
       if (fs.existsSync(cand)) {
         try {
-          const layoutMod = await import(cand);
+          const candStat = fs.statSync(cand);
+          const layoutMod = await import(`${cand}?t=${candStat.mtimeMs}`);
           this.layoutComponent = layoutMod.default || layoutMod.Layout || null;
           break;
         } catch (e) {
@@ -380,7 +381,8 @@ export class SynapseServer {
         for (const cand of domainCandidates) {
           if (fs.existsSync(cand)) {
             try {
-              const domainMod = await import(cand);
+              const candStat = fs.statSync(cand);
+              const domainMod = await import(`${cand}?t=${candStat.mtimeMs}`);
               const domainComp = domainMod.default || domainMod.Layout || null;
               if (domainComp) {
                 this.domainLayouts.set(domain, domainComp);
@@ -399,7 +401,8 @@ export class SynapseServer {
       }
 
       try {
-        const mod = await import(file);
+        const fileStat = fs.existsSync(file) ? fs.statSync(file) : null;
+        const mod = await import(fileStat ? `${file}?t=${fileStat.mtimeMs}` : file);
         let actionFn: any = null;
         let componentFn: any = null;
         let componentExport: string | undefined;
@@ -624,10 +627,12 @@ export class SynapseServer {
       return null;
     }
 
-    const signature = String(fs.statSync(slice.filePath).mtimeMs);
+    const stat = fs.existsSync(slice.filePath) ? fs.statSync(slice.filePath) : null;
+    const signature = stat ? String(stat.mtimeMs) : 'missing';
     const cached = this.clientBundles.get(slice.key);
     if (cached?.builtFor === signature) {
-      return cached.url;
+      const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
+      return `${cached.url}${version}`;
     }
 
     // `synapse build` já empacotou esta fatia e o arquivo não mudou desde então:
@@ -639,7 +644,8 @@ export class SynapseServer {
     const prebuilt = freshBundleFrom(this.clientManifest, slice.key, Number(signature));
     if (prebuilt) {
       this.clientBundles.set(slice.key, { url: prebuilt, builtFor: signature });
-      return prebuilt;
+      const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
+      return `${prebuilt}${version}`;
     }
 
     const built = await buildClientBundle(
@@ -660,7 +666,8 @@ export class SynapseServer {
 
     this.clientBundles.set(slice.key, { url: built.value.url, builtFor: signature });
 
-    return built.value.url;
+    const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
+    return `${built.value.url}${version}`;
   }
 
   /**
@@ -696,7 +703,8 @@ export class SynapseServer {
     propsJson: string,
     clientUrl: string | null,
     meta?: SliceMetadata,
-    locale = 'pt-BR'
+    locale = 'pt-BR',
+    hasLayout = false
   ): string {
     const safeTitle = escapeHtml(title);
     const safeSliceName = escapeHtml(sliceName);
@@ -728,6 +736,44 @@ export class SynapseServer {
       }
     }
     const metaSection = metaTags.length > 0 ? `\n${metaTags.join('\n')}` : '';
+
+    if (hasLayout) {
+      return `<!DOCTYPE html>
+<html lang="${escapeHtml(locale)}" class="min-h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${pageTitle}</title>${metaSection}
+${this.renderStylesheets()}
+  <script type="importmap">
+  {
+    "imports": {
+      "react": "/_synapse/client/_vendor.js",
+      "react/jsx-runtime": "/_synapse/client/_vendor.js",
+      "react/jsx-dev-runtime": "/_synapse/client/_vendor.js",
+      "react-dom": "/_synapse/client/_vendor.js",
+      "react-dom/client": "/_synapse/client/_vendor.js",
+      "synapsejs/client": "/_synapse/client/_vendor.js",
+      "@ismaelsoilet/synapsejs/client": "/_synapse/client/_vendor.js"
+    }
+  }
+  </script>
+  <script type="module" src="/_synapse/client/_vendor.js"></script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="min-h-full flex flex-col">
+  <div id="synapse-root" class="min-h-full flex-1 flex flex-col">${contentHtml}</div>
+
+  <script data-synapse-props>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
+  ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
+
+  <script type="module" src="/_synapse/turbo-router.js"></script>
+</body>
+</html>`;
+    }
 
     return `<!DOCTYPE html>
 <html lang="${escapeHtml(locale)}" class="h-full bg-slate-950 text-slate-100">
@@ -1504,6 +1550,7 @@ ${this.renderStylesheets()}
 
             this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
 
+            const hasCustomLayout = Boolean(this.layoutComponent || this.domainLayouts.get(slice.domain));
             const html = this.renderHtmlShell(
               meta?.title || slice.name,
               contentHtml,
@@ -1511,7 +1558,8 @@ ${this.renderStylesheets()}
               serializeClientProps(dataProps),
               clientUrl,
               meta,
-              matchedLocale || 'pt-BR'
+              matchedLocale || 'pt-BR',
+              hasCustomLayout
             );
             return new Response(html, {
               headers: { 'Content-Type': 'text/html; charset=utf-8' }

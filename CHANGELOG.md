@@ -1,5 +1,43 @@
 # Changelog
 
+## 1.3.0 — UI Freedom, Layout Hydration & Developer Autonomy (Wave 5)
+
+- **Neutral HTML Shell for Custom UI & Theming**:
+  - When a root layout (`_layout.tsx`) or domain layout is present, `renderHtmlShell` outputs a neutral, unconstrained container (`<html class="min-h-full">`, `<body class="min-h-full flex flex-col">`) without hardcoded Tailwind dark classes (`bg-slate-950 text-slate-100`) or default machine headers/footers.
+  - The application layout owns 100% of the viewport, enabling seamless light/dark theme switches and bespoke design systems without CSS `!important` specificity wars.
+  - The developer showcase shell with top bar, max-width card, and machine footer is preserved automatically whenever no custom layout is detected.
+
+- **Isomorphic Layout Hydration in Client Bundles**:
+  - `client-bundler.ts` and `client-entry.ts` now detect root and domain layouts and generate client entrypoints that hydrate the complete tree: `SynapseProvider` -> `RootLayout` -> `DomainLayout` -> `SliceComponent`.
+  - Interactive elements inside layouts (theme toggles, navbar dropdowns, notifications, profile popovers) are fully hydrated with React event listeners in the browser.
+  - Eliminates React hydration mismatch warnings between server SSR and client runtime.
+
+- **Universal `useAction` Hook with Context Auto-Discovery**:
+  - `useAction()` exported from `synapsejs/client` can now be invoked without arguments (`useAction()`), automatically resolving the active slice's server action from `SynapseContext`.
+  - Added support for optional lifecycle options: `useAction(actionFn, { onSuccess: (data) => ..., onError: (err) => ... })`.
+  - Full reactive state management: `execute`, `isSubmitting`, `data`, `error`, `isSuccess`, `isError`, and `reset()`.
+
+- **Structured Schema Diagnostics & Tolerant Contracts**:
+  - Introduced `validateSchema(schema, payload)` returning typed `Ok(value)` or descriptive `Err('INVALID_SCHEMA: campo "/field": ...')` with the exact path and error reason.
+  - Updated scaffolder templates (`scaffolder.ts`, `slice-templates.ts`) to configure `Type.Object(..., { additionalProperties: true })`, preventing form submission failures caused by synthetic events or ancillary fields.
+
+- **Cache-Busting for Slices & Bundles**:
+  - Added timestamp-based query parameters (`?v=<timestamp>`) to client bundle script tags in `ensureClientBundle`, guaranteeing browsers and SPA morphers fetch the latest bundle immediately when a slice is edited.
+  - Added mtime cache-busting to dynamic imports in `discoverSlices()`, ensuring hot-reloading always loads the fresh module code in Bun.
+
+- **Test Suite Expansion**:
+  - Monorepo test suite expanded to 372 automated tests across 51 test files, verifying all 1.3.0 features and maintaining 100% green gates.
+
+## 1.2.0 — Jev System One Cognitive Integration & OpenSpec 1.13.2
+
+- **Jev-Harness Cognitive Architecture**:
+  - Deep integration of Jev System One fast semantic decisions into SynapseJS test gates, oracle runner, and MCP server.
+  - Native tools for triage, failure recovery, circular trajectory detection, and reasoning effort modulation.
+- **OpenSpec 1.13.2 Specification Framework**:
+  - Full suite of workflows and skills for spec-driven development (`opsx-*`) across Claude, Gemini, and Cursor environments.
+- **SureForge Protocol**:
+  - Autonomous agent quality control system with anti-hype guidelines, radical candor verification, and zero-mock runtime policy.
+
 ## 1.1.0 — Resilience, Scalability & Advanced Composition (Waves 1-4)
 
 - **Wave 1: Routing, SSR Shell & Bundling**:

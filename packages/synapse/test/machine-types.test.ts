@@ -145,12 +145,13 @@ describe('public contract (decision recorded in packages/synapse/README.md)', ()
       'nestJoinedRow',
       'generateDatabaseSchemaCatalog',
       'analyzeImpact',
-      // SynapseJS 1.1 Resilience & Advanced Composition Primitives
+      // SynapseJS 1.1 & 1.3 Machine-Centric Primitives
       'rollbackSliceMigrations',
       'revokeSessionToken',
       'isSessionTokenRevoked',
       'optimizeImage',
-      'createTranslator'
+      'createTranslator',
+      'validateSchema'
     ];
 
     const missing = contract.filter((name) => !(name in publicEntry));

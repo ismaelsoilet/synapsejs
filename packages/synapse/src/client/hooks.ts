@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Result } from '../core/machine-types';
+import { useSynapseContext } from './context';
 
 export interface UseSubscriptionOptions {
   enabled?: boolean;
@@ -86,16 +87,32 @@ export interface UseActionResult<TPayload, TData, TError> {
   reset: () => void;
 }
 
+export interface UseActionOptions<TData, TError> {
+  onSuccess?: (data: TData) => void;
+  onError?: (error: TError) => void;
+}
+
 /**
  * Hook for executing server actions from client UI with reactive state management.
+ * If actionFn is not provided, it automatically resolves the slice's action from SynapseContext.
  */
 export function useAction<TPayload = unknown, TData = unknown, TError = string>(
-  actionFn?: (payload: TPayload) => Promise<Result<TData, TError>>
+  actionFn?: ((payload: TPayload) => Promise<Result<TData, TError>>) | null,
+  options?: UseActionOptions<TData, TError>
 ): UseActionResult<TPayload, TData, TError> {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [data, setData] = useState<TData | null>(null);
   const [error, setError] = useState<TError | null>(null);
   const [isSuccess, setIsSuccess] = useState<boolean>(false);
+
+  const ctx = useSynapseContext();
+  const resolvedAction =
+    actionFn ??
+    (ctx.props?.action as ((payload: TPayload) => Promise<Result<TData, TError>>) | undefined) ??
+    (ctx.props?.onSubmitAction as ((payload: TPayload) => Promise<Result<TData, TError>>) | undefined);
+
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
 
   const reset = useCallback(() => {
     setIsSubmitting(false);
@@ -106,9 +123,10 @@ export function useAction<TPayload = unknown, TData = unknown, TError = string>(
 
   const execute = useCallback(
     async (payload: TPayload): Promise<Result<TData, TError>> => {
-      if (!actionFn) {
+      if (!resolvedAction) {
         const errVal = 'NO_ACTION_FUNCTION' as unknown as TError;
         setError(errVal);
+        optionsRef.current?.onError?.(errVal);
         return { ok: false, error: errVal };
       }
 
@@ -117,26 +135,29 @@ export function useAction<TPayload = unknown, TData = unknown, TError = string>(
       setIsSuccess(false);
 
       try {
-        const result = await actionFn(payload);
+        const result = await resolvedAction(payload);
         if (result.ok) {
           setData(result.value);
           setIsSuccess(true);
           setError(null);
+          optionsRef.current?.onSuccess?.(result.value);
         } else {
           setError(result.error);
           setIsSuccess(false);
+          optionsRef.current?.onError?.(result.error);
         }
         return result;
       } catch (err: unknown) {
         const failure = (err instanceof Error ? err.message : String(err)) as unknown as TError;
         setError(failure);
         setIsSuccess(false);
+        optionsRef.current?.onError?.(failure);
         return { ok: false, error: failure };
       } finally {
         setIsSubmitting(false);
       }
     },
-    [actionFn]
+    [resolvedAction]
   );
 
   return {

@@ -61,7 +61,7 @@ import {
 // ============================================================================
 export const ${inputSchemaName} = Type.Object({
 ${tbProps}
-});
+}, { additionalProperties: true });
 export type ${inputTypeName} = Static<typeof ${inputSchemaName}>;
 
 // DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
@@ -211,7 +211,7 @@ export const ${inputSchemaName} = Type.Object({
   name: Type.String({ minLength: 2, maxLength: 100 }),
   email: Type.String({ format: 'email' }),
   metadata: Type.Optional(Type.String())
-});
+}, { additionalProperties: true });
 export type ${inputTypeName} = Static<typeof ${inputSchemaName}>;
 
 // DDL Schema Declarativo da Fatia (Auto-Migrado pelo Synapse)
