@@ -127,6 +127,7 @@ import {
   requireAuth,
   defineJob,
   defineAction,
+  defineCache,
   DataTable,
   Button
 } from 'synapsejs';
@@ -195,7 +196,14 @@ export async function createTicketLoader(ctx: { db: DatabaseClient; session: Ses
   return { recentTickets };
 }
 
-// 7. Metadados Dinâmicos de SEO
+// 7. Política de Cache SSR e ISR (Micro-cache sub-milissegundo em memória)
+export const sliceCache = defineCache({
+  ttlSeconds: 60,
+  staleWhileRevalidateSeconds: 300,
+  tags: ['tickets']
+});
+
+// 8. Metadados Dinâmicos de SEO
 export function sliceMeta(data: { recentTickets?: unknown[] }) {
   return {
     title: 'Chamados de Suporte — SynapseJS',
@@ -204,7 +212,7 @@ export function sliceMeta(data: { recentTickets?: unknown[] }) {
   };
 }
 
-// 8. Componente de Interface em React 19
+// 9. Componente de Interface em React 19
 export function CreateTicketComponent(props: {
   recentTickets?: Array<{ id: string; subject: string; priority: number }>;
   onSubmitAction?: (payload: unknown) => Promise<TicketOutput>;
@@ -244,7 +252,7 @@ export function CreateTicketComponent(props: {
   );
 }
 
-// 9. Oráculo de Teste (Executado via bun:test)
+// 10. Oráculo de Teste (Executado via bun:test)
 export const sliceTests = {
   description: 'Invariantes de Chamados de Suporte',
   cases: [
@@ -280,6 +288,25 @@ export const sliceTests = {
 └──────────────────────────────────────────────┘
 ```
 Se duas funcionalidades precisam transacionar juntas ou compartilhar estado, essa coordenação pertence a `src/shared/<modulo>.ts`. Violações são interceptadas em tempo de compilação pelo analisador de AST sob o código de erro `SLICE_IMPORTS_SLICE`.
+
+---
+
+## ⚡ Micro-Cache SSR de Alta Performance e ISR (Incremental Static Regeneration)
+
+O SynapseJS elimina idas desnecessárias ao banco de dados e re-renderizações SSR em rotas de alta leitura. As fatias declaram suas políticas de cache nativamente via `defineCache`:
+
+```tsx
+export const sliceCache = defineCache({
+  ttlSeconds: 60,                      // Serve HTML instantâneo da memória (HIT) por 60 segundos
+  staleWhileRevalidateSeconds: 300,     // Serve HTML expirado imediatamente (STALE) enquanto atualiza em background
+  tags: ['tickets', 'portal-suporte']  // Chaves de invalidação atômica
+});
+```
+
+- **Hits Sub-Milissegundo em Memória**: O HTML em cache é entregue em **< 0,5 ms** diretamente da memória RAM com o cabeçalho `X-Synapse-Cache: HIT`.
+- **ISR em Background Sem Bloqueio**: Quando o conteúdo entra na janela `staleWhileRevalidate`, o usuário recebe o HTML em cache instantaneamente (`X-Synapse-Cache: STALE`) enquanto o Synapse reexecuta o loader e re-renderiza o HTML em segundo plano sem travar a requisição.
+- **Invalidação Atômica por Tags**: Quando uma ação executa uma mutação, invalide páginas em cache imediatamente via `ctx.invalidateCache(['tickets'])` ou programaticamente com `server.invalidateCache(['tickets'])`.
+- **Transparência HTTP**: O servidor emite cabeçalhos `Cache-Control: public, max-age=60, stale-while-revalidate=300` para integração transparente com CDNs de borda (Cloudflare, Fastly).
 
 ---
 

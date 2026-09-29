@@ -35,7 +35,7 @@ that never reports PASS with zero slices · isomorphic splitter with compile and
 scaffolder with `--fields` grammar and templates (create, list, update, delete, login, oauth-github, crud) · standalone production bundler (`synapse build --standalone`) ·
 MCP stdio server with 11 native tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks.
 
-**Roadmap:** multi-region distributed cache adapters (Redis/Dragonfly), clustering.
+**Roadmap:** multi-node distributed cache adapters (Redis/Dragonfly cluster sync), multi-host worker clustering.
 
 The repository README carries a measured context-surface benchmark of the same two features
 implemented with and without the slice convention, including what the numbers do not show.
