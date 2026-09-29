@@ -46,7 +46,12 @@ export class EventHub {
     let notified = 0;
     for (const listener of listeners) {
       try {
-        listener(data);
+        const result: unknown = listener(data);
+        if (result && typeof (result as { catch?: unknown }).catch === 'function') {
+          (result as { catch: (fn: (err: unknown) => void) => void }).catch((err: unknown) => {
+            console.error(`[EventHub] Erro assíncrono no listener do tópico "${topic}":`, err);
+          });
+        }
         notified++;
       } catch (err) {
         console.error(`[EventHub] Erro no listener do tópico "${topic}":`, err);

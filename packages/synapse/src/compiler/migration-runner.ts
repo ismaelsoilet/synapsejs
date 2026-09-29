@@ -63,14 +63,114 @@ export interface RollbackOptions {
 }
 
 export function parseBidirectionalDdl(rawDdl: string): BidirectionalDdl {
-  const downMarkerRegex = /^[ \t]*--\s*down:?[ \t]*$/im;
-  const match = downMarkerRegex.exec(rawDdl);
-  if (!match) {
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inBlockComment = false;
+  let dollarTag: string | null = null;
+  let splitIndex = -1;
+  let matchLength = 0;
+
+  let i = 0;
+  while (i < rawDdl.length) {
+    const char = rawDdl[i];
+    const next = rawDdl[i + 1] ?? '';
+
+    if (inBlockComment) {
+      if (char === '*' && next === '/') {
+        inBlockComment = false;
+        i += 2;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    if (inSingleQuote) {
+      if (char === '\\') {
+        i += 2;
+        continue;
+      }
+      if (char === "'") {
+        if (next === "'") {
+          i += 2;
+          continue;
+        }
+        inSingleQuote = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (inDoubleQuote) {
+      if (char === '"') {
+        if (next === '"') {
+          i += 2;
+          continue;
+        }
+        inDoubleQuote = false;
+      }
+      i++;
+      continue;
+    }
+
+    if (dollarTag !== null) {
+      if (char === '$' && rawDdl.startsWith(dollarTag, i)) {
+        i += dollarTag.length;
+        dollarTag = null;
+        continue;
+      }
+      i++;
+      continue;
+    }
+
+    if (char === '/' && next === '*') {
+      inBlockComment = true;
+      i += 2;
+      continue;
+    }
+
+    if (char === "'") {
+      inSingleQuote = true;
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      inDoubleQuote = true;
+      i++;
+      continue;
+    }
+
+    if (char === '$') {
+      const match = rawDdl.slice(i).match(/^\$[A-Za-z0-9_]*\$/);
+      if (match) {
+        dollarTag = match[0];
+        i += dollarTag.length;
+        continue;
+      }
+    }
+
+    // Check for -- down: marker at beginning of line outside strings/comments
+    const isLineStart = i === 0 || rawDdl[i - 1] === '\n';
+    if (isLineStart) {
+      const lineSlice = rawDdl.slice(i);
+      const match = lineSlice.match(/^[ \t]*--\s*down:?[ \t]*(?:\r?\n|$)/i);
+      if (match) {
+        splitIndex = i;
+        matchLength = match[0].length;
+        break;
+      }
+    }
+
+    i++;
+  }
+
+  if (splitIndex === -1) {
     return { upDdl: rawDdl.trim(), downDdl: null };
   }
-  const splitIndex = match.index;
+
   const upDdl = rawDdl.slice(0, splitIndex).trim();
-  const downDdl = rawDdl.slice(splitIndex + match[0].length).trim();
+  const downDdl = rawDdl.slice(splitIndex + matchLength).trim();
   return {
     upDdl,
     downDdl: downDdl.length > 0 ? downDdl : null
@@ -91,6 +191,7 @@ export function splitStatements(ddl: string): string[] {
   let inLineComment = false;
   let inBlockComment = false;
   let dollarTag: string | null = null;
+  let beginDepth = 0;
 
   let i = 0;
   while (i < ddl.length) {
@@ -207,8 +308,31 @@ export function splitStatements(ddl: string): string[] {
       }
     }
 
-    // Statement terminator outside strings or comments
-    if (char === ';') {
+    // Track BEGIN ... END blocks (e.g. triggers, compound statements)
+    const remaining = ddl.slice(i);
+    const prevChar = i > 0 ? ddl[i - 1] : ' ';
+    const isWordStart = /[\s,;(]/.test(prevChar);
+
+    if (isWordStart) {
+      const beginMatch = remaining.match(/^BEGIN\b/i);
+      if (beginMatch) {
+        beginDepth++;
+        current += beginMatch[0];
+        i += beginMatch[0].length;
+        continue;
+      }
+
+      const endMatch = remaining.match(/^END\b/i);
+      if (endMatch) {
+        if (beginDepth > 0) beginDepth--;
+        current += endMatch[0];
+        i += endMatch[0].length;
+        continue;
+      }
+    }
+
+    // Statement terminator outside strings or comments, but only when not inside a BEGIN...END block
+    if (char === ';' && beginDepth === 0) {
       const trimmed = current.trim();
       if (trimmed.length > 0) {
         statements.push(trimmed);
@@ -394,14 +518,15 @@ export async function runSliceMigrations(
           status: 'APPLIED',
           statementsApplied: pending.length
         });
-      } catch (err: any) {
+      } catch (err: unknown) {
         hasFailure = true;
+        const errMessage = err instanceof Error ? err.message : String(err);
         migrations.push({
           slice: sliceName,
           filePath: path.relative(baseDir, filePath),
           status: 'FAILED',
           statementsApplied: 0,
-          error: err.message
+          error: errMessage
         });
       }
     }

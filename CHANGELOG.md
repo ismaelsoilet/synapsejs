@@ -1,5 +1,55 @@
 # Changelog
 
+## 1.7.0 — Adversarial Hardening, Deep Zero-Trust Security & Transactional Resilience (Wave 9)
+
+- **Prototype Pollution Shield (CRIT-01)**:
+  - Added strict `FORBIDDEN_PROPERTIES` protection (`__proto__`, `constructor`, `prototype`) across `setNestedProperty`, `getNestedProperty`, and `expandNestedObject` in `packages/synapse/src/client/components.tsx`.
+  - Blocks nested prototype tampering via malicious dot-notation form fields.
+
+- **Query Builder SQL Injection & Operator Allowlist (CRIT-02 & BUG-01)**:
+  - Enforced `VALID_WHERE_OPERATORS` allowlist across `compileSelect`, `compileUpdate`, and `compileDelete` in `packages/synapse/src/core/query-builder.ts`.
+  - Added support for object syntax `{ op, val }` in `compileUpdate` and `compileDelete`, unifying parameterization across all SQL mutation paths.
+
+- **Multi-Tenant IDOR & Header Spoofing Neutralization (CRIT-03 & CRIT-04)**:
+  - Hardened `requireTenant(session)` in `session-context.ts` to strictly fail with `FORBIDDEN` when tenant context is missing.
+  - Locked tenant derivation under `SYNAPSE_SESSION_SECRET` to cryptographically verified session tokens in `packages/synapse/src/runtime/server.ts`, preventing spoofed header injection.
+
+- **Reentrant SQLite Savepoints (CRIT-05)**:
+  - Enhanced `SqliteDatabaseClient` in `packages/synapse/src/core/sqlite-client.ts` with `txDepth` tracking and named SQLite `SAVEPOINT sp_N` / `RELEASE SAVEPOINT` / `ROLLBACK TO SAVEPOINT`.
+  - Supports nested transactional boundaries with partial rollback without deadlock.
+
+- **Atomic Queue Poison-Pill Neutralization (CRIT-06)**:
+  - Hardened `QueueEngine` (SQLite) and `PostgresQueueEngine` to atomically increment `attempts = attempts + 1` directly inside `claimNextJob`.
+  - Automatically fails expired zombie tasks that exhausted `max_attempts` past visibility timeout, preventing crash loops.
+
+- **Async Unhandled Rejection Safety (CRIT-07)**:
+  - Hardened `EventHub.publish` in `packages/synapse/src/runtime/event-hub.ts` to attach `.catch()` to returned listener promises, preventing server-crashing unhandled rejections.
+
+- **SSE Memory Leak & Resource Cleanup (HIGH-01)**:
+  - Implemented comprehensive `cleanup()` on SSE connections in `server.ts` triggered on stream cancel, heartbeat failure, or client abort signals.
+
+- **AST Splitter Leaks & Unicode Evasion (HIGH-02)**:
+  - Added Unicode escape normalization (`\\u0070rocess.env`) and leak checks for `globalThis.process`, `Bun[...]`, and server-side dynamic imports in `slice-splitter.ts`.
+
+- **DDL Migration Parser Resilience (HIGH-03)**:
+  - Hardened `parseBidirectionalDdl` to ignore `-- down:` markers inside SQL string literals.
+  - Hardened `splitStatements` to respect `BEGIN ... END;` blocks in triggers and stored procedures without premature statement slicing.
+
+- **Streaming Upload Chunked DoS Protection (HIGH-06)**:
+  - Integrated `readBodyWithinLimit` in RPC and Webhook endpoints in `server.ts`, rejecting chunked payloads that exceed memory limits with immediate HTTP 413.
+
+- **WebSocket Origin Validation & Rate Limiting (HIGH-07)**:
+  - Added strict `Origin` header validation against `SYNAPSE_ALLOWED_ORIGINS` on `/_synapse/ws/*` upgrades, paired with token bucket rate limiting.
+
+- **SSR Script Injection & CRLF Splitting Elimination (HIGH-09, HIGH-11 & HIGH-12)**:
+  - Replaced `eval()` in Turbo router with `JSON.parse`.
+  - Safely injected SSR props via `<script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">`.
+  - Sanitized cookie attributes against CRLF (`\r`, `\n`) header injection in `serializeCookie`.
+
+- **Test Suite Pass Rate**:
+  - Expanded test suite to **424 automated tests** across **56 files** (100% green gates).
+  - Added `packages/synapse/test/adversarial-hardening.test.ts` covering all adversarial attack vectors.
+
 ## 1.6.0 — Production Hardening, Zero-Trust Resilience & Operational Reliability (Wave 8)
 
 - **Network Guard & SSRF Protection (Component 1)**:

@@ -136,6 +136,13 @@ export class PostgresQueueEngine {
     const now = Date.now();
     const staleThreshold = now - this.visibilityTimeoutMs;
 
+    await this.db.query(
+      `UPDATE _synapse_jobs
+       SET status = 'dlq', locked_at = NULL, updated_at = $1, last_error = 'Visibility timeout exceeded max attempts'
+       WHERE status = 'running' AND locked_at < $2 AND attempts >= max_attempts`,
+      [now, staleThreshold]
+    );
+
     const rows = await this.db.query<JobRecord>(
       `UPDATE _synapse_jobs
        SET status = 'running', locked_at = $1, updated_at = $1
@@ -201,8 +208,8 @@ export class PostgresQueueEngine {
       await this.db.query(
         `UPDATE _synapse_jobs
          SET status = 'completed', attempts = $1, locked_at = NULL, updated_at = $2, last_error = NULL
-         WHERE id = $3`,
-        [attempts, now, job.id]
+         WHERE id = $3 AND (locked_at = $4 OR locked_at IS NULL)`,
+        [attempts, now, job.id, job.locked_at]
       );
       return true;
     } catch (handlerErr: unknown) {
@@ -218,8 +225,8 @@ export class PostgresQueueEngine {
         await this.db.query(
           `UPDATE _synapse_jobs
            SET status = 'pending', attempts = $1, run_at = $2, locked_at = NULL, updated_at = $3, last_error = $4
-           WHERE id = $5`,
-          [attempts, nextRunAt, now, errorMsg, job.id]
+           WHERE id = $5 AND (locked_at = $6 OR locked_at IS NULL)`,
+          [attempts, nextRunAt, now, errorMsg, job.id, job.locked_at]
         );
       } else {
         await this.sendToDlq(job, attempts, `Esgotado limite de tentativas (${job.max_attempts}): ${errorMsg}`, now);
@@ -244,8 +251,8 @@ export class PostgresQueueEngine {
     await this.db.query(
       `UPDATE _synapse_jobs
        SET status = 'dlq', attempts = $1, locked_at = NULL, updated_at = $2, last_error = $3
-       WHERE id = $4`,
-      [attempts, now, errorMsg, job.id]
+       WHERE id = $4 AND (locked_at = $5 OR locked_at IS NULL)`,
+      [attempts, now, errorMsg, job.id, job.locked_at]
     );
 
     this.logger.warn(`[DLQ] Job ${job.name} (${job.id}) movido para Dead Letter Queue: ${dlqId}`);

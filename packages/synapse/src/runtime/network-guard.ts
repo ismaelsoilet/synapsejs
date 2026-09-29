@@ -13,7 +13,7 @@ export function isPrivateOrReservedIp(ip: string): boolean {
 
   if (version === 4) {
     const parts = ip.split('.').map((p) => parseInt(p, 10));
-    if (parts.length !== 4 || parts.some(isNaN)) return true;
+    if (parts.length !== 4 || parts.some(Number.isNaN)) return true;
 
     const [a, b] = parts;
 

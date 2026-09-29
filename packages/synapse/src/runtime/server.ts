@@ -51,7 +51,7 @@ import { getEventHub } from './event-hub';
 import { validateExternalUrl } from './network-guard';
 import { QueueEngine } from './queue-engine';
 import { TokenBucketRateLimiter } from './rate-limiter';
-import { saveUpload } from './uploads';
+import { readBodyWithinLimit, saveUpload } from './uploads';
 
 export interface SliceMetadata {
   title?: string;
@@ -149,9 +149,9 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
         curRoot.innerHTML = newRoot.innerHTML;
         document.title = doc.title;
         var newPropsScript = doc.querySelector('script[data-synapse-props]');
-        if (newPropsScript) {
+        if (newPropsScript && newPropsScript.textContent) {
           try {
-            eval(newPropsScript.textContent);
+            window.__SYNAPSE_PROPS__ = JSON.parse(newPropsScript.textContent);
           } catch (_) {}
         }
         if (push) history.pushState({}, '', href);
@@ -644,7 +644,7 @@ export class SynapseServer {
       return verified.ok
         ? createSession({
             userId: verified.value.userId,
-            tenantId: (verified.value as { tenantId?: string }).tenantId || tenantId,
+            tenantId: (verified.value as { tenantId?: string }).tenantId,
             roles: verified.value.roles,
             token
           })
@@ -941,7 +941,8 @@ ${importMapScript}
 <body class="min-h-full flex flex-col">
   <div id="synapse-root" class="min-h-full flex-1 flex flex-col">${contentHtml}</div>
 
-  <script data-synapse-props>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
+  <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
+  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse(document.getElementById('__SYNAPSE_PROPS_DATA__').textContent || '{}');</script>
   ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
   <script type="module" src="/_synapse/turbo-router.js"></script>
@@ -997,7 +998,8 @@ ${importMapScript}
     <div id="synapse-root" class="bg-slate-900/80 border border-slate-800 rounded-xl p-6 shadow-2xl backdrop-blur">${contentHtml}</div>
 
     <!-- Props de hidratacao e a entrada de cliente gerada -->
-    <script data-synapse-props>globalThis.__SYNAPSE_PROPS__ = ${propsJson};</script>
+    <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
+    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse(document.getElementById('__SYNAPSE_PROPS_DATA__').textContent || '{}');</script>
     ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
     <!-- Turbo Morphing SPA Navigation (<1.5kb, Zero Dependencies) -->
@@ -1191,6 +1193,47 @@ ${this.renderStylesheets()}
 
           // WebSocket Upgrade for slices: /_synapse/ws/:domain/:name
           if (pathname.startsWith('/_synapse/ws/')) {
+            const origin = req.headers.get('origin');
+            const allowed = (process.env.SYNAPSE_ALLOWED_ORIGINS ?? '')
+              .split(',')
+              .map((entry) => entry.trim())
+              .filter((entry) => entry.length > 0);
+            if (origin && allowed.length > 0 && !allowed.includes(origin) && !allowed.includes('*')) {
+              return new Response(JSON.stringify({ error: 'Origin não permitida para conexão WebSocket' }), {
+                status: 403,
+                headers: { 'Content-Type': 'application/json' }
+              });
+            }
+
+            const trustProxy = process.env.SYNAPSE_TRUST_PROXY !== 'false' && this.config.trustProxy !== false;
+            let clientIp: string;
+            if (trustProxy) {
+              clientIp =
+                req.headers.get('cf-connecting-ip') ||
+                req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
+                this.httpServer?.requestIP(req)?.address ||
+                '127.0.0.1';
+            } else {
+              clientIp = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
+            }
+            const rateResult = this.rateLimiter.consume(clientIp);
+            if (!rateResult.allowed) {
+              return new Response(
+                JSON.stringify({
+                  ok: false,
+                  error: 'RATE_LIMIT_EXCEEDED',
+                  message: 'Muitas conexões WebSocket. Tente novamente mais tarde.'
+                }),
+                {
+                  status: 429,
+                  headers: {
+                    'Content-Type': 'application/json; charset=utf-8',
+                    'Retry-After': String(Math.ceil(rateResult.resetMs / 1000))
+                  }
+                }
+              );
+            }
+
             const target = pathname.slice('/_synapse/ws/'.length);
             const resolved = this.resolveSlice(target);
             if (!resolved.ok) {
@@ -1358,8 +1401,7 @@ ${this.renderStylesheets()}
             } else {
               clientIp = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
             }
-            const authHeader = req.headers.get('authorization');
-            const clientKey = authHeader || clientIp;
+            const clientKey = clientIp;
 
             const rateResult = this.rateLimiter.consume(clientKey);
             if (!rateResult.allowed) {
@@ -1443,9 +1485,23 @@ ${this.renderStylesheets()}
               );
             }
 
+            const bodyResult = await readBodyWithinLimit(req.body, maxRpcBytes);
+            if (!bodyResult.ok) {
+              this.logRequest(req, pathname, 413, startedAt, undefined, 'rpc_error');
+              return Response.json(
+                {
+                  ok: false,
+                  error: 'PAYLOAD_TOO_LARGE',
+                  message: `Payload RPC excede o limite máximo permitido de ${maxRpcBytes} bytes.`
+                },
+                { status: 413, headers: cors ?? undefined }
+              );
+            }
+
             let body: unknown;
             try {
-              body = await req.json();
+              const bodyText = new TextDecoder().decode(bodyResult.value);
+              body = bodyText.trim().length > 0 ? JSON.parse(bodyText) : {};
             } catch {
               this.logRequest(req, pathname, 400, startedAt, undefined, 'rpc_error');
               return Response.json(
@@ -1530,8 +1586,21 @@ ${this.renderStylesheets()}
               );
             }
 
+            const bodyResult = await readBodyWithinLimit(req.body, maxWebhookBytes);
+            if (!bodyResult.ok) {
+              this.logRequest(req, pathname, 413, startedAt);
+              return Response.json(
+                {
+                  ok: false,
+                  error: 'PAYLOAD_TOO_LARGE',
+                  message: `Payload Webhook excede o limite máximo permitido de ${maxWebhookBytes} bytes.`
+                },
+                { status: 413, headers: cors ?? undefined }
+              );
+            }
+
             try {
-              const rawBody = new Uint8Array(await req.arrayBuffer());
+              const rawBody = bodyResult.value;
               const bodyText = new TextDecoder().decode(rawBody);
               let json: unknown = null;
               try {
@@ -1594,6 +1663,19 @@ ${this.renderStylesheets()}
             let unsubscribe: (() => void) | null = null;
             let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
+            const cleanup = () => {
+              if (keepAliveTimer) {
+                clearInterval(keepAliveTimer);
+                keepAliveTimer = null;
+              }
+              if (unsubscribe) {
+                unsubscribe();
+                unsubscribe = null;
+              }
+            };
+
+            req.signal.addEventListener('abort', cleanup);
+
             const stream = new ReadableStream({
               start(controller) {
                 const encoder = new TextEncoder();
@@ -1603,7 +1685,7 @@ ${this.renderStylesheets()}
                   try {
                     controller.enqueue(encoder.encode(': keep-alive\n\n'));
                   } catch {
-                    if (keepAliveTimer) clearInterval(keepAliveTimer);
+                    cleanup();
                   }
                 }, 15000);
 
@@ -1617,8 +1699,7 @@ ${this.renderStylesheets()}
                 });
               },
               cancel() {
-                if (keepAliveTimer) clearInterval(keepAliveTimer);
-                if (unsubscribe) unsubscribe();
+                cleanup();
               }
             });
 

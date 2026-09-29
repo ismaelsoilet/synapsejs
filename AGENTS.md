@@ -172,6 +172,14 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 48. `HTTP 500 SSR Error Isolation` — Non-200 status code, `X-Robots-Tag: noindex, nofollow`, and client script suppression on server-side loader/render crashes.
 49. `Secure HttpOnly Session Cookies` — `ctx.setCookie` with automatic `HttpOnly`, `SameSite=Lax`, and `Secure` attributes directly emitted in RPC response headers.
 50. `Graceful HTTP Shutdown` — In-flight request draining (`drainTimeoutMs`) preventing connection drops on SIGTERM/SIGINT.
+51. `Prototype Pollution Shield` — Recursive property mutations and dot-notation expands (`setNestedProperty`, `getNestedProperty`, `expandNestedObject`) strictly strip `__proto__`, `constructor`, and `prototype`.
+52. `Parameterized SQL & Operator Allowlist` — `VALID_WHERE_OPERATORS` strictly enforces parameterized operator syntax across `compileSelect`, `compileUpdate`, and `compileDelete`, preventing SQL dialect injections.
+53. `Reentrant SQLite Savepoints` — Transaction mutex backed by `this.txDepth` and named SQLite `SAVEPOINT sp_N` enabling arbitrary nested transactions with partial rollback.
+54. `Atomic Queue Poison-Pill Neutralization` — Worker `claimNextJob` increments `attempts = attempts + 1` atomically on acquisition and automatically exhausts expired zombie tasks past visibility timeout.
+55. `Strict Multi-Tenant Derivation & Guard` — `requireTenant` strictly fails on missing tenant context, and session tenant derivation is locked to cryptographically verified tokens, preventing header spoofing.
+56. `Streaming Upload & Chunked DoS Armor` — Immediate HTTP 413 termination on streaming chunked payloads exceeding memory ceilings (`readBodyWithinLimit`).
+57. `Origin-Validated WebSocket Upgrades` — `/_synapse/ws/*` upgrades enforce origin allowlisting (`SYNAPSE_ALLOWED_ORIGINS`) and token bucket rate limits.
+58. `Safe SSR Serialization & CRLF Guard` — Props injected via `<script type="application/json">` and cookie headers sanitized against `\r\n` CRLF response splitting.
 
 `sliceTests` is test-only: the splitter drops it and `fast-check` from both runtime bundles.
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
@@ -255,7 +263,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.6.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.7.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.

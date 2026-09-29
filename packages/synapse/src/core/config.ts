@@ -11,7 +11,7 @@ export interface SynapsePlugin {
   name: string;
   // biome-ignore lint/suspicious/noExplicitAny: generic boundary for framework server
   onBootstrap?: (server: any) => Promise<void> | void;
-  onRequest?: (req: Request) => Promise<Response | null | void> | Response | null | void;
+  onRequest?: (req: Request) => Promise<Response | null | undefined> | Response | null | void;
   onResponse?: (res: Response, req: Request) => Promise<Response> | Response;
   // biome-ignore lint/suspicious/noExplicitAny: generic boundary for database client
   onMigrate?: (db: any) => Promise<void> | void;

@@ -82,10 +82,22 @@ const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   { label: 'test runner import', pattern: /from\s+['"]bun:test['"]/ },
   { label: 'process.env access', pattern: /\bprocess\s*(?:\.\s*env|\[\s*['"]env['"]\s*\])/ },
   { label: 'process destructuring', pattern: /\b(?:const|let|var)\s*\{[^}]*\benv\b[^}]*\}\s*=\s*process\b/ },
-  { label: 'Bun global', pattern: /\bBun\./ },
+  { label: 'Bun global', pattern: /\bBun(?:\.|\s*\[)/ },
+  {
+    label: 'globalThis server access',
+    pattern: /\bglobalThis\s*(?:\.\s*(?:process|Bun)|\[\s*['"](?:process|Bun)['"]\s*\])/
+  },
   {
     label: 'node server module import',
     pattern: /from\s+['"](?:node:)?(?:fs|child_process|cluster|dgram|dns|net|tls|v8|vm)['"]/
+  },
+  {
+    label: 'server dynamic import',
+    pattern: /\bimport\s*\(\s*['"](?:node:)?(?:fs|child_process|sqlite|postgres|bun|cluster|net|tls)['"]/
+  },
+  {
+    label: 'server require leak',
+    pattern: /\brequire\s*\(\s*['"](?:node:)?(?:fs|child_process|sqlite|postgres|bun|cluster|net|tls)['"]/
   },
   { label: 'dynamic code evaluation', pattern: /\b(?:eval|new\s+Function)\s*\(/ }
 ];
@@ -832,8 +844,12 @@ export function verifySplit(result: SplitResult, outDir: string): SplitVerificat
       leaks.push('pacote-raiz-no-cliente');
     }
 
+    const normalizedCode = clientArtifact.code.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) =>
+      String.fromCharCode(parseInt(hex, 16))
+    );
+
     for (const { label, pattern } of SERVER_ONLY_PATTERNS) {
-      if (pattern.test(clientArtifact.code)) {
+      if (pattern.test(clientArtifact.code) || pattern.test(normalizedCode)) {
         leaks.push(label);
       }
     }

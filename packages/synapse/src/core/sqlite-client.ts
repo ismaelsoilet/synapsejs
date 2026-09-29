@@ -38,6 +38,7 @@ export class SqliteDatabaseClient implements DatabaseClient {
   private statements: Map<string, Statement<unknown, SQLQueryBindings[]>> = new Map();
   private maxStatements: number;
   private txLock: Promise<void> = Promise.resolve();
+  private txDepth = 0;
 
   constructor(filePath?: string, maxStatements = 500) {
     this.maxStatements = maxStatements;
@@ -166,6 +167,22 @@ export class SqliteDatabaseClient implements DatabaseClient {
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
+    if (this.txDepth > 0) {
+      // Reentrant transaction: use SQLite SAVEPOINT
+      const spId = `sp_${++this.txDepth}`;
+      this.db.run(`SAVEPOINT ${spId};`);
+      try {
+        const result = await operation(this);
+        this.db.run(`RELEASE SAVEPOINT ${spId};`);
+        return result;
+      } catch (err) {
+        this.db.run(`ROLLBACK TO SAVEPOINT ${spId};`);
+        throw err;
+      } finally {
+        this.txDepth--;
+      }
+    }
+
     let releaseLock: () => void = () => {};
     const lockAcquired = new Promise<void>((resolve) => {
       releaseLock = resolve;
@@ -177,7 +194,8 @@ export class SqliteDatabaseClient implements DatabaseClient {
     await previousLock;
 
     try {
-      this.db.run('BEGIN TRANSACTION;');
+      this.txDepth = 1;
+      this.db.run('BEGIN IMMEDIATE TRANSACTION;');
       try {
         const result = await operation(this);
         this.db.run('COMMIT;');
@@ -185,6 +203,8 @@ export class SqliteDatabaseClient implements DatabaseClient {
       } catch (err) {
         this.db.run('ROLLBACK;');
         throw err;
+      } finally {
+        this.txDepth = 0;
       }
     } finally {
       releaseLock();

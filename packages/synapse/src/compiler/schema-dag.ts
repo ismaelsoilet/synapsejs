@@ -96,9 +96,12 @@ export function orderSlicesByDag(sliceFiles: string[]): string[] {
     for (const refTable of meta.tablesReferenced) {
       const parentFilePath = tableToSlice.get(refTable);
       if (parentFilePath && parentFilePath !== filePath) {
-        // parentFilePath must run before filePath
-        graph.get(parentFilePath)?.push(filePath);
-        inDegree.set(filePath, (inDegree.get(filePath) || 0) + 1);
+        // parentFilePath must run before filePath (prevent duplicate edge)
+        const neighbors = graph.get(parentFilePath);
+        if (neighbors && !neighbors.includes(filePath)) {
+          neighbors.push(filePath);
+          inDegree.set(filePath, (inDegree.get(filePath) || 0) + 1);
+        }
       }
     }
   }

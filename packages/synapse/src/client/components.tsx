@@ -336,32 +336,49 @@ export interface DataFormProps {
   className?: string;
 }
 
-export function setNestedProperty(obj: Record<string, any>, path: string, value: unknown): void {
+const FORBIDDEN_PROPERTIES = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function setNestedProperty(obj: Record<string, unknown>, path: string, value: unknown): void {
   const parts = path.split('.');
+  if (parts.some((p) => FORBIDDEN_PROPERTIES.has(p.trim()))) {
+    return;
+  }
   let cur = obj;
   for (let i = 0; i < parts.length - 1; i++) {
     const part = parts[i];
+    if (FORBIDDEN_PROPERTIES.has(part)) return;
     if (!cur[part] || typeof cur[part] !== 'object') {
-      cur[part] = {};
+      cur[part] = Object.create(null);
     }
-    cur = cur[part];
+    cur = cur[part] as Record<string, unknown>;
   }
-  cur[parts[parts.length - 1]] = value;
+  const lastKey = parts[parts.length - 1];
+  if (!FORBIDDEN_PROPERTIES.has(lastKey)) {
+    cur[lastKey] = value;
+  }
 }
 
-export function getNestedProperty(obj: Record<string, any>, path: string): unknown {
+export function getNestedProperty(obj: Record<string, unknown>, path: string): unknown {
   const parts = path.split('.');
-  let cur: any = obj;
+  if (parts.some((p) => FORBIDDEN_PROPERTIES.has(p.trim()))) {
+    return undefined;
+  }
+  let cur: unknown = obj;
   for (const part of parts) {
-    if (cur === null || cur === undefined) return undefined;
-    cur = cur[part];
+    if (cur === null || cur === undefined || typeof cur !== 'object' || FORBIDDEN_PROPERTIES.has(part)) {
+      return undefined;
+    }
+    cur = (cur as Record<string, unknown>)[part];
   }
   return cur;
 }
 
 export function expandNestedObject(flat: Record<string, unknown>): Record<string, unknown> {
-  const nested: Record<string, any> = {};
+  const nested: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(flat)) {
+    if (FORBIDDEN_PROPERTIES.has(key.trim())) {
+      continue;
+    }
     if (key.includes('.')) {
       setNestedProperty(nested, key, value);
     } else {

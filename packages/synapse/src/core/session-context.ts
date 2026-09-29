@@ -79,7 +79,7 @@ export function requireTenant(session?: SessionContext, expectedTenantId?: strin
     return Err('UNAUTHORIZED');
   }
 
-  if (expectedTenantId && session.tenantId && session.tenantId !== expectedTenantId) {
+  if (expectedTenantId && session.tenantId !== expectedTenantId) {
     return Err('FORBIDDEN');
   }
 

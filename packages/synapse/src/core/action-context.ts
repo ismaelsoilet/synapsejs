@@ -51,10 +51,11 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   if (options.maxAge !== undefined) {
     parts.push(`Max-Age=${Math.floor(options.maxAge)}`);
   }
-  if (options.domain) {
-    parts.push(`Domain=${options.domain}`);
+  if (options.domain && !/[\r\n;\s]/.test(options.domain)) {
+    parts.push(`Domain=${options.domain.trim()}`);
   }
-  parts.push(`Path=${options.path || '/'}`);
+  const cleanPath = options.path && !/[\r\n;\s]/.test(options.path) ? options.path.trim() : '/';
+  parts.push(`Path=${cleanPath}`);
   if (options.secure) {
     parts.push('Secure');
   }

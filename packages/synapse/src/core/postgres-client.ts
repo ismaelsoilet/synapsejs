@@ -21,6 +21,7 @@ import {
 export class PostgresDatabaseClient implements DatabaseClient {
   private client: postgres.Sql;
 
+  // biome-ignore lint/suspicious/noExplicitAny: external postgres.js options boundary
   constructor(connectionString: string, options?: postgres.Options<any>) {
     this.client = postgres(connectionString, {
       max: options?.max || 10,
@@ -34,6 +35,7 @@ export class PostgresDatabaseClient implements DatabaseClient {
 
   async query<T = unknown>(queryStr: string, params: unknown[] = []): Promise<T[]> {
     // postgres.js unsafe executes raw SQL with parameter bindings
+    // biome-ignore lint/suspicious/noExplicitAny: external postgres.js unsafe bindings boundary
     const result = await this.client.unsafe(queryStr, params as any[]);
     return result as unknown as T[];
   }
@@ -97,20 +99,24 @@ export class PostgresDatabaseClient implements DatabaseClient {
     const res = await this.client.begin(async (sqlTx) => {
       const txClient: DatabaseClient = {
         query: async <U = unknown>(q: string, p: unknown[] = []) => {
+          // biome-ignore lint/suspicious/noExplicitAny: external postgres.js unsafe bindings boundary
           const res = await sqlTx.unsafe(q, p as any[]);
           return res as unknown as U[];
         },
         queryOne: async <U = unknown>(q: string, p: unknown[] = []) => {
+          // biome-ignore lint/suspicious/noExplicitAny: external postgres.js unsafe bindings boundary
           const res = await sqlTx.unsafe(q, p as any[]);
           return (res[0] ?? null) as U | null;
         },
         sql: async <U = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => {
           const { text, params } = compileTaggedSql(strings, ...values);
+          // biome-ignore lint/suspicious/noExplicitAny: external postgres.js unsafe bindings boundary
           const res = await sqlTx.unsafe(text, params as any[]);
           return res as unknown as U[];
         },
         sqlOne: async <U = unknown>(strings: TemplateStringsArray, ...values: unknown[]) => {
           const { text, params } = compileTaggedSql(strings, ...values);
+          // biome-ignore lint/suspicious/noExplicitAny: external postgres.js unsafe bindings boundary
           const res = await sqlTx.unsafe(text, params as any[]);
           return (res[0] ?? null) as U | null;
         },

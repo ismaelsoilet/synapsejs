@@ -56,6 +56,31 @@ export function sanitizeIdentifier(ident: string): string {
   return trimmed;
 }
 
+const VALID_WHERE_OPERATORS = new Set<string>([
+  '=',
+  '!=',
+  '<>',
+  '>',
+  '<',
+  '>=',
+  '<=',
+  'LIKE',
+  'ILIKE',
+  'IN',
+  'NOT IN',
+  'IS NULL',
+  'IS NOT NULL',
+  'BETWEEN'
+]);
+
+export function sanitizeOperator(op: string): WhereOperator {
+  const normalized = op.trim().toUpperCase();
+  if (!VALID_WHERE_OPERATORS.has(normalized)) {
+    throw new Error(`Invalid SQL operator: "${op}"`);
+  }
+  return normalized as WhereOperator;
+}
+
 /** Normalize WhereCondition into an array of WhereClauseItem */
 function normalizeWhere(where?: WhereCondition): WhereClauseItem[] {
   if (!where) return [];
@@ -70,11 +95,58 @@ function normalizeWhere(where?: WhereCondition): WhereClauseItem[] {
       items.push({ column, op: 'IS NULL' });
     } else if (Array.isArray(value)) {
       items.push({ column, op: 'IN', value });
+    } else if (typeof value === 'object' && value !== null && 'op' in value) {
+      const cond = value as { op: string; val?: unknown; value?: unknown };
+      items.push({
+        column,
+        op: cond.op as WhereOperator,
+        value: cond.val !== undefined ? cond.val : cond.value
+      });
     } else {
       items.push({ column, op: '=', value });
     }
   }
   return items;
+}
+
+/** Compiles WhereClauseItem array into parameterized SQL condition strings */
+export function compileWhereClauses(whereItems: WhereClauseItem[], params: unknown[]): string[] {
+  const conditions: string[] = [];
+
+  for (const item of whereItems) {
+    const col = sanitizeIdentifier(item.column);
+    const op = sanitizeOperator(item.op);
+
+    if (op === 'IS NULL' || op === 'IS NOT NULL') {
+      conditions.push(`${col} ${op}`);
+    } else if (op === 'IN' || op === 'NOT IN') {
+      const arr = Array.isArray(item.value) ? item.value : [item.value];
+      if (arr.length === 0) {
+        conditions.push(op === 'IN' ? '1=0' : '1=1');
+      } else {
+        const placeholders = arr.map((val) => {
+          params.push(val);
+          return `$${params.length}`;
+        });
+        conditions.push(`${col} ${op} (${placeholders.join(', ')})`);
+      }
+    } else if (op === 'BETWEEN') {
+      const arr = Array.isArray(item.value) ? item.value : [];
+      if (arr.length !== 2) {
+        throw new Error(`BETWEEN operator requires an array of 2 values, received: ${JSON.stringify(item.value)}`);
+      }
+      params.push(arr[0]);
+      const p1 = `$${params.length}`;
+      params.push(arr[1]);
+      const p2 = `$${params.length}`;
+      conditions.push(`${col} BETWEEN ${p1} AND ${p2}`);
+    } else {
+      params.push(item.value);
+      conditions.push(`${col} ${op} $${params.length}`);
+    }
+  }
+
+  return conditions;
 }
 
 /**
@@ -174,42 +246,7 @@ export function compileSelect(table: string, options?: QueryOptions): { sql: str
   // 2. WHERE clause
   const whereItems = normalizeWhere(options?.where);
   if (whereItems.length > 0) {
-    const conditions: string[] = [];
-
-    for (const item of whereItems) {
-      const col = sanitizeIdentifier(item.column);
-      const op = item.op.toUpperCase() as WhereOperator;
-
-      if (op === 'IS NULL' || op === 'IS NOT NULL') {
-        conditions.push(`${col} ${op}`);
-      } else if (op === 'IN' || op === 'NOT IN') {
-        const arr = Array.isArray(item.value) ? item.value : [item.value];
-        if (arr.length === 0) {
-          // Empty IN clause: IN () is invalid SQL -> false / true condition
-          conditions.push(op === 'IN' ? '1=0' : '1=1');
-        } else {
-          const placeholders = arr.map((val) => {
-            params.push(val);
-            return `$${params.length}`;
-          });
-          conditions.push(`${col} ${op} (${placeholders.join(', ')})`);
-        }
-      } else if (op === 'BETWEEN') {
-        const arr = Array.isArray(item.value) ? item.value : [];
-        if (arr.length !== 2) {
-          throw new Error(`BETWEEN operator requires an array of 2 values, received: ${JSON.stringify(item.value)}`);
-        }
-        params.push(arr[0]);
-        const p1 = `$${params.length}`;
-        params.push(arr[1]);
-        const p2 = `$${params.length}`;
-        conditions.push(`${col} BETWEEN ${p1} AND ${p2}`);
-      } else {
-        params.push(item.value);
-        conditions.push(`${col} ${op} $${params.length}`);
-      }
-    }
-
+    const conditions = compileWhereClauses(whereItems, params);
     if (conditions.length > 0) {
       sql += ` WHERE ${conditions.join(' AND ')}`;
     }
@@ -299,18 +336,7 @@ export function compileUpdate(
     throw new Error(`Unconditional UPDATE on ${table} is blocked for safety. Provide a WHERE condition.`);
   }
 
-  const conditions: string[] = [];
-  for (const item of whereItems) {
-    const col = sanitizeIdentifier(item.column);
-    const op = item.op.toUpperCase() as WhereOperator;
-    if (op === 'IS NULL' || op === 'IS NOT NULL') {
-      conditions.push(`${col} ${op}`);
-    } else {
-      params.push(item.value);
-      conditions.push(`${col} ${op} $${params.length}`);
-    }
-  }
-
+  const conditions = compileWhereClauses(whereItems, params);
   sql += ` WHERE ${conditions.join(' AND ')} RETURNING *;`;
   return { sql, params };
 }
@@ -326,18 +352,7 @@ export function compileDelete(table: string, where: WhereCondition): { sql: stri
   }
 
   const params: unknown[] = [];
-  const conditions: string[] = [];
-  for (const item of whereItems) {
-    const col = sanitizeIdentifier(item.column);
-    const op = item.op.toUpperCase() as WhereOperator;
-    if (op === 'IS NULL' || op === 'IS NOT NULL') {
-      conditions.push(`${col} ${op}`);
-    } else {
-      params.push(item.value);
-      conditions.push(`${col} ${op} $${params.length}`);
-    }
-  }
-
+  const conditions = compileWhereClauses(whereItems, params);
   const sql = `DELETE FROM ${safeTable} WHERE ${conditions.join(' AND ')} RETURNING *;`;
   return { sql, params };
 }
