@@ -28,6 +28,12 @@ afterAll(async () => {
 });
 
 const jsonHeaders = { 'Content-Type': 'application/json' };
+
+/**
+ * Unique per call: a millisecond-based suffix collides when two creations land in the
+ * same millisecond, which turns a real assertion into a flake (CI caught exactly that).
+ */
+const uniqueSuffix = (): string => crypto.randomUUID().slice(0, 8);
 const billingHeaders = { ...jsonHeaders, 'x-user-id': 'usr_admin_e2e', 'x-user-roles': 'admin,billing' };
 
 describe('end-to-end roundtrip against a real engine', () => {
@@ -51,11 +57,11 @@ describe('end-to-end roundtrip against a real engine', () => {
   });
 
   it('persists a row through RPC and reads it back from SQLite', async () => {
-    const email = `e2e-${Date.now()}@dominio.com`;
+    const email = `e2e-${uniqueSuffix()}@dominio.com`;
     const response = await fetch(`${base}/_synapse/rpc/create-customer`, {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ name: 'Cliente E2E', email, taxId: `tax-${Date.now()}` })
+      body: JSON.stringify({ name: 'Cliente E2E', email, taxId: `tax-${uniqueSuffix()}` })
     });
 
     const body = (await response.json()) as { ok: boolean; value?: { customerId: string } };
@@ -76,8 +82,8 @@ describe('end-to-end roundtrip against a real engine', () => {
   });
 
   it('refuses a duplicate email with the domain error mapped to 409', async () => {
-    const email = `dupe-${Date.now()}@dominio.com`;
-    const payload = JSON.stringify({ name: 'Cliente Duplicado', email, taxId: `tax-${Date.now()}` });
+    const email = `dupe-${uniqueSuffix()}@dominio.com`;
+    const payload = JSON.stringify({ name: 'Cliente Duplicado', email, taxId: `tax-${uniqueSuffix()}` });
 
     const first = await fetch(`${base}/_synapse/rpc/create-customer`, {
       method: 'POST',
@@ -89,7 +95,7 @@ describe('end-to-end roundtrip against a real engine', () => {
     const duplicate = await fetch(`${base}/_synapse/rpc/create-customer`, {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ name: 'Outro Nome', email, taxId: `tax-${Date.now().toString().slice(-8)}` })
+      body: JSON.stringify({ name: 'Outro Nome', email, taxId: `tax-${uniqueSuffix()}` })
     });
 
     expect(duplicate.status).toBe(409);
@@ -97,15 +103,15 @@ describe('end-to-end roundtrip against a real engine', () => {
   });
 
   it('computes the invoice total from persisted data and rejects a replayed idempotency token', async () => {
-    const email = `invoice-${Date.now()}@dominio.com`;
+    const email = `invoice-${uniqueSuffix()}@dominio.com`;
     const created = await fetch(`${base}/_synapse/rpc/create-customer`, {
       method: 'POST',
       headers: jsonHeaders,
-      body: JSON.stringify({ name: 'Cliente Fatura', email, taxId: `tax-${Date.now()}` })
+      body: JSON.stringify({ name: 'Cliente Fatura', email, taxId: `tax-${uniqueSuffix()}` })
     });
     const customerId = ((await created.json()) as { value: { customerId: string } }).value.customerId;
 
-    const idempotencyToken = `idemp-${Date.now()}`;
+    const idempotencyToken = `idemp-${uniqueSuffix()}`;
     const invoiceBody = JSON.stringify({ customerId, amountCents: 50_000, taxRate: 0.1, idempotencyToken });
 
     const invoice = await fetch(`${base}/_synapse/rpc/generate-invoice`, {
@@ -133,7 +139,7 @@ describe('end-to-end roundtrip against a real engine', () => {
       customerId: 'cust-qualquer',
       amountCents: 1000,
       taxRate: 0.1,
-      idempotencyToken: `x-${Date.now()}`
+      idempotencyToken: `x-${uniqueSuffix()}`
     });
 
     const anonymous = await fetch(`${base}/_synapse/rpc/generate-invoice`, {
