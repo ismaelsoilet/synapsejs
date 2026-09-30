@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-567%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="567 Tests Passing"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-568%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="568 Tests Passing"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-18%20Native%20Tools%20(11+7)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 18 Native Tools"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -477,10 +477,10 @@ comparable** — the quoted reduction is the `app` column (1,832 → 1,627 token
 
 ### 3. Test Suite Pass Rate
 ```text
-567 pass
+568 pass
 0 fail
 1637 expect() calls
-Ran 567 tests across 70 files. (100% Green Gates)
+Ran 568 tests across 70 files. (100% Green Gates)
 ```
 
 ---

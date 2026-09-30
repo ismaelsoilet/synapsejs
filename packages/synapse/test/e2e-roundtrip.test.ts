@@ -49,18 +49,14 @@ describe('end-to-end roundtrip against a real engine', () => {
 
   // The first render also builds the slice's browser bundle, which is real work: the
   // default 5s per-test budget is what made this a flake under a loaded suite.
-  it(
-    'renders a slice page whose markup comes from the database',
-    async () => {
-      const response = await fetch(`${base}/customers/create-customer`);
-      const html = await response.text();
+  it('renders a slice page whose markup comes from the database', async () => {
+    const response = await fetch(`${base}/customers/create-customer`);
+    const html = await response.text();
 
-      expect(response.status).toBe(200);
-      expect(html).toContain('Cadastro de Cliente');
-      expect(html).toContain('create-customer');
-    },
-    30_000
-  );
+    expect(response.status).toBe(200);
+    expect(html).toContain('Cadastro de Cliente');
+    expect(html).toContain('create-customer');
+  }, 30_000);
 
   it('persists a row through RPC and reads it back from SQLite', async () => {
     const email = `e2e-${uniqueSuffix()}@dominio.com`;

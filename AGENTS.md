@@ -411,7 +411,7 @@ A server action referenced by a component contributes **only its wire signature*
 ```bash
 bun install
 bun run lint                        # Biome: 0 errors, 63 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (567 tests across 70 files)
+bun test packages/synapse/test      # framework suite (568 tests across 70 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map
