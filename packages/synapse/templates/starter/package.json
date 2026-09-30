@@ -20,7 +20,7 @@
     "start": "synapse start"
   },
   "dependencies": {
-    "@ismaelsoilet/synapsejs": "^1.1.1",
+    "@ismaelsoilet/synapsejs": "^1.9.0",
     "@sinclair/typebox": "^0.34.40",
     "fast-check": "^3.23.2",
     "react": "^19.0.0",

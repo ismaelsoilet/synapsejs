@@ -355,6 +355,14 @@ describe('synapse new', () => {
     expect(pkg.dependencies['@ismaelsoilet/synapsejs'] || pkg.dependencies.synapsejs).toBe(
       `^${frameworkManifest.version}`
     );
+
+    // The template that ships inside the package carries the same range: installing the template
+    // directly is a supported path, and a stale pin there is drift the CLI rewrite hides.
+    const templateManifest = JSON.parse(
+      fs.readFileSync(path.resolve(import.meta.dir, '../templates/starter/package.json'), 'utf-8')
+    );
+    expect(templateManifest.dependencies['@ismaelsoilet/synapsejs']).toBe(`^${frameworkManifest.version}`);
+
     expect(manifest).not.toContain('workspace:*');
     expect(pkg.engines.bun).toBeDefined();
 
