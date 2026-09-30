@@ -44,9 +44,11 @@ Números de teste mudam com o tempo: quem mantém os documentos alinhados é o g
    `packages/synapse/package.json` (o workflow verifica e aborta se não for).
 2. O workflow roda a suíte, os splits, os oráculos, `test:all`, `docs:check` e o ensaio de publicação;
    qualquer falha aborta o publish.
-3. `npm publish --access public --provenance` com o secret `NPM_TOKEN` e o environment
-   `github-actions-release`. A credencial é um token de longa duração com atestado de proveniência por
-   `id-token: write` — **não** é trusted publishing sem token, e o comentário no workflow diz isso.
+3. `npm publish --access public --provenance` com o environment `github-actions-release`. A
+   credencial é **trusted publishing (OIDC)**: o job pede `id-token: write` e o repositório não tem
+   token de npm configurado, então o npm troca a identidade do GitHub por uma credencial efêmera e
+   assina a proveniência. O job instala um npm **pinado** (`npm@12.2.0`) porque Node 22 traz o npm 10,
+   que não fala OIDC — foi exatamente isso que fez o primeiro run da v1.9.0 falhar com `ENEEDAUTH`.
 4. Criar o GitHub Release com o texto de `docs/releases/1.9.0.md`.
 
 ## Depois de publicar

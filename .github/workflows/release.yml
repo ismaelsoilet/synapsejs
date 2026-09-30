@@ -32,6 +32,12 @@ jobs:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
+      # Trusted publishing (OIDC) needs npm >= 11.5.1; Node 22 ships npm 10.
+      # The version is pinned — a moving `npm@latest` inside the publish job is how an
+      # unrelated npm release can turn this pipeline red.
+      - name: Install the pinned npm that supports trusted publishing
+        run: npm install -g npm@12.2.0
+
       - name: Install Dependencies
         run: |
           bun install --frozen-lockfile
@@ -69,10 +75,11 @@ jobs:
       - name: Publish Rehearsal (the artifact a stranger would install)
         run: bun run rehearse:publish
 
-      # Credentials: npm authenticates with the long-lived NPM_TOKEN secret declared
-      # below, not with OIDC trusted publishing. `--provenance` attests the build
-      # through the workflow's `id-token: write` permission; the publish credential
-      # itself is the token.
+      # Credentials: npm's trusted publishing (OIDC). The job requests `id-token: write`
+      # and no npm token is configured for this repository, so npm exchanges the GitHub
+      # OIDC identity for a short-lived publish credential and signs the provenance
+      # statement. Setting an NPM_TOKEN secret would override that with a long-lived
+      # token — the mechanism in use is the tokenless one.
       - name: Publish To npm
         run: npm publish --access public --provenance
         working-directory: packages/synapse

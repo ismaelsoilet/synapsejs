@@ -390,7 +390,9 @@ A server action referenced by a component contributes **only its wire signature*
 - **CI runs on push** (`.github/workflows/ci.yml`: the framework suite, PostgreSQL parity against a
   `postgres:16` service, the publish rehearsal and the documentation drift gate).
 - **The release runs on a `v*` tag** whose version matches `packages/synapse/package.json`:
-  `release.yml` re-runs every gate plus the publish rehearsal before `npm publish`.
+  `release.yml` re-runs every gate plus the publish rehearsal before `npm publish`, which
+  authenticates through npm's trusted publishing (OIDC) with `id-token: write` and a pinned npm
+  (>= 11.5.1; Node 22 ships npm 10).
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
   of the build now). 69 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
