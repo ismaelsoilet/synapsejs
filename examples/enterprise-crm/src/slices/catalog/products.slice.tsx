@@ -73,7 +73,7 @@ export interface CatalogViewProps {
 
 export function CatalogView({ products = [] }: CatalogViewProps) {
   return (
-    <ul data-cached={String(sliceCache.ttlSeconds)}>
+    <ul>
       {products.map((product) => (
         <li key={product.id}>{product.name}</li>
       ))}

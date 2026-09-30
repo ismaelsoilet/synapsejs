@@ -162,6 +162,19 @@ describe('verifySplit gates', () => {
     expect(verification.leaks).toEqual([]);
   }, 20000);
 
+  it('fails with a code instead of crashing when the client reaches a server value', () => {
+    // A component referencing a server-owned value (a cache definition, not an action)
+    // has no wire form: the splitter must say so, not throw inside the stub renderer.
+    const result = splitSlice(slicePath('reports/server-value-report.slice.tsx'), fixturesDir);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('SERVER_VALUE_IN_CLIENT');
+      expect(result.error.message).toContain('reportCache');
+      expect(result.error.candidates).toEqual(['reportCache']);
+    }
+  }, 20000);
+
   it('fails the leak gate when the client reaches into the database', () => {
     const result = splitOrFail('reports/leaky-report.slice.tsx');
     const outDir = artifactDirectory(fixturesDir, result.sliceName);

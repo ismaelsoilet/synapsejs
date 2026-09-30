@@ -42,7 +42,12 @@ export interface SplitResult {
   artifacts: SplitArtifact[];
 }
 
-export type SplitErrorCode = 'SLICE_NOT_FOUND' | 'SLICE_IMPORTS_SLICE' | 'NO_ROOTS' | 'UNPARSED';
+export type SplitErrorCode =
+  | 'SLICE_NOT_FOUND'
+  | 'SLICE_IMPORTS_SLICE'
+  | 'NO_ROOTS'
+  | 'UNPARSED'
+  | 'SERVER_VALUE_IN_CLIENT';
 
 export interface SplitError {
   code: SplitErrorCode;
@@ -511,6 +516,20 @@ function unwrapPromiseType(typeText: string): string {
   return match ? match[1].trim() : `Awaited<${typeText}>`;
 }
 
+/**
+ * A wire stub describes a server *function*. A server-owned value that a component
+ * references has no wire form, so the caller must fail with a diagnostic instead of
+ * emitting a stub that would call the endpoint as if it were an action.
+ */
+function isStubCandidate(entry: DeclEntry): boolean {
+  return (
+    ts.isFunctionDeclaration(entry.node) ||
+    ts.isFunctionExpression(entry.node) ||
+    ts.isArrowFunction(entry.node) ||
+    ts.isMethodDeclaration(entry.node)
+  );
+}
+
 function renderRpcStub(entry: DeclEntry, endpoint: string, sourceFile: ts.SourceFile): string {
   const fn = entry.node as ts.FunctionDeclaration;
   const payload = fn.parameters[0];
@@ -716,6 +735,27 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
   const sliceName = path.basename(sliceFilePath, '.slice.tsx');
   const relativePath = path.relative(baseDir, sliceFilePath);
   const endpoint = `/_synapse/rpc/${sliceName}`;
+
+  const serverValueInClient = stubbedKeys.find((key) => {
+    const entry = entries.get(key);
+
+    return entry ? !isStubCandidate(entry) : false;
+  });
+
+  if (serverValueInClient) {
+    const entry = entries.get(serverValueInClient) as DeclEntry;
+
+    return Err({
+      code: 'SERVER_VALUE_IN_CLIENT',
+      message:
+        `O componente de ${path.basename(sliceFilePath)} referencia '${serverValueInClient}', ` +
+        `que é um valor do servidor (${ts.SyntaxKind[entry.node.kind]}) e não uma action: não existe ` +
+        `forma de transportá-lo pelo endpoint RPC. Mova o valor para um módulo em src/shared/, ` +
+        `importe-o de 'synapsejs/client', ou limite-se a declará-lo no servidor.`,
+      candidates: [serverValueInClient]
+    });
+  }
+
   const artifacts: SplitArtifact[] = [];
   const outDir = artifactDirectory(baseDir, sliceName);
   const sourceDir = path.dirname(sliceFilePath);
