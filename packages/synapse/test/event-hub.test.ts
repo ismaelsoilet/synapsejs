@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import { createActionContext, MockDatabaseClient } from '../src/core';
 import { AnonymousSession } from '../src/core/session-context';
+import { defineTopic, resetDeclaredTopics } from '../src/core/topics';
 import { EventHub, getEventHub, resetEventHub } from '../src/runtime/event-hub';
 
 describe('EventHub - In-Memory Realtime Pub/Sub Broker', () => {
@@ -58,22 +59,37 @@ describe('EventHub - In-Memory Realtime Pub/Sub Broker', () => {
     expect(results).toEqual(['payload_success']);
   });
 
-  test('ActionContext.broadcast delivers real-time event to subscribers', () => {
+  test('ActionContext.broadcast delivers real-time event to declared subscribers', () => {
     resetEventHub();
+    resetDeclaredTopics();
+    defineTopic({ name: 'crm/customers', owner: 'crm/register-customer' });
+
     const hub = getEventHub();
     const events: unknown[] = [];
 
-    hub.subscribe('crm/customers', (data) => events.push(data));
+    hub.subscribe('global:crm/customers', (data) => events.push(data));
 
     const mockDb = new MockDatabaseClient();
     const ctx = createActionContext({
       db: mockDb,
-      session: AnonymousSession()
+      session: AnonymousSession(),
+      sliceOwner: 'crm/register-customer'
     });
 
     const delivered = ctx.broadcast('crm/customers', { customerId: 'cust-99', name: 'Acme Corp' });
     expect(delivered).toBe(1);
     expect(events).toEqual([{ customerId: 'cust-99', name: 'Acme Corp' }]);
+
+    // A feature that does not own the topic notifies nobody.
+    const foreign = createActionContext({
+      db: mockDb,
+      session: AnonymousSession(),
+      sliceOwner: 'billing/charge'
+    });
+    expect(foreign.broadcast('crm/customers', { customerId: 'nope' })).toBe(0);
+    expect(events.length).toBe(1);
+
+    resetDeclaredTopics();
     resetEventHub();
   });
 });

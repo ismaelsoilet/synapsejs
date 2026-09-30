@@ -11,6 +11,8 @@
  * discovery and the splitter use, so the description cannot drift from behavior.
  */
 
+import { PATH_SEGMENT_PATTERN } from '../core/path-guard';
+import { REALTIME_REJECTIONS } from '../core/topics';
 import {
   ACTION_SUFFIX,
   COMPONENT_SUFFIXES,
@@ -18,6 +20,7 @@ import {
   SLICE_DDL_EXPORT,
   SLICE_ORACLE_EXPORT
 } from '../runtime/discovery-rules';
+import { SCAFFOLD_FAILURE_CODES } from './scaffolder';
 import { SLICE_EXTENSION } from './slice-discovery';
 import { SLICE_TEMPLATES } from './slice-templates';
 
@@ -49,6 +52,7 @@ export interface MachineContract {
     signed: string;
     anonymous: string;
     login: string;
+    cookieReality: string;
   };
   addressing: {
     page: string;
@@ -70,6 +74,16 @@ export interface MachineContract {
     command: string;
     available: string[];
     notes: string;
+  };
+  scaffolding: {
+    command: string;
+    containment: string;
+    failureCodes: Record<string, string>;
+  };
+  realtime: {
+    transports: string[];
+    rule: string;
+    rejections: Record<string, number>;
   };
   gates: Array<{ command: string; proves: string }>;
 }
@@ -187,16 +201,18 @@ export function machineContract(): MachineContract {
     sessions: {
       headers: ['Authorization: Bearer <token>', 'x-user-id', 'x-user-roles'],
       signed:
-        'With SYNAPSE_SESSION_SECRET set, a bearer token must be a signed session (signSessionToken) and its claims win: role headers are ignored.',
+        'With SYNAPSE_SESSION_SECRET set, a bearer token must be a signed session (signSessionToken) and its claims win: role headers are ignored, and the tenant is taken exclusively from the verified claims (a signed token without a tenant claim yields a session without a tenant). Revocation is consulted on every request, in-process first and then against the persisted blacklist. Without the secret, identity headers are honoured only under the explicit development opt-in SYNAPSE_DEV_HEADERS=true (or a development/test runtime mode); every other state resolves to an anonymous session.',
       anonymous: 'A request with none of them is anonymous: requireAuth returns Err("UNAUTHORIZED").',
       login:
-        'There is no built-in login screen and no server-side session state. A login slice (synapse new-slice auth login --template=login) verifies the password with Bun.password.verify, signs the session with signSessionToken and returns the token; the browser stores it with storeSession(token, roles) and logs out with clearSession(). After that the token travels as Authorization: Bearer and the server authorizes from the signature.'
+        'There is no built-in login screen and no server-side session state. A login slice (synapse new-slice auth login --template=login) verifies the password with Bun.password.verify, signs the session with signSessionToken and returns the token; the browser stores it with storeSession(token, roles) and logs out with clearSession(). After that the token travels as Authorization: Bearer and the server authorizes from the signature.',
+      cookieReality:
+        'A session cookie written by browser script (storeSession) is written through document.cookie, so it is readable by any script in the origin — HttpOnly cannot be set from script, by construction. A session that must be unreachable by script is the one the server emits through ctx.setCookie, which carries HttpOnly, Secure and SameSite=Lax unless the caller states otherwise.'
     },
     addressing: {
       page: 'GET /<domain>/<name>',
       rpc: 'POST /_synapse/rpc/<domain>/<name> with Content-Type: application/json',
       upload:
-        'POST /_synapse/files/<domain>/<name>?name=arquivo.pdf sends raw bytes (multipart is not needed and not parsed). It requires a session, refuses a name containing a directory, and stops reading past SYNAPSE_MAX_UPLOAD_BYTES (5 MiB by default). It answers { ok, path, bytes } with a path relative to the app root; what the bytes mean is the slice contract to decide.',
+        "POST /_synapse/files/<domain>/<name>?name=arquivo.pdf sends raw bytes or multipart/form-data. It requires a session, refuses a name containing a directory, enforces a byte ceiling while the bytes arrive on every branch (SYNAPSE_MAX_UPLOAD_BYTES, 5 MiB by default), and accepts a file only when its declared extension is within the configured policy (SYNAPSE_UPLOAD_ALLOWED_TYPES) and matches the bytes actually received — so a client cannot choose the extension its file is stored under. It answers { ok, path, bytes } with a path relative to the app root. The framework does not serve the upload directory: serving it is the application's responsibility.",
       ambiguity:
         'A bare name resolves only while it is unique across domains; otherwise the dispatcher answers 409 listing the candidates.'
     },
@@ -211,13 +227,24 @@ export function machineContract(): MachineContract {
       location: 'src/shared/<name>.ts',
       rule: 'A slice never imports another slice — the splitter fails with SLICE_IMPORTS_SLICE, transitively, and says so. What two features must do together lives in src/shared/, receives the DatabaseClient by parameter and is called from both slices. A shared module may throw; the action that calls it converts the failure into Err, so the no-throw contract of an action survives a transaction.',
       atomicity:
-        'db.transaction(fn) is the boundary: the statements inside commit together or roll back together. The mock database does not roll back, so atomicity must be proven against a real engine (SQLite in the suite, PostgreSQL via test:postgres) — never with the mock.'
+        'db.transaction(fn) is the boundary: the statements inside commit together or roll back together. The mock database rolls back its in-memory store, which makes it usable for control-flow assertions, but atomicity against a real engine (SQLite in the suite, PostgreSQL via test:postgres) is what proves the engine agrees.'
     },
     templates: {
       command: 'synapse new-slice <domain> <name> --template=<template>',
       available: [...SLICE_TEMPLATES, 'crud'],
       notes:
         'create is the default. crud generates create-<name>, list-<name>, update-<name> and delete-<name> for one resource. list paginates (LIMIT/OFFSET plus COUNT) with a parameterized filter; update is partial and builds its SET clause from a column allowlist, never from the payload; delete checks existence first. Every generated file already carries an oracle.'
+    },
+    realtime: {
+      transports: ['GET /_synapse/sse/<topic> (event stream)', 'GET /_synapse/ws/<domain>/<name> (WebSocket upgrade)'],
+      rule: 'A topic must be declared with defineTopic({ name, owner, readRoles?, tenantId?, public? }) before anyone subscribes or publishes. Subscribing to an undeclared topic is refused; a topic declared only for another tenant is refused without disclosing that it exists; publishing into a topic the slice does not own is rejected and notifies nobody. Topics are namespaced per tenant. The WebSocket upgrade is refused unless the request carries a present origin matching SYNAPSE_ALLOWED_ORIGINS (or `*`), with a loopback-origin carve-out for local development. Both transports share one rate limiter and a per-client cap on concurrent connections.',
+      rejections: { ...REALTIME_REJECTIONS }
+    },
+    scaffolding: {
+      command:
+        'synapse new-slice <domain> <name> [--template=<template>] [--fields=<grammar>] · synapse new-shared <name> · synapse new <project>',
+      containment: `The domain, the slice name, the shared-module name and the new-project directory are each one safe path segment (pattern ${PATH_SEGMENT_PATTERN}), and before anything is written the resolved target is asserted to stay inside the directory the operation owns. A field name in --fields must be a plain identifier before it is interpolated into the generated DDL or TypeScript. Every containment failure is printed as JSON on standard output with a non-zero exit code.`,
+      failureCodes: { ...SCAFFOLD_FAILURE_CODES }
     },
     gates: [
       {

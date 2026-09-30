@@ -12,8 +12,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-424%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="424 Testes Passando"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-15%20Ferramentas%20Nativas%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 15 Ferramentas Nativas"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-567%20Passando%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="567 Testes Passando"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-18%20Ferramentas%20Nativas%20(11+7)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 18 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Valida%C3%A7%C3%A3o-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
@@ -22,6 +22,11 @@
 <p align="center">
   🇺🇸 <a href="README.md"><strong>English</strong></a> | 🇧🇷 <strong>Português do Brasil</strong>
 </p>
+
+> **Subindo da 1.8?** A 1.9 é uma release de endurecimento de segurança com quatro mudanças de
+> comportamento que quebram. Leia [`docs/migracao-1.9.pt-BR.md`](docs/migracao-1.9.pt-BR.md) — cada
+> mudança traz o sintoma, o motivo e a flag que restaura o comportamento antigo onde é seguro
+> restaurar.
 
 ---
 
@@ -100,9 +105,9 @@ A CLI gera instantaneamente:
 
 | Pilar | Como o SynapseJS Resolve |
 |---|---|
-| **⚡ Motor de Alta Vazão** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Entrega **53.191 req/s** de roteamento HTTP base com latência p50 sub-milissegundo sob alta concorrência. |
+| **⚡ Motor de Alta Vazão** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). `bun run bench:concurrency` mede um baseline de JSON estático, uma página SSR real e um braço de escrita RPC real na sua máquina — o script imprime os números e diz o que não mede. |
 | **🛡️ Isolamento AST e Gates de Vazamento** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates automatizados do compilador detectam e bloqueiam SQL, segredos, módulos de servidor ou globais do Bun de chegarem ao browser. |
-| **🤖 Servidor MCP Nativo (15 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 15 ferramentas (11 do núcleo arquitetural Sistema 2 + 4 de triagem reflexa Jev Sistema 1). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🤖 Servidor MCP Nativo (18 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 18 ferramentas (11 arquiteturais do Synapse + 7 de triagem reflexa do Jev System One). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 Simbiose Sistema 1 + Sistema 2** | Integração nativa com o harness de decisão não-autoregressivo [Jev System One](https://github.com/ismaelsoilet/jev-harness). Tria falhas de teste em 70-300ms (<500µs local), aborta trajetórias condenadas em loops de refatoração e modula dinamicamente o esforço de raciocínio (Astra-Jev). |
 | **🔄 Realtime WebSockets e SSE** | Gateway Server-Sent Events (`GET /_synapse/sse/:topic*`) + WebSockets full-duplex (`defineSocket`, `useWebSocket`) com keep-alive automático a cada 15s, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
 | **🗄️ Migrações Declarativas e Rollback** | O DDL vive nas fatias e é rastreado declaração por declaração com hash SHA-256. Suporta demarcações reversíveis `-- up:` / `-- down:` e rollback transacional atômico (`synapse rollback`). |
@@ -310,9 +315,9 @@ export const sliceCache = defineCache({
 
 ---
 
-## 🛡️ Endurecimento para Produção & Resiliência (v1.6.0)
+## 🛡️ Endurecimento para Produção & Resiliência
 
-O SynapseJS v1.6.0 introduz proteções de resiliência de nível corporativo projetadas para implantações de confiança zero em produção:
+O framework entrega proteções de resiliência de nível corporativo projetadas para implantações de confiança zero em produção:
 
 - **SSRF & Network Guard**: `validateExternalUrl` e `isPrivateOrReservedIp` bloqueiam ativamente ataques de SSRF (Server-Side Request Forgery) direcionados a loopback, CIDRs privados IPv4/IPv6, endpoints de metadados de nuvem (`169.254.169.254`, AWS, GCP, Azure) e ataques de DNS rebinding. Otimização de imagens estáticas impõe contenção estrita ao diretório `public/`.
 - **Anti-Spoofing & Rate Limiting Limitado (LRU)**: O limitador de taxa Token Bucket adota despejo LRU (limitado a 10.000 buckets) e resolução de IP no nível do socket (`trustProxy`), prevenindo esgotamento de memória e ataques de negação de serviço por spoofing de cabeçalhos.
@@ -348,7 +353,7 @@ O SynapseJS opera nativamente em simbiose com o **[Jev System One](https://githu
 │ • Heurísticas locais (< 500µs)     │  │ • Fatias verticais (*.slice.tsx│
 │ • Triagem de testes (test-gate)    │  │ • Oráculos PBT com fast-check  │
 │ • Aborto de loops (abort-check)    │  │ • AST Splitter (zero data-leak)│
-│ • Modulação de raciocínio Astra-Jev│  │ • MCP Server Nativo (15 tools) │
+│ • Modulação de raciocínio Astra-Jev│  │ • MCP Server Nativo (18 tools) │
 │ • Zero desperdício em erros de env │  │ • Migrações DDL por fatia & PBT│
 └────────────────────────────────────┘  └────────────────────────────────┘
 ```
@@ -390,7 +395,7 @@ Caso não haja conexão de rede ou credenciais remotas configuradas, o Jev-Harne
 
 O SynapseJS é o primeiro framework concebido desde o primeiro dia para ser operado com eficácia por **agentes de codificação de IA autônomos** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **15 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
+Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **18 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
 
 ```bash
 bun run mcp
@@ -410,7 +415,7 @@ bun run mcp
 }
 ```
 
-### As 15 Ferramentas MCP Nativas
+### As 18 Ferramentas MCP Nativas
 
 | Ferramenta MCP | Domínio | Capacidade |
 |---|---|---|
@@ -436,50 +441,48 @@ bun run mcp
 
 Para assegurar total transparência, todas as métricas abaixo foram geradas por scripts automatizados presentes no repositório:
 
-### 1. Concorrência e Roteamento HTTP Base (`bun run bench:concurrency`)
-Medição do roteamento base do servidor HTTP nativo `Bun.serve` (`/_synapse/api/health`) sob concorrência de 50 conexões simultâneas ao longo de 1.000 requisições:
+### 1. Concorrência: três braços, medidos pela própria execução (`bun run bench:concurrency`)
+
+O script sobe a aplicação de referência *com as fatias descobertas* (ele recusa rodar com zero
+fatias) e mede três braços com o gerador de carga em um **processo separado**:
 
 ```text
-🚀 Resultados do Benchmark de Concorrência (Roteamento HTTP Base):
-────────────────────────────────────────────
-Vazão (Throughput):  53.191 requisições/segundo
-Latência (p50):      0,53 ms
-Latência (p95):      7,81 ms
-Latência (p99):      8,00 ms
-Falhas/Erros:        0 (0,00%)
-Delta de Memória:    < 6 MB
-────────────────────────────────────────────
+SYNAPSE_CONCURRENCY_BENCHMARK — examples/enterprise-crm, 3 slices, 300 requests/arm at concurrency 20
+
+baseline-static-json (not comparable: no render, no database)
+  throughput 48797.91 req/s · p50 0.28 ms · p95 1.53 ms · p99 1.71 ms · errors 0
+ssr-render (loader + component + shell)
+  throughput 4261.13 req/s · p50 3.45 ms · p95 13.51 ms · p99 18.13 ms · errors 0
+rpc-persisted-write (action + SQLite write)
+  throughput 3413.91 req/s · p50 2.96 ms · p95 21.37 ms · p99 21.84 ms · errors 0
+
+Does not measure: multi-instance behaviour, PostgreSQL, real network latency.
 ```
 
-### 2. Vazão de Mutações de Banco em Produção (`bun run bench:production`)
-Teste de ponta a ponta de mutações fullstack via RPC e SQLite sob 40 clientes simultâneos executando 500 transações reais:
+Os números vêm de uma execução em uma máquina: são medição, não especificação. Rode o script para
+obter os seus. O braço `baseline-static-json` é um piso e **não é comparável** com os braços do
+framework — ele não renderiza nada e não toca o banco. O rate limiter é alargado na execução, para
+que os braços meçam renderização e persistência, não a cota.
 
+### 2. Benchmark de Superfície de Contexto (`bun run bench`)
+
+Duas funcionalidades idênticas ("abrir chamado" e "atribuir chamado") em fatias verticais contra
+arquitetura em camadas. As colunas **app** cobrem os arquivos da própria funcionalidade em cada
+aplicação e são as comparáveis; as colunas **total** cobrem conjuntos de arquivos diferentes por
+repositório e **não são comparáveis** — a redução citada é a da coluna `app` (1.832 → 1.627 tokens,
+~11%):
+
+| app | arquivos (app) | tokens (app, est.) | arquivos (total, não comparável) | tokens (total, est., não comparável) |
+|---|---|---|---|---|
+| helpdesk-slices | 1 | 1627 | 62 | 140052 |
+| helpdesk-conventional | 5 | 1832 | 5 | 1832 |
+
+### 3. Taxa de Aprovação da Suíte de Testes
 ```text
-🚀 Benchmark de Mutações SQLite em Produção:
-────────────────────────────────────────────
-Vazão (Throughput):  4.001,28 requisições/segundo (10.7x mais rápido vs 375 req/s não otimizado)
-Latência (p50):      1,10 ms (latência 22.7x menor vs 24,99 ms não otimizado)
-Latência (p95):      17,47 ms
-Latência (p99):      20,45 ms
-Falhas/Erros:        0 (0,00%)
-Pragmas Ativos:      WAL, busy_timeout=5000, synchronous=NORMAL, cache_size=-64000
-────────────────────────────────────────────
-```
-
-### 3. Benchmark de Superfície de Contexto (`bun run bench`)
-Comparação entre duas funcionalidades idênticas ("abrir chamado" e "atribuir chamado") implementadas em fatias verticais contra arquitetura em camadas tradicional:
-
-| Arquitetura | Arquivos Tocados / Feature | Superfície de Tokens da Aplicação | Custo de Coordenação |
-|---|---|---|---|
-| **Fatias Verticais SynapseJS** | **1 arquivo** | **~1.400 tokens** | $\mathcal{O}(1)$ contexto contíguo |
-| **Arquitetura Tradicional em Camadas** | **5 arquivos** | **~1.830 tokens** | $\mathcal{O}(N)$ espalhado em várias pastas |
-
-### 4. Taxa de Aprovação da Suíte de Testes
-```text
-424 pass
+567 pass
 0 fail
 1637 chamadas expect()
-424 testes executados em 56 arquivos. (100% Gates Verdes)
+567 testes executados em 70 arquivos. (100% Gates Verdes)
 ```
 
 ---
@@ -508,7 +511,7 @@ synapse impact <alvo>               # Calcula o raio de impacto entre FKs, tabel
 synapse new-slice <domínio> <nome>  # Cria fatia vertical (templates: create, list, crud, login, 2fa, oauth)
 synapse new-shared <nome>           # Cria módulo de domínio compartilhado em src/shared/<nome>.ts com transação
 synapse skeleton                    # Regenera .codebase/repo-map.d.ts e .codebase/db-schema.d.ts
-synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (15 ferramentas incl. Jev System 1)
+synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (18 ferramentas incl. Jev System 1)
 synapse build [--standalone]        # Pré-compila micro-bundles de browser ou pacote standalone
 synapse worker                      # Inicia worker contínuo para filas de background jobs
 synapse contract [--markdown]       # Emite especificação técnica de contratos do framework

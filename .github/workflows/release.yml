@@ -16,26 +16,25 @@ jobs:
       id-token: write
 
     steps:
+      # Actions are pinned to full commit identifiers, and the toolchain is an explicit
+      # version rather than a moving release channel.
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
         with:
-          bun-version: latest
+          bun-version: 1.4.2
 
       - name: Setup Node (for npm publish)
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@39370e3970a6d050c480ffad4ff0ed4d3fdee5af # v4.1.0
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Upgrade npm for Trusted Publishing OIDC support
-        run: npm install -g npm@latest
-
       - name: Install Dependencies
         run: |
-          bun install
+          bun install --frozen-lockfile
           node -e "const fs=require('fs'); if (!fs.existsSync('node_modules/synapsejs') && fs.existsSync('packages/synapse')) { try { fs.symlinkSync('../packages/synapse', 'node_modules/synapsejs', 'junction'); } catch(e){} }"
 
       - name: Tag Must Match The Package Version
@@ -58,6 +57,9 @@ jobs:
       - name: Typecheck
         run: bun run check
 
+      - name: Documentation Drift Gate
+        run: bun run docs:check
+
       - name: Split Gates
         run: bun run split
 
@@ -67,6 +69,10 @@ jobs:
       - name: Publish Rehearsal (the artifact a stranger would install)
         run: bun run rehearse:publish
 
+      # Credentials: npm authenticates with the long-lived NPM_TOKEN secret declared
+      # below, not with OIDC trusted publishing. `--provenance` attests the build
+      # through the workflow's `id-token: write` permission; the publish credential
+      # itself is the token.
       - name: Publish To npm
         run: npm publish --access public --provenance
         working-directory: packages/synapse

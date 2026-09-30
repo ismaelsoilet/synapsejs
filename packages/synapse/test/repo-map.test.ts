@@ -3,6 +3,7 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
+import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 
 const exampleApp = path.resolve(import.meta.dir, '../../../examples/enterprise-crm');
 const conventionalApp = path.resolve(import.meta.dir, 'fixtures', 'conventional-app');
@@ -23,9 +24,16 @@ afterAll(() => {
 
 describe('compressRepositoryAST', () => {
   it('maps every module the project compiles', () => {
-    expect(stats.totalSlices).toBe(3);
-    // 3 slices + the app's e2e script, which its tsconfig also includes
-    expect(stats.totalModules).toBe(4);
+    // The expectation is derived from discovery, so adding a slice to the reference
+    // application does not turn this into a stale constant.
+    const resolution = resolveSlicesDir(exampleApp);
+    expect(resolution.ok).toBe(true);
+
+    const discovered = resolution.ok ? findSliceFiles(resolution.value.slicesDir).length : 0;
+
+    expect(discovered).toBeGreaterThan(0);
+    expect(stats.totalSlices).toBe(discovered);
+    expect(stats.totalModules).toBeGreaterThanOrEqual(discovered);
   });
 
   it('maps a conventional app that has no slices at all', () => {

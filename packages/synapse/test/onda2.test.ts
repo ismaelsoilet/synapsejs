@@ -211,15 +211,21 @@ export function FaqView() {
     });
 
     it('refills tokens over time', async () => {
-      const limiter = new TokenBucketRateLimiter({ capacity: 2, refillRate: 20 }); // 20 tokens/sec = 1 token / 50ms
+      const limiter = new TokenBucketRateLimiter({ capacity: 2, refillRate: 20 }); // 20 tokens/sec
 
       limiter.consume('client-refill', 2);
       expect(limiter.consume('client-refill').allowed).toBe(false);
 
-      // Wait 60ms for refill
-      await new Promise((resolve) => setTimeout(resolve, 60));
+      // Synchronize on the observable transition instead of sleeping a fixed margin
+      // that can be shorter than the window it is meant to prove.
+      const deadline = Date.now() + 2000;
+      let refilled = limiter.consume('client-refill', 1);
 
-      const refilled = limiter.consume('client-refill', 1);
+      while (!refilled.allowed && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        refilled = limiter.consume('client-refill', 1);
+      }
+
       expect(refilled.allowed).toBe(true);
 
       limiter.close();
@@ -235,6 +241,9 @@ export function FaqView() {
       rateLimiter.reset();
       (rateLimiter as any).capacity = 5;
       (rateLimiter as any).refillRate = 0.001; // Avoid race condition under heavy CPU load
+
+      const previousTrust = process.env.SYNAPSE_TRUST_PROXY;
+      process.env.SYNAPSE_TRUST_PROXY = 'true';
 
       try {
         const clientIpHeader = '198.51.100.42';
@@ -263,7 +272,52 @@ export function FaqView() {
         const json = await res.json();
         expect(json.error).toBe('RATE_LIMIT_EXCEEDED');
       } finally {
+        if (previousTrust === undefined) {
+          delete process.env.SYNAPSE_TRUST_PROXY;
+        } else {
+          process.env.SYNAPSE_TRUST_PROXY = previousTrust;
+        }
         await server.stop();
+      }
+    });
+
+    it('ignores a rotated forwarding header unless a trusted proxy is declared', async () => {
+      const trustDbFile = path.join(tempAppDir, '.synapse', 'test-trust.sqlite');
+      const trustDb = new SqliteDatabaseClient(trustDbFile);
+      const server = new SynapseServer(tempAppDir, 0, trustDb);
+      await server.discoverSlices();
+      await server.start();
+
+      const rateLimiter = server.rateLimitEngine;
+      rateLimiter.reset();
+      (rateLimiter as any).capacity = 1;
+      (rateLimiter as any).refillRate = 0.001;
+
+      const previousTrust = process.env.SYNAPSE_TRUST_PROXY;
+      delete process.env.SYNAPSE_TRUST_PROXY;
+
+      try {
+        const call = (forwardedFor: string) =>
+          fetch(`http://localhost:${server.port}/_synapse/rpc/billing/invoices`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-forwarded-for': forwardedFor },
+            body: JSON.stringify({ amount: 100 })
+          });
+
+        const first = await call('198.51.100.10');
+        const rotated = await call('198.51.100.11');
+
+        expect(first.status).toBe(200);
+        // A different forwarded address must not buy a fresh allowance.
+        expect(rotated.status).toBe(429);
+      } finally {
+        if (previousTrust === undefined) {
+          delete process.env.SYNAPSE_TRUST_PROXY;
+        } else {
+          process.env.SYNAPSE_TRUST_PROXY = previousTrust;
+        }
+        await server.stop();
+        trustDb.close();
       }
     });
   });
@@ -271,7 +325,7 @@ export function FaqView() {
   describe('2.4 Multipart Form-Data Upload with Size Validation', () => {
     it('accepts valid multipart/form-data upload', async () => {
       const formData = new FormData();
-      const fileContent = new Blob(['relatorio-financeiro-2026.pdf content'], { type: 'application/pdf' });
+      const fileContent = new Blob(['%PDF-1.4\nrelatorio-financeiro-2026 content'], { type: 'application/pdf' });
       formData.append('file', fileContent, 'relatorio.pdf');
 
       const req = new Request('http://localhost:3000/_synapse/files/billing', {

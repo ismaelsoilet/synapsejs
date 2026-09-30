@@ -10,6 +10,7 @@ import { getEventHub } from '../runtime/event-hub';
 import type { DatabaseClient, QueryOptions, WhereCondition } from './database-client';
 import type { SessionContext } from './session-context';
 import { getStorage, type StorageClient } from './storage';
+import { declaredTopic, scopedTopic } from './topics';
 
 export interface StructuredLogger {
   info(message: string, context?: Record<string, unknown>): void;
@@ -32,8 +33,20 @@ export type EnqueueFn = <TPayload>(
 export type BroadcastFn = (topic: string, data: unknown) => number;
 
 export interface CookieOptions {
+  /**
+   * Defaults to true. A cookie written without stating otherwise is not readable by
+   * script; pass `false` explicitly to opt out.
+   */
   httpOnly?: boolean;
+  /**
+   * Defaults to true. A cookie written without stating otherwise is not sent over
+   * plaintext; pass `false` explicitly to opt out.
+   */
   secure?: boolean;
+  /**
+   * Defaults to `lax`. An explicit `strict` or `none` applies instead — the framework
+   * never infers a weaker policy from anything but a deliberate statement.
+   */
   sameSite?: 'lax' | 'strict' | 'none';
   maxAge?: number;
   path?: string;
@@ -46,6 +59,12 @@ export interface PendingCookie {
   options?: CookieOptions;
 }
 
+/**
+ * Serializes one response cookie. The safe attributes are the **defaults**: a cookie
+ * written with no options at all is HttpOnly, Secure and SameSite=Lax, and only an
+ * explicit `false` (or a different `sameSite`) changes that. This is a breaking
+ * change from the previous opt-in behaviour.
+ */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
   const parts = [`${encodeURIComponent(name)}=${encodeURIComponent(value)}`];
   if (options.maxAge !== undefined) {
@@ -56,15 +75,14 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   }
   const cleanPath = options.path && !/[\r\n;\s]/.test(options.path) ? options.path.trim() : '/';
   parts.push(`Path=${cleanPath}`);
-  if (options.secure) {
+  if (options.secure ?? true) {
     parts.push('Secure');
   }
-  if (options.httpOnly) {
+  if (options.httpOnly ?? true) {
     parts.push('HttpOnly');
   }
-  if (options.sameSite) {
-    parts.push(`SameSite=${options.sameSite.charAt(0).toUpperCase() + options.sameSite.slice(1).toLowerCase()}`);
-  }
+  const sameSite = options.sameSite ?? 'lax';
+  parts.push(`SameSite=${sameSite.charAt(0).toUpperCase() + sameSite.slice(1).toLowerCase()}`);
   return parts.join('; ');
 }
 
@@ -101,9 +119,6 @@ export interface ActionContext<TServices = Record<string, unknown>> extends Data
 
   /** Internal list of pending cookies to be set on the response */
   readonly _pendingCookies?: PendingCookie[];
-
-  /** Lazy adapter for Kysely (if configured or requested) */
-  readonly kysely?: unknown;
 }
 
 export function createDefaultLogger(sliceName?: string): StructuredLogger {
@@ -130,7 +145,11 @@ export interface ActionContextOptions<TServices = Record<string, unknown>> {
   storage?: StorageClient;
   broadcast?: BroadcastFn;
   invalidateCache?: (tags?: string[]) => void;
-  kysely?: unknown;
+  /**
+   * The slice key (`<domain>/<name>`) this context belongs to. Publishing into a
+   * declared topic is only allowed for the declaration's owner.
+   */
+  sliceOwner?: string;
 }
 
 /**
@@ -148,10 +167,29 @@ export function createActionContext<TServices = Record<string, unknown>>(
     logger = createDefaultLogger(),
     enqueue = async () => 'job_noop',
     storage = getStorage(),
-    broadcast = (topic: string, data: unknown) => getEventHub().publish(topic, data),
     invalidateCache = () => {},
-    kysely
+    sliceOwner
   } = options;
+
+  /**
+   * Publishing is declared, not inferred: the topic must exist in the session's
+   * tenant scope and this feature must be its declared owner. Anything else is
+   * rejected and notifies nobody.
+   */
+  const broadcast: BroadcastFn =
+    options.broadcast ??
+    ((topic: string, data: unknown) => {
+      const declaration = declaredTopic(topic, tenantId);
+
+      if (!declaration || (sliceOwner && declaration.owner !== sliceOwner)) {
+        logger.warn(
+          `Broadcast recusado no tópico "${topic}": não declarado${sliceOwner ? ` por ${sliceOwner}` : ''} (defineTopic).`
+        );
+        return 0;
+      }
+
+      return getEventHub().publish(scopedTopic(topic, tenantId), data);
+    });
 
   const pendingCookies: PendingCookie[] = [];
   const setCookie = (name: string, value: string, options?: CookieOptions) => {
@@ -171,7 +209,6 @@ export function createActionContext<TServices = Record<string, unknown>>(
     invalidateCache,
     setCookie,
     _pendingCookies: pendingCookies,
-    kysely,
 
     // DatabaseClient proxy methods
     query: <T = unknown>(sql: string, params?: unknown[]) => db.query<T>(sql, params),
@@ -195,8 +232,8 @@ export function createActionContext<TServices = Record<string, unknown>>(
           logger,
           enqueue,
           storage,
-          broadcast,
-          kysely: txDb
+          broadcast: options.broadcast,
+          sliceOwner
         });
         return operation(txContext);
       });

@@ -12,8 +12,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-424%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="424 Tests Passing"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-15%20Native%20Tools%20(11+4)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 15 Native Tools"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-567%20Passing%20(100%25)-emerald?style=for-the-badge&logo=checkmarx" alt="567 Tests Passing"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-18%20Native%20Tools%20(11+7)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 18 Native Tools"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Validation-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
@@ -22,6 +22,10 @@
 <p align="center">
   🇺🇸 <strong>English</strong> | 🇧🇷 <a href="README.pt-BR.md"><strong>Português do Brasil</strong></a>
 </p>
+
+> **Upgrading from 1.8?** 1.9 is a security-hardening release with four breaking behaviour changes.
+> Read [`docs/migration-1.9.md`](docs/migration-1.9.md) — each change names the symptom, the reason
+> and the flag that restores the old behaviour where restoring it is safe.
 
 ---
 
@@ -100,9 +104,9 @@ The CLI instantly generates:
 
 | Pillar | How SynapseJS Solves It |
 |---|---|
-| **⚡ High-Throughput Engine** | Built directly on native **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). Delivers **53,191 req/s** baseline HTTP routing with sub-millisecond p50 latency under high concurrency. |
+| **⚡ High-Throughput Engine** | Built directly on native **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). `bun run bench:concurrency` measures a static-JSON baseline, a real server-rendered page and a real RPC write arm on your machine — the script prints the numbers and states what it does not measure. |
 | **🛡️ AST Isolation & Leak Gates** | Type-checker reachability partitions slices into `shared.tsx`, `server.ts`, and `client.tsx`. Automated compiler verification gates detect and block SQL, secrets, server modules, or Bun globals from reaching the browser bundle. |
-| **🤖 Native MCP Server (15 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`) exposing 15 native tools (11 core System 2 architectural tools + 4 Jev System 1 reflex triage tools). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🤖 Native MCP Server (18 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`) exposing 18 native tools (11 Synapse architectural tools + 7 Jev System One reflex triage tools). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 System 1 + System 2 Symbiosis** | Native integration with [Jev System One](https://github.com/ismaelsoilet/jev-harness) non-autoregressive decision harness. Triages test failures in 70-300ms (<500µs local), halts circular refactoring doom loops, and dynamically modulates reasoning effort (Astra-Jev). |
 | **🔄 Realtime WebSockets & SSE** | Native Server-Sent Events (`GET /_synapse/sse/:topic*`) + full-duplex WebSockets (`defineSocket`, `useWebSocket`) with automatic 15s heartbeats, client hook `useSubscription`, and multi-instance PostgreSQL `LISTEN/NOTIFY` pub/sub. |
 | **🗄️ Declarative Schema & Rollbacks** | SQL migrations live in slices. Tracked statement-by-statement with SHA-256 idempotency. Supports bidirectional `-- up:` / `-- down:` demarcations and transactional rollbacks (`synapse rollback`). |
@@ -310,12 +314,12 @@ export const sliceCache = defineCache({
 
 ---
 
-## 🛡️ Production Hardening & Resilience (v1.6.0)
+## 🛡️ Production Hardening & Resilience
 
-SynapseJS v1.6.0 introduces enterprise-grade resilience guards designed for zero-trust production deployments:
+The framework ships enterprise-grade resilience guards designed for zero-trust production deployments:
 
-- **SSRF & Network Guard**: `validateExternalUrl` and `isPrivateOrReservedIp` actively block server-side request forgery targeting loopback, private IPv4/IPv6 CIDRs, cloud metadata endpoints (`169.254.169.254`, AWS, GCP, Azure), and DNS rebinding attacks. Static image optimization enforces strict public directory containment.
-- **Anti-Spoofing & Bounded Rate Limiting**: The token bucket rate limiter uses LRU eviction (bounded to 10,000 buckets) and socket-level IP resolution (`trustProxy` validation), preventing memory exhaustion and header-spoofing DoS attacks.
+- **SSRF & Network Guard**: `validateExternalUrl` and `isPrivateOrReservedIp` actively block server-side request forgery targeting loopback, private IPv4/IPv6 CIDRs and cloud metadata endpoints (`169.254.169.254`, AWS, GCP, Azure). The outbound fetch then connects to the exact address that passed validation (the hostname is never resolved a second time) and refuses redirects, so a rebinding change between check and fetch cannot reach a private address. Static image optimization enforces strict public directory containment.
+- **Anti-Spoofing & Bounded Rate Limiting**: The token bucket rate limiter bounds its registry (10,000 client identities by default) and refuses the excess when it is saturated instead of evicting a live counter, so a rotating-identity flood cannot reset an abuser's allowance. Forwarding headers are honoured only under an explicit `SYNAPSE_TRUST_PROXY=true`; otherwise the socket address is the identity. State is per process — see `packages/synapse/README.md`.
 - **Bounded LRU SSR Cache**: In-memory micro-cache bounds storage with LRU eviction and normalizes URLs by sorting query parameters and stripping ad/tracking tokens (`utm_*`, `fbclid`, `gclid`).
 - **Strict Payload Guards**: Automated HTTP 413 rejection for oversized RPC payloads (`maxRpcPayloadBytes`, 5MB) and Webhook payloads (`maxWebhookPayloadBytes`, 10MB), with clean HTTP 400 on malformed JSON bodies.
 - **Zombie Job Auto-Recovery**: SQLite and PostgreSQL queue engines track `locked_at` timestamps to automatically reclaim orphaned jobs when workers crash, preventing silent pipeline starvation.
@@ -348,7 +352,7 @@ SynapseJS pairs natively with **[Jev System One](https://github.com/ismaelsoilet
 │ • Local heuristics (< 500µs)       │  │ • Vertical slices (*.slice.tsx)│
 │ • Non-autoregressive test-gate     │  │ • Fast-Check PBT oracles       │
 │ • Circular loop abort-check        │  │ • Zero-Leak AST Splitter       │
-│ • Astra-Jev reasoning modulation   │  │ • Native MCP Server (15 tools) │
+│ • Astra-Jev reasoning modulation   │  │ • Native MCP Server (18 tools) │
 │ • Zero-token waste on env failures │  │ • Slices DDL & auto migrations │
 └────────────────────────────────────┘  └────────────────────────────────┘
 ```
@@ -390,7 +394,7 @@ When no remote Jev endpoint or API key is configured, Jev-Harness seamlessly fal
 
 SynapseJS is the first framework built from day one to be consumed and operated by **autonomous AI agents** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **15 native MCP tools** over stdio JSON-RPC 2.0:
+Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **18 native MCP tools** over stdio JSON-RPC 2.0:
 
 ```bash
 bun run mcp
@@ -410,7 +414,7 @@ bun run mcp
 }
 ```
 
-### The 15 Native MCP Tools
+### The 18 Native MCP Tools
 
 | MCP Tool | Domain | Capability |
 |---|---|---|
@@ -436,50 +440,47 @@ bun run mcp
 
 To eliminate vaporware, all metrics below are generated by automated benchmark scripts included in this repository:
 
-### 1. HTTP Concurrency & Baseline Routing (`bun run bench:concurrency`)
-Testing local `Bun.serve` HTTP server baseline routing (`/_synapse/api/health`) under 50 concurrent connections over 1,000 real HTTP requests:
+### 1. Concurrency: three arms, measured by the run (`bun run bench:concurrency`)
+
+The script boots the reference application *with its slices discovered* (it refuses to run when
+zero are found), and drives three arms with a load generator that runs in a **separate process**:
 
 ```text
-🚀 Concurrency Benchmark Results (Baseline HTTP Routing):
-────────────────────────────────────────────
-Throughput:          53,191 requests/sec
-Latency (p50):       0.53 ms
-Latency (p95):       7.81 ms
-Latency (p99):       8.00 ms
-Failed Requests:     0 (0.00%)
-Memory Delta:        < 6 MB
-────────────────────────────────────────────
+SYNAPSE_CONCURRENCY_BENCHMARK — examples/enterprise-crm, 3 slices, 300 requests/arm at concurrency 20
+
+baseline-static-json (not comparable: no render, no database)
+  throughput 48797.91 req/s · p50 0.28 ms · p95 1.53 ms · p99 1.71 ms · errors 0
+ssr-render (loader + component + shell)
+  throughput 4261.13 req/s · p50 3.45 ms · p95 13.51 ms · p99 18.13 ms · errors 0
+rpc-persisted-write (action + SQLite write)
+  throughput 3413.91 req/s · p50 2.96 ms · p95 21.37 ms · p99 21.84 ms · errors 0
+
+Does not measure: multi-instance behaviour, PostgreSQL, real network latency.
 ```
 
-### 2. Fullstack DB Mutation Throughput (`bun run bench:production`)
-Testing end-to-end fullstack RPC database mutations with SQLite under 40 concurrent clients across 500 real database transactions:
+The numbers come from one run on one host: they are a measurement, not a specification. Re-run the
+script for your machine. The `baseline-static-json` arm is a floor and is **not comparable** to the
+framework arms — it renders nothing and touches no database. The rate limiter is widened for the
+run, so the arms measure rendering and persistence rather than the allowance.
 
+### 2. Context Surface Benchmark (`bun run bench`)
+
+Two identical features ("open ticket", "assign ticket") implemented as vertical slices versus
+conventional layering. The **app** columns cover each application's own feature files and are the
+comparable ones; the **total** columns cover different file sets per repository and are **not
+comparable** — the quoted reduction is the `app` column (1,832 → 1,627 tokens, ~11%):
+
+| app | arquivos (app) | tokens (app, est.) | arquivos (total, not comparable) | tokens (total, est., not comparable) |
+|---|---|---|---|---|
+| helpdesk-slices | 1 | 1627 | 62 | 140052 |
+| helpdesk-conventional | 5 | 1832 | 5 | 1832 |
+
+### 3. Test Suite Pass Rate
 ```text
-🚀 Production SQLite DB Mutations Benchmark:
-────────────────────────────────────────────
-Throughput:          4,001.28 requests/sec (10.7x faster vs unoptimized 375 req/s)
-Latency (p50):       1.10 ms (22.7x lower latency vs unoptimized 24.99 ms)
-Latency (p95):       17.47 ms
-Latency (p99):       20.45 ms
-Failed Requests:     0 (0.00%)
-Pragmas:             WAL, busy_timeout=5000, synchronous=NORMAL, cache_size=-64000
-────────────────────────────────────────────
-```
-
-### 3. Context Surface Benchmark (`bun run bench`)
-Comparing two identical enterprise features ("open ticket" and "assign ticket") implemented in vertical slices versus conventional layered architecture:
-
-| Architecture | Files Touched / Feature | App Token Surface | Total Coordination Cost |
-|---|---|---|---|
-| **SynapseJS Vertical Slices** | **1 file** | **~1,400 tokens** | $\mathcal{O}(1)$ contiguous context |
-| **Conventional Layered Architecture** | **5 files** | **~1,830 tokens** | $\mathcal{O}(N)$ scattered across folders |
-
-### 4. Test Suite Pass Rate
-```text
-424 pass
+567 pass
 0 fail
 1637 expect() calls
-Ran 424 tests across 56 files. (100% Green Gates)
+Ran 567 tests across 70 files. (100% Green Gates)
 ```
 
 ---
@@ -508,7 +509,7 @@ synapse impact <target>             # Calculates blast radius across FKs, tables
 synapse new-slice <domain> <name>   # Scaffolds vertical slice (templates: create, list, crud, login, 2fa, oauth)
 synapse new-shared <name>           # Scaffolds shared domain module in src/shared/<name>.ts with transaction pattern
 synapse skeleton                    # Regenerates .codebase/repo-map.d.ts & .codebase/db-schema.d.ts
-synapse mcp                         # Starts native Model Context Protocol stdio server (15 tools incl. Jev System 1)
+synapse mcp                         # Starts native Model Context Protocol stdio server (18 tools incl. Jev System One)
 synapse build [--standalone]        # Pre-builds client micro-bundles or standalone release
 synapse worker                      # Starts continuous background jobs queue worker
 synapse contract [--markdown]       # Emits framework authoring contract specifications

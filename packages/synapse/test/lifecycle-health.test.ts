@@ -51,7 +51,8 @@ describe('Active Healthcheck & Database Liveness (G-12)', () => {
 
       expect(data.status).toBe('DEGRADED');
       expect(data.database).toBe('disconnected');
-      expect(typeof data.databaseError).toBe('string');
+      // The unauthenticated payload discloses the verdict, never the driver error.
+      expect(data.databaseError).toBeUndefined();
     } finally {
       await synapse.stop();
     }

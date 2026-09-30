@@ -24,7 +24,10 @@ export interface ImpactedSlice {
 }
 
 export interface ImpactAnalysisReport {
-  status: 'PASS';
+  status: 'PASS' | 'FAIL';
+  /** Present only when the target could not be resolved in this project. */
+  code?: 'TARGET_NOT_RESOLVED';
+  message?: string;
   operation: 'IMPACT_ANALYSIS';
   target: string;
   targetType: 'slice' | 'table' | 'shared_module';
@@ -156,6 +159,8 @@ export function analyzeImpact(target: string, rootDir: string = process.cwd()): 
 
   const impactedMap = new Map<string, ImpactedSlice>();
 
+  let resolved = false;
+
   if (targetType === 'slice') {
     const targetSlice = sliceDataList.find(
       (s) =>
@@ -163,6 +168,8 @@ export function analyzeImpact(target: string, rootDir: string = process.cwd()): 
         s.filePath === cleanTarget ||
         s.filePath.endsWith(`/${cleanTarget}`)
     );
+
+    resolved = Boolean(targetSlice);
 
     if (targetSlice) {
       impactedMap.set(targetSlice.sliceName, {
@@ -208,6 +215,10 @@ export function analyzeImpact(target: string, rootDir: string = process.cwd()): 
   } else if (targetType === 'shared_module') {
     const sharedName = path.basename(cleanTarget, path.extname(cleanTarget));
 
+    resolved =
+      fs.existsSync(path.resolve(rootDir, cleanTarget)) ||
+      fs.existsSync(path.join(rootDir, 'src', 'shared', `${sharedName}.ts`));
+
     for (const slice of sliceDataList) {
       if (slice.sharedImports.includes(sharedName)) {
         impactedMap.set(slice.sliceName, {
@@ -222,6 +233,9 @@ export function analyzeImpact(target: string, rootDir: string = process.cwd()): 
   } else {
     // targetType === 'table'
     const tableName = cleanTarget.toLowerCase();
+
+    // A table exists in this project when some committed slice declares it.
+    resolved = sliceDataList.some((slice) => slice.tablesCreated.includes(tableName));
 
     for (const slice of sliceDataList) {
       if (slice.tablesCreated.includes(tableName)) {
@@ -265,6 +279,22 @@ export function analyzeImpact(target: string, rootDir: string = process.cwd()): 
 
   if (impactedSlices.length > 0) {
     recommendedCommands.push('synapse test');
+  }
+
+  if (!resolved) {
+    // An unresolvable target is a failure, not a successful empty result. Nothing
+    // was verified, so reporting PASS would be the same defect discovery refuses.
+    return {
+      status: 'FAIL',
+      code: 'TARGET_NOT_RESOLVED',
+      message: `Alvo '${cleanTarget}' não existe no projeto: nenhuma fatia, módulo compartilhado ou tabela corresponde.`,
+      operation: 'IMPACT_ANALYSIS',
+      target: cleanTarget,
+      targetType,
+      totalImpacted: 0,
+      impactedSlices: [],
+      recommendedCommands: []
+    };
   }
 
   return {

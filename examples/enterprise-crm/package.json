@@ -10,7 +10,7 @@
     "mcp": "synapse mcp",
     "skeleton": "synapse skeleton",
     "test": "synapse test",
-    "test:e2e": "bun run scripts/e2e-server-test.ts",
+    "test:e2e": "bun test ../../packages/synapse/test/e2e-roundtrip.test.ts",
     "new-slice": "synapse new-slice",
     "split": "synapse split"
   },

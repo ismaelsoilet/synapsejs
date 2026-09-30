@@ -159,7 +159,9 @@ export async function validateExternalUrl(
     return { ok: true, resolvedIp: hostname };
   }
 
-  // DNS Pre-check to prevent DNS rebinding
+  // Pre-flight resolution. The address returned here is what the caller must connect
+  // to — this check alone does not prevent rebinding, pinning the fetch to
+  // `resolvedIp` is what does (see fetchPinnedExternal in runtime/server.ts).
   try {
     const records = await dns.promises.lookup(hostname, { all: true });
     if (!records || records.length === 0) {

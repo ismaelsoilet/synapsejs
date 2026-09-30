@@ -4,7 +4,9 @@ import { checkSchemaDrift } from '../src/compiler/schema-drift';
 import { SqliteDatabaseClient } from '../src/core';
 
 describe('Schema Drift Detection', () => {
-  const exampleCrmDir = path.resolve(__dirname, '../../../examples/enterprise-crm');
+  // A framework-owned fixture app: the drift expectations below are about the
+  // framework's comparison, not about how many slices an example happens to ship.
+  const fixtureAppDir = path.resolve(__dirname, 'fixtures', 'drift-app');
 
   const validCrmDdl = `
     CREATE TABLE customers (
@@ -35,7 +37,7 @@ describe('Schema Drift Detection', () => {
 
   test('reports missing tables when database is empty', async () => {
     const db = new SqliteDatabaseClient(':memory:');
-    const report = await checkSchemaDrift(exampleCrmDir, db);
+    const report = await checkSchemaDrift(fixtureAppDir, db);
 
     expect(report.status).toBe('DRIFT_DETECTED');
     expect(report.totalDeclaredTables).toBe(3);
@@ -48,7 +50,7 @@ describe('Schema Drift Detection', () => {
     const db = new SqliteDatabaseClient(':memory:');
     db.initSchema(validCrmDdl);
 
-    const report = await checkSchemaDrift(exampleCrmDir, db);
+    const report = await checkSchemaDrift(fixtureAppDir, db);
     expect(report.status).toBe('PASS');
     expect(report.drift.missingTables).toHaveLength(0);
     expect(report.drift.missingColumns).toHaveLength(0);
@@ -84,7 +86,7 @@ describe('Schema Drift Detection', () => {
       );
     `);
 
-    const report = await checkSchemaDrift(exampleCrmDir, db);
+    const report = await checkSchemaDrift(fixtureAppDir, db);
     expect(report.status).toBe('DRIFT_DETECTED');
     expect(report.drift.missingTables).toHaveLength(0);
     expect(report.drift.missingColumns).toHaveLength(1);
@@ -106,7 +108,7 @@ describe('Schema Drift Detection', () => {
       );
     `);
 
-    const report = await checkSchemaDrift(exampleCrmDir, db);
+    const report = await checkSchemaDrift(fixtureAppDir, db);
     expect(report.status).toBe('DRIFT_DETECTED');
     expect(report.drift.orphanTables).toContain('legacy_audit_log');
   });

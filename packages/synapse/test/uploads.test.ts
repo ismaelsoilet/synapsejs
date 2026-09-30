@@ -152,3 +152,66 @@ describe('saveUpload', () => {
     expect(fs.readFileSync(path.join(sandbox, stored), 'utf-8')).toBe('conteudo real');
   });
 });
+
+describe('upload accept policy', () => {
+  it('refuses a file whose bytes do not match the declared extension', async () => {
+    const outcome = await saveUpload(
+      new Request('http://localhost/_synapse/files/docs/x?name=falso.pdf', {
+        method: 'POST',
+        body: 'isto nao e um pdf'
+      }),
+      { baseDir: sandbox, domain: 'docs', session }
+    );
+
+    expect(outcome.status).toBe(415);
+    expect(outcome.body.error).toBe('UNSUPPORTED_FILE_TYPE');
+    const directory = path.join(sandbox, '.synapse', 'uploads', 'docs');
+    const stored = fs.existsSync(directory) ? fs.readdirSync(directory).filter((f) => f.endsWith('.pdf')) : [];
+    expect(stored).toEqual([]);
+  });
+
+  it('refuses an extension outside the policy even when the bytes are text', async () => {
+    const outcome = await saveUpload(
+      new Request('http://localhost/_synapse/files/docs/x?name=script.sh', {
+        method: 'POST',
+        body: 'echo oi'
+      }),
+      { baseDir: sandbox, domain: 'docs', session }
+    );
+
+    expect(outcome.status).toBe(415);
+    expect(outcome.body.error).toBe('UNSUPPORTED_FILE_TYPE');
+  });
+
+  it('accepts a real PDF whose declared extension matches its magic bytes', async () => {
+    const outcome = await saveUpload(
+      new Request('http://localhost/_synapse/files/docs/x?name=relatorio.pdf', {
+        method: 'POST',
+        body: '%PDF-1.4\nconteudo binario'
+      }),
+      { baseDir: sandbox, domain: 'docs', session }
+    );
+
+    expect(outcome.status).toBe(200);
+    expect(String(outcome.body.path).endsWith('-relatorio.pdf')).toBe(true);
+  });
+
+  it('never echoes a filesystem error message or an absolute path to the client', async () => {
+    const blockedBase = path.join(sandbox, 'blocked');
+    fs.mkdirSync(path.join(blockedBase, '.synapse', 'uploads'), { recursive: true });
+    fs.writeFileSync(path.join(blockedBase, '.synapse', 'uploads', 'docs'), 'not a directory');
+
+    const outcome = await saveUpload(
+      new Request('http://localhost/_synapse/files/docs/x?name=nota.txt', {
+        method: 'POST',
+        body: 'conteudo'
+      }),
+      { baseDir: blockedBase, domain: 'docs', session }
+    );
+
+    expect(outcome.status).toBe(500);
+    expect(outcome.body.error).toBe('WRITE_FAILED');
+    expect(JSON.stringify(outcome.body)).not.toContain(blockedBase);
+    expect(JSON.stringify(outcome.body)).not.toContain('/');
+  });
+});

@@ -1,8 +1,9 @@
 /**
  * SynapseJS - Database Context & Query Builder Abstraction
  *
- * Provides a clean, type-safe persistence contract without reflection-based ORM bloat.
- * Compatible with raw parameterized SQL, Kysely, and Drizzle query builders.
+ * Provides a clean, type-safe persistence contract without reflection-based ORM bloat:
+ * raw parameterized SQL plus a relational query builder, with no adapter for any other
+ * query builder.
  */
 
 export interface QueryResult<T = unknown> {
@@ -112,6 +113,24 @@ export interface DatabaseClient {
 /**
  * In-memory Mock Database Client for deterministic testing and PBT (Fast-Check).
  */
+/** Equality and `eq`/`in` matching, which is what the in-memory store can honour honestly. */
+function rowMatchesCondition(row: Record<string, unknown>, where: WhereCondition): boolean {
+  return Object.entries(where).every(([column, condition]) => {
+    const value = row[column];
+
+    if (condition !== null && typeof condition === 'object' && 'op' in (condition as Record<string, unknown>)) {
+      const { op, val } = condition as { op: string; val: unknown };
+
+      if (op === 'eq') return value === val;
+      if (op === 'in') return Array.isArray(val) && val.includes(value);
+
+      return false;
+    }
+
+    return value === condition;
+  });
+}
+
 export class MockDatabaseClient implements DatabaseClient {
   private tables: Map<string, Array<Record<string, unknown>>> = new Map();
   private queryHandlers: Array<{
@@ -228,18 +247,61 @@ export class MockDatabaseClient implements DatabaseClient {
   async update<T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition): Promise<T[]> {
     const { sql, params } = compileUpdate(table, data, where);
     const results = await this.query<T>(sql, params);
-    if (results.length > 0) return results;
-    return [data as T];
+
+    if (results.length > 0) {
+      return results;
+    }
+
+    // No row matched, so no row is returned: reporting the payload back would be a
+    // write that never happened.
+    const rows = this.tables.get(table);
+
+    if (!rows) {
+      return [];
+    }
+
+    const updated = rows.filter((row) => rowMatchesCondition(row, where));
+    for (const row of updated) {
+      Object.assign(row, data);
+    }
+
+    return updated as unknown as T[];
   }
 
   async delete(table: string, where: WhereCondition): Promise<number> {
     const { sql, params } = compileDelete(table, where);
     const results = await this.query(sql, params);
-    return results.length > 0 ? results.length : 1;
+
+    if (results.length > 0) {
+      return results.length;
+    }
+
+    // A delete that matched nothing removed nothing.
+    const rows = this.tables.get(table);
+
+    if (!rows) {
+      return 0;
+    }
+
+    const survivors = rows.filter((row) => !rowMatchesCondition(row, where));
+    const removed = rows.length - survivors.length;
+    this.tables.set(table, survivors);
+
+    return removed;
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
-    return operation(this);
+    const snapshot = new Map(
+      Array.from(this.tables.entries()).map(([table, rows]) => [table, rows.map((row) => ({ ...row }))])
+    );
+
+    try {
+      return await operation(this);
+    } catch (error) {
+      // A rolled-back transaction discards the writes made inside it.
+      this.tables = snapshot;
+      throw error;
+    }
   }
 
   close(): void {}

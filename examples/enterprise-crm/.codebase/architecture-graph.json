@@ -17,6 +17,38 @@
     "hasPBT": true
   },
   {
+    "slicePath": "src/slices/catalog/products.slice.tsx",
+    "exportedTypes": [
+      "CatalogInputSchema",
+      "CatalogInput",
+      "sliceSchema",
+      "CatalogRefreshOutput",
+      "CatalogViewProps"
+    ],
+    "exportedFunctions": [
+      "catalogProductsLoader",
+      "catalogRefreshAction",
+      "CatalogView"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/chat/room.slice.tsx",
+    "exportedTypes": [
+      "RoomInputSchema",
+      "RoomInput",
+      "AnnounceOutput",
+      "RoomViewProps"
+    ],
+    "exportedFunctions": [
+      "announceRoomAction",
+      "RoomView"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
     "slicePath": "src/slices/customers/create-customer.slice.tsx",
     "exportedTypes": [
       "CustomerInputSchema",
@@ -28,6 +60,22 @@
     "exportedFunctions": [
       "createCustomerAction",
       "CustomerTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/jobs/enqueue-welcome-email.slice.tsx",
+    "exportedTypes": [
+      "WelcomeEmailInputSchema",
+      "WelcomeEmailInput",
+      "sliceSchema",
+      "WelcomeEmailOutput",
+      "WelcomeEmailTriggerProps"
+    ],
+    "exportedFunctions": [
+      "enqueueWelcomeEmailAction",
+      "WelcomeEmailTrigger"
     ],
     "hasUI": true,
     "hasPBT": true
@@ -49,10 +97,22 @@
     "hasPBT": true
   },
   {
-    "slicePath": "scripts/e2e-server-test.ts",
-    "exportedTypes": [],
-    "exportedFunctions": [],
-    "hasUI": false,
-    "hasPBT": false
+    "slicePath": "src/slices/webhooks/stripe-payment.slice.tsx",
+    "exportedTypes": [
+      "PaymentWebhookInputSchema",
+      "PaymentWebhookInput",
+      "sliceSchema",
+      "PaymentWebhookResult",
+      "PaymentAuditOutput",
+      "PaymentAuditViewProps"
+    ],
+    "exportedFunctions": [
+      "paymentWebhookSecret",
+      "stripePaymentWebhook",
+      "paymentAuditAction",
+      "PaymentAuditView"
+    ],
+    "hasUI": true,
+    "hasPBT": true
   }
 ]

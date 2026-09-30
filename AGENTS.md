@@ -24,7 +24,7 @@ packages/synapse/src/         framework source
   client/                     DataTable, DataForm, Button, Card, Badge, Pagination, useAction, useLoaderData, SynapseProvider
   compiler/                   slice-discovery, migration-runner, db-schema-generator, fields-parser, scaffolder, splitter, repo-map, standalone-builder
   runtime/server.ts           Bun.serve router + SSR shell + RPC dispatcher + SynapseProvider
-  mcp/server.ts               MCP stdio server (11 tools)
+  mcp/server.ts               MCP stdio server (18 tools)
 packages/synapse/bin/synapse.ts   the CLI (single entry point)
 packages/synapse/templates/starter/   the starter template that `synapse new` copies
 packages/synapse/test/        bun:test suite (+ fixtures/ for splitter, oracle and bench fixtures)
@@ -68,6 +68,51 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run mcp` | stdio JSON-RPC | exposes 18 native AI tools via JSON-RPC 2.0 (11 Synapse + 7 Jev) |
 | `synapse worker` | continuous JSON log | background queue worker (SQLite or PostgreSQL) |
 
+### Per-process state (rate limiting, SSR cache, event hub)
+
+The token bucket rate limiter, the server-render micro-cache and the realtime event hub hold their
+state **in the serving process only** — there is no shared backend behind any of them. A restart
+discards rate-limit counters, cached responses and buffered events. A deployment running N instances
+behind a load balancer therefore permits up to N times the per-instance allowance and gets a cache hit
+rate that is per instance, not global.
+
+The limiter's allowance registry is bounded (10,000 client identities by default,
+`config.rateLimit.maxBuckets` or `SYNAPSE_RATE_LIMIT_*`). When the registry is saturated the excess is
+refused with `429` rather than admitted by evicting a live counter: eviction would hand an allowance
+back to a client that had already exhausted it, which is exactly what a rotating-identity flood is
+looking for. Forwarding headers (`x-forwarded-for`, `cf-connecting-ip`) are honoured only when the
+deployment explicitly declares a trusted proxy (`SYNAPSE_TRUST_PROXY=true` or `config.trustProxy`);
+otherwise the immediate peer address is the identity.
+
+### Realtime authorisation model
+
+Both realtime transports are **declared, not inferred**: a name is not a permission.
+
+A slice declares a topic with `defineTopic({ name, owner, readRoles?, tenantId?, public? })`.
+The event-stream gateway (`GET /_synapse/sse/<topic>`) refuses a topic it does not know
+(`404 TOPIC_NOT_FOUND`), refuses an unauthenticated subscriber (`401 UNAUTHENTICATED`, unless the
+topic is declared `public`), refuses a session without one of the declared roles
+(`403 TOPIC_FORBIDDEN`), and resolves the topic **inside the subscriber's tenant** — two tenants
+using the same name never observe each other's events, and a name declared only for another tenant
+is refused without disclosing that it exists.
+
+Publishing goes through `ctx.broadcast(topic, data)`: only the slice named as `owner` may write
+into a topic, and a publish from anywhere else notifies zero subscribers. The registered-topic
+count and the concurrent subscriptions are bounded (`config.realtime`, 1000 each by default) and a
+disconnect releases the topic entry, so connect/disconnect churn cannot exhaust the registry.
+Long-lived streams do not consume the token bucket repeatedly, which is why these explicit bounds
+exist.
+
+The WebSocket upgrade (`GET /_synapse/ws/<domain>/<name>`) is **fail-closed on origin**: with no
+`SYNAPSE_ALLOWED_ORIGINS` configured every upgrade is refused, and an absent or opaque (`null`)
+origin is always refused. The one carve-out is a loopback origin, so local development works. Both
+transports share one rate limiter and add a per-client cap on concurrent connections.
+
+Every refusal is JSON — `{ ok: false, error, message }` — with one of
+`UNAUTHENTICATED`, `TOPIC_NOT_FOUND`, `TOPIC_FORBIDDEN`, `RATE_LIMIT_EXCEEDED`,
+`REALTIME_LIMIT_EXCEEDED`, `ORIGIN_NOT_ALLOWED`, the same set `synapse contract` enumerates with
+its statuses.
+
 ### Static files, CORS and logs
 
 `public/` is served when it exists, and only `public/` — the path is normalized and refused if it
@@ -105,6 +150,14 @@ Discovery never silently succeeds. When nothing was verified, the command **fail
 - `UNKNOWN_FLAG` — an unrecognised flag was passed.
 - `REPO_MAP_MISSING` — MCP `synapse_get_repo_map` before `synapse skeleton`.
 - `SLICE_EXISTS` / `WRITE_FAILED` — scaffolder outcomes (`Err` values, never thrown).
+- `INVALID_PATH_SEGMENT` — a scaffolding argument (`domain`, slice name, shared-module name, project
+  directory) is not a single safe path segment, or the resolved target would leave the directory the
+  operation owns. Nothing is written.
+- `INVALID_FIELD_NAME` — a `--fields` name or enum value is not a plain identifier, so nothing is
+  generated from it. Nothing is written.
+
+A containment failure is printed as JSON on **standard output** with a non-zero exit code, like every
+other machine-readable failure.
 
 An empty successful result is a bug. If you see `PASS` with `totalSlices: 0`, report it.
 
@@ -163,7 +216,7 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 39. `In-Memory SSR Micro-Cache & ISR` — `defineCache({ ttlSeconds, staleWhileRevalidate })` integrated in loaders and SSR pipeline.
 40. `Shared Vendor Chunks via Import Maps` — `compiler.vendorChunks` config automatically externalizes React, ReactDOM, and shared runtime libraries into CDN/cached vendor files.
 41. `Standardized Shared Module Scaffolding` — `synapse new-shared <name>` scaffolding clean, type-safe business modules in `src/shared/` to enforce domain isolation.
-42. `SQLite WAL Pragmas & Concurrency Tuning` — Auto-configured `busy_timeout = 5000`, `synchronous = NORMAL`, `cache_size = -64000`, and `temp_store = MEMORY` for 10.7x throughput increase (4,000+ req/s).
+42. `SQLite WAL Pragmas & Concurrency Tuning` — Auto-configured `busy_timeout = 5000`, `synchronous = NORMAL`, `cache_size = -64000`, and `temp_store = MEMORY`. Measured with `bun run bench:concurrency` (real SSR render and RPC write arms); the script prints its own numbers and states what it does not measure.
 43. `Network Guard & SSRF Protection` — `isPrivateOrReservedIp` and `validateExternalUrl` preventing private network exploitation, loopback probes, and DNS rebinding; path traversal immunity on static image optimization.
 44. `Anti-Spoofing & LRU Rate Limiting` — Bounded LRU token bucket limiter with `trustProxy` IP resolution protecting against proxy spoofing and memory exhaustion.
 45. `Bounded LRU SSR Micro-Cache` — `BoundedLruCache` with parameter normalization (sorting keys, stripping tracking params) and deterministic LRU eviction.
@@ -185,6 +238,26 @@ One file per feature, at `<app>/src/slices/<domain>/<name>.slice.tsx`, exporting
 A property that generates floats must pass `noNaN: true` (and `noDefaultInfinity: true`) to
 `fc.double`: a NaN the schema rejects becomes a failing property that reports nothing wrong with the
 code — the exact flake `generate-invoice` had.
+
+### Write-surface containment
+
+Every surface that turns caller input into a filesystem path segment goes through the **one**
+validator in `core/path-guard.ts`: slice scaffolding (`domain` and `name`), shared-module scaffolding
+(`name`), the CRUD scaffold, `synapse new`'s project directory and the upload parser. It rejects
+separators, parent traversal, absolute prefixes, empty segments and over-length input, and each
+operation then asserts that the fully resolved target stays inside the directory it owns before
+writing. A rejected argument writes nothing — no file, no directory, no partial tree.
+
+`--fields` names (and enum values) are validated as plain identifiers **before** they are interpolated
+into the generated DDL and TypeScript, so the migration runner is never handed a schema derived from
+an unchecked name. The failures are `INVALID_PATH_SEGMENT` and `INVALID_FIELD_NAME`; both are printed
+as JSON on standard output with a non-zero exit code.
+
+The upload endpoint applies the same rule to the file name and additionally refuses a file whose
+declared extension is outside the configured policy (`SYNAPSE_UPLOAD_ALLOWED_TYPES`, with a documented
+default) or does not match the bytes actually received — the stored name never carries a
+client-chosen extension. The framework does not serve the upload directory; serving it is the
+application's responsibility.
 
 ### Authoring a slice without guessing
 
@@ -209,7 +282,7 @@ The native MCP server (`bun run mcp`) exposes 18 tools for autonomous agents via
 11. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
 12. `synapse_test_gate`: fast semantic gating and failure triage using Jev System One.
 13. `synapse_abort_check`: circular error trajectory and futile work loop detector.
-14. `synapse_verify_step`: acceptance criteria verification oracle using Jev System One.
+14. `synapse_verify_completion`: acceptance criteria verification oracle using Jev System One.
 15. `synapse_reasoning_effort`: dynamic Astra-Jev reasoning effort modulator.
 16. `synapse_triage_error`: classifies arbitrary runtime/test errors into env/transient/deep logic.
 17. `synapse_route_task`: semantically routes development tasks to optimal model tiers.
@@ -219,7 +292,7 @@ The native MCP server (`bun run mcp`) exposes 18 tools for autonomous agents via
 transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by
 parameter and opens `db.transaction` itself. A shared module may throw; the action that calls it
 turns the failure into `Err`, so the no-throw contract of an action survives a transaction. The mock
-database does not roll back — atomicity is proven against a real engine, never with the mock.
+database rolls back its in-memory store — enough for control-flow assertions, while atomicity itself is proven against a real engine.
 
 Slice endpoints are addressed by `<domain>/<name>`: `POST /_synapse/rpc/tickets/create-ticket`. A bare
 slice name still works while it is unique across domains; when two domains own the same name the
@@ -230,11 +303,19 @@ disappears silently — it is listed in `/_synapse/api/health` under `loadErrors
 `x-user-roles`. A request carrying none of them is anonymous. With `SYNAPSE_SESSION_SECRET` set, a
 bearer token must be a signed session (`signSessionToken` / `verifySessionToken`) and its claims win:
 the role headers are ignored, so they stop being forgeable. Without the secret the header behaviour
-above is what applies — convenient locally, not safe in production, and said out loud here. The browser path is the cookie one: the
-SSR shell reads `synapse_token` and `synapse_roles` and forwards them as those headers, so
-`document.cookie = 'synapse_roles=sales'` is enough to exercise a role-protected screen during
-development — and nothing more than that. There is no login flow; a real deployment puts a signed
-session behind the same headers.
+above is what applies **only under the explicit development opt-in**
+(`SYNAPSE_DEV_HEADERS=true`, or a `development`/`test` runtime mode); every other state — unset,
+staging, production — resolves to an anonymous session, and a production deployment without a secret
+refuses to start unless the operator acknowledges the risk (`--acknowledge-insecure`).
+
+The browser path is the cookie one: the SSR shell reads `synapse_token` and `synapse_roles` and
+forwards them as those headers, so `document.cookie = 'synapse_roles=sales'` is enough to exercise a
+role-protected screen during development — and nothing more than that. **A session cookie written by
+browser script (`storeSession`) is readable by any script in the origin**: `document.cookie` cannot
+set `HttpOnly`, by construction. A session that must be unreachable by script is the one the server
+emits through `ctx.setCookie`, which is `HttpOnly`, `Secure` and `SameSite=Lax` unless the caller
+states otherwise. There is no login flow; a real deployment puts a signed session behind the same
+headers.
 
 ## 5. The splitter contract
 
@@ -255,6 +336,16 @@ A server action referenced by a component contributes **only its wire signature*
 
 ## 6. Working rules for this repo
 
+- **Upgrade guide:** `docs/migration-1.9.md` (and `docs/migracao-1.9.pt-BR.md`) explains the four
+  breaking behaviour changes of 1.9 — session secret required in production, identity headers behind
+  an explicit opt-in, declared SSE topics, fail-closed WebSocket origin — plus the cookie defaults and
+  the CDN opt-in. `RELEASE-CHECKLIST.md` holds the operational steps and
+  `docs/releases/1.9.0.md` the release text.
+
+- **Adoption basis:** the project records **zero external adopters**. The feature table states the
+  evidence for each rating; the fact that a capability is `stable` means a test fails when it breaks,
+  not that anyone runs it in production.
+
 - **No claim without a green test.** `README.md` and `synapse info` list every feature with
   `status` (`stable` | `experimental` | `roadmap`) and `evidence`. Do not promote a feature to
   `stable` without a test that fails when the feature breaks. Do not add a claim you cannot point
@@ -267,10 +358,16 @@ A server action referenced by a component contributes **only its wire signature*
   `bun test packages/synapse/test` and `bun run split` green.
 - Deliberately broken fixtures live in `packages/synapse/test/fixtures/` and are excluded from the
   project typecheck on purpose (they exercise the splitter's failure gates).
+- **The feature table is machine-derived.** `packages/synapse/src/project-status.ts` is the single
+  source for the version, the feature inventory (46 `stable`, 3 `experimental`, 1 `roadmap`), the
+  adoption disclosure and the tool count; `synapse info` prints it and `bun run docs:check` fails
+  when a documented number drifts from it. A capability is `stable` only with evidence that fails
+  when it breaks, and `experimental` is used rather than softened prose when the evidence is a
+  template assertion or a test double.
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
-  - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.8.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens in the comparable `app` column (~11% reduction in feature context surface); the `total` columns cover different file sets per repository and must never be compared. Do not exaggerate token ratios.
+  - **Framework version is `1.9.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.
@@ -290,15 +387,16 @@ A server action referenced by a component contributes **only its wire signature*
   issues is accepted by `verifySessionToken`, the same function the server uses — `apps/crm` carries a
   generated copy. Credentials otherwise come from `Authorization`/`x-user-id`/`x-user-roles` headers
   (or the `synapse_token` / `synapse_roles` cookies the browser shell forwards).
-- **CI runs on push** (`.github/workflows/ci.yml`, three jobs: suite, PostgreSQL parity, publish
-  rehearsal). The first real execution is green; before it, every result in this repo had been
-  produced locally by hand.
-- **The release workflow has never executed.** `release.yml` fires on a `v*` tag, and no tag has been
-  pushed, so `npm publish` has never run — that is the remaining unknown of the release path.
+- **CI runs on push** (`.github/workflows/ci.yml`: the framework suite, PostgreSQL parity against a
+  `postgres:16` service, the publish rehearsal and the documentation drift gate).
+- **The release runs on a `v*` tag** whose version matches `packages/synapse/package.json`:
+  `release.yml` re-runs every gate plus the publish rehearsal before `npm publish`.
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
-  of the build now). 63 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
-  JSON-RPC payloads, the SQL boundary, test assertions) plus 2 `noUnusedImports`
+  of the build now). 69 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
+  JSON-RPC payloads, the SQL boundary, test assertions) and `bun run docs:check` re-derives that
+  number with the display limit lifted, so the documented count is the real total rather than the
+  truncated one. The same gate fails on any lint **error**, and the historic 2 `noUnusedImports`
   that are a Biome 2.5.14 false positive (a `type` specifier inside a mixed import that the typecheck
   proves is used — `Cannot find name 'Static'` when removed), silenced in place with a
   `biome-ignore` that states the reason. `useNodejsImportProtocol` is
@@ -313,7 +411,7 @@ A server action referenced by a component contributes **only its wire signature*
 ```bash
 bun install
 bun run lint                        # Biome: 0 errors, 63 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (397 tests across 54 files)
+bun test packages/synapse/test      # framework suite (567 tests across 70 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map
@@ -329,8 +427,8 @@ a directory with no slices must produce `FAIL`/`NO_SLICES_DIR`, and
 
 ## 9. Versioning and compatibility
 
-- **0.x:** a minor bump may break. Every break is listed in `CHANGELOG.md`; nothing has been
-  published to npm yet, so no external contract exists.
+- **Semver:** a minor bump may break. Every break is listed in `CHANGELOG.md`, and a removal from a
+  frozen surface follows one minor release of deprecation.
 - **1.0 will freeze three surfaces:** the CLI command names and their JSON field names, the slice
   contract exports (`<Name>InputSchema`, `sliceSchema`, `<name>Action`, `<Name>Trigger|View|Form|Component`,
   `sliceTests` with named cases), and the package entry exports asserted by

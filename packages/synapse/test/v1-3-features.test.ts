@@ -137,27 +137,5 @@ describe('SynapseJS v1.3.0 Features', () => {
     });
   });
 
-  describe('4. Universal useAction Hook Contract', () => {
-    it('executes an action function and triggers onSuccess callback', async () => {
-      let callbackData = '';
-      const mockAction = async (payload: { name: string }) => {
-        return { ok: true as const, value: `Olá, ${payload.name}!` };
-      };
-
-      // Since useAction is a React hook, we verify the execution and options interface
-      const options = {
-        onSuccess: (data: string) => {
-          callbackData = data;
-        },
-        onError: () => {}
-      };
-
-      const result = await mockAction({ name: 'Synapse' });
-      if (result.ok) {
-        options.onSuccess(result.value);
-      }
-
-      expect(callbackData).toBe('Olá, Synapse!');
-    });
-  });
+  // The shipped useAction hook is exercised in a real DOM by browser-hooks.test.tsx.
 });

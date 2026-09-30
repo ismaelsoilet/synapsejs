@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'bun:test';
+import * as fs from 'fs';
+import * as path from 'path';
 import { machineContract, renderContractMarkdown } from '../src/compiler/contract';
 import {
   ACTION_SUFFIX,
@@ -100,5 +102,67 @@ describe('machine contract', () => {
     expect(markdown).toContain('# SynapseJS machine contract');
     expect(markdown).toContain(SLICE_ORACLE_EXPORT);
     expect(markdown).toContain('synapse split');
+  });
+
+  it('enumerates the realtime rejection codes with the status each is returned with', () => {
+    expect(contract.realtime.rejections.UNAUTHENTICATED).toBe(401);
+    expect(contract.realtime.rejections.TOPIC_NOT_FOUND).toBe(404);
+    expect(contract.realtime.rejections.TOPIC_FORBIDDEN).toBe(403);
+    expect(contract.realtime.rejections.RATE_LIMIT_EXCEEDED).toBe(429);
+    expect(contract.realtime.rejections.REALTIME_LIMIT_EXCEEDED).toBe(429);
+    expect(contract.realtime.rejections.ORIGIN_NOT_ALLOWED).toBe(403);
+    expect(contract.realtime.rule).toContain('defineTopic');
+    expect(contract.realtime.rule).toContain('origin');
+  });
+
+  it('states the script-readability of the browser-written session cookie', () => {
+    expect(contract.sessions.cookieReality).toContain('document.cookie');
+    expect(contract.sessions.cookieReality).toContain('HttpOnly');
+    expect(contract.sessions.cookieReality).toContain('ctx.setCookie');
+    expect(contract.sessions.cookieReality).toContain('readable by any script');
+  });
+
+  it('carries a migration note for each breaking change', () => {
+    const changelog = fs.readFileSync(path.resolve(import.meta.dir, '../../../CHANGELOG.md'), 'utf-8');
+    const unreleased = changelog.slice(0, changelog.indexOf('## 1.8.0'));
+
+    expect((unreleased.match(/BREAKING/g) ?? []).length).toBeGreaterThanOrEqual(4);
+
+    for (const subject of ['secure by default', 'declared topic', 'WebSocket upgrade', 'CDN is opt-in']) {
+      expect(unreleased).toContain(subject);
+    }
+
+    // Each note states the previous behaviour, the new behaviour, and how to migrate.
+    expect(unreleased).toContain('Previously');
+    expect(unreleased).toContain('Migration:');
+  });
+
+  it('describes the upload path the way the implementation bounds it', () => {
+    const upload = contract.addressing.upload;
+
+    expect(upload).toContain('/_synapse/files/<domain>/<name>');
+    expect(upload).toContain('multipart/form-data');
+    expect(upload).toContain('byte ceiling');
+    expect(upload).toContain('SYNAPSE_UPLOAD_ALLOWED_TYPES');
+    expect(upload).toContain('matches the bytes actually received');
+    expect(upload).toContain('does not serve the upload directory');
+    expect(upload).not.toContain('not parsed');
+  });
+
+  it('names the containment failure codes consistently across every public surface', () => {
+    const codes = Object.keys(contract.scaffolding.failureCodes);
+
+    expect(codes).toContain('INVALID_PATH_SEGMENT');
+    expect(codes).toContain('INVALID_FIELD_NAME');
+    expect(contract.scaffolding.containment).toContain('path segment');
+    expect(contract.scaffolding.containment).toContain('standard output');
+
+    const agentGuide = fs.readFileSync(path.resolve(import.meta.dir, '../../../AGENTS.md'), 'utf-8');
+    const packageReadme = fs.readFileSync(path.resolve(import.meta.dir, '../README.md'), 'utf-8');
+
+    for (const code of ['INVALID_PATH_SEGMENT', 'INVALID_FIELD_NAME']) {
+      expect(agentGuide).toContain(code);
+      expect(packageReadme).toContain(code);
+    }
   });
 });

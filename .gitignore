@@ -9,3 +9,6 @@ dist/
 /.codebase/
 *.tgz
 .jev/
+
+# O catálogo de um app de fixture é gerado pelo teste que o usa.
+packages/synapse/test/fixtures/**/.codebase/

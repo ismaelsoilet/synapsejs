@@ -8,7 +8,14 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Err, Ok, type Result } from '../core/machine-types';
-import { generateFormFieldsCode, generateSqlColumns, generateTypeBoxProperties, parseFields } from './fields-parser';
+import { isInsideBase, validatePathSegment } from '../core/path-guard';
+import {
+  generateFormFieldsCode,
+  generateSqlColumns,
+  generateTypeBoxProperties,
+  parseFields,
+  validateFieldNames
+} from './fields-parser';
 import { resolveSlicesDir, type SlicesDirErrorCode } from './slice-discovery';
 import { generateOperationTemplate, type SliceTemplate } from './slice-templates';
 
@@ -415,7 +422,28 @@ export const sliceTests = {
 `;
 }
 
-export type ScaffoldErrorCode = SlicesDirErrorCode | 'SLICE_EXISTS' | 'WRITE_FAILED';
+export type ScaffoldErrorCode =
+  | SlicesDirErrorCode
+  | 'SLICE_EXISTS'
+  | 'WRITE_FAILED'
+  | 'INVALID_PATH_SEGMENT'
+  | 'INVALID_FIELD_NAME';
+
+/**
+ * One description per scaffolding failure code. The `Record` type makes a
+ * missing member a compile error, so the documented set cannot drift from the
+ * union the functions return.
+ */
+export const SCAFFOLD_FAILURE_CODES: Record<ScaffoldErrorCode, string> = {
+  NO_SLICES_DIR: 'no src/slices directory was found; candidates lists every path examined',
+  AMBIGUOUS_SLICES_DIR:
+    'more than one application owns a slices directory; set SYNAPSE_ROOT or run inside the target application',
+  SLICE_EXISTS: 'the target file already exists',
+  WRITE_FAILED: 'the filesystem refused the write',
+  INVALID_PATH_SEGMENT:
+    'a domain, slice name, shared-module name or project directory is not a single safe path segment',
+  INVALID_FIELD_NAME: 'a field name or enum value in --fields is not a plain identifier'
+};
 
 export interface ScaffoldError {
   code: ScaffoldErrorCode;
@@ -448,6 +476,47 @@ function resolveScaffoldTarget(baseDir: string): Result<string, ScaffoldError> {
   return Ok(path.join(path.resolve(baseDir), 'src', 'slices'));
 }
 
+function segmentRejection(
+  kind: 'domain' | 'name',
+  value: string | undefined,
+  targetKind: string
+): ScaffoldError | null {
+  const validated = validatePathSegment(value);
+
+  if (validated.ok) {
+    return null;
+  }
+
+  return {
+    code: 'INVALID_PATH_SEGMENT',
+    message: `O ${kind === 'domain' ? 'domínio' : 'nome'} informado ('${value ?? ''}') não é um segmento de caminho válido para ${targetKind}. Use apenas letras, números, '-', '_' e '.', sem barras e sem '..'.`,
+    candidates: []
+  };
+}
+
+/**
+ * Field names are interpolated into generated DDL and generated TypeScript, so
+ * they are validated before a single byte is written: the migration runner is
+ * never handed a schema derived from an unchecked name.
+ */
+function fieldRejection(fieldsSpec: string | undefined): ScaffoldError | null {
+  if (!fieldsSpec?.trim()) {
+    return null;
+  }
+
+  const validation = validateFieldNames(parseFields(fieldsSpec));
+
+  if (validation.ok) {
+    return null;
+  }
+
+  return {
+    code: 'INVALID_FIELD_NAME',
+    message: `O nome de campo '${validation.error}' não é um identificador válido. Campos devem casar com [A-Za-z_][A-Za-z0-9_]*.`,
+    candidates: []
+  };
+}
+
 export function scaffoldSlice(
   domain: string,
   sliceName: string,
@@ -461,8 +530,34 @@ export function scaffoldSlice(
     return target;
   }
 
+  const domainRejection = segmentRejection('domain', domain, 'a fatia');
+
+  if (domainRejection) {
+    return Err(domainRejection);
+  }
+
+  const nameRejection = segmentRejection('name', sliceName, 'a fatia');
+
+  if (nameRejection) {
+    return Err(nameRejection);
+  }
+
+  const fieldsRejection = fieldRejection(fieldsSpec);
+
+  if (fieldsRejection) {
+    return Err(fieldsRejection);
+  }
+
   const targetDir = path.join(target.value, domain);
   const targetFile = path.join(targetDir, `${sliceName}.slice.tsx`);
+
+  if (!isInsideBase(target.value, targetFile)) {
+    return Err({
+      code: 'INVALID_PATH_SEGMENT',
+      message: `O caminho resolvido para a fatia '${sliceName}' sai do diretório de fatias da aplicação.`,
+      candidates: [targetFile]
+    });
+  }
 
   if (fs.existsSync(targetFile)) {
     return Err({
@@ -473,11 +568,12 @@ export function scaffoldSlice(
   }
 
   try {
-    fs.mkdirSync(targetDir, { recursive: true });
     const content =
       template === 'create'
         ? generateSliceTemplate(domain, sliceName, fieldsSpec)
         : generateOperationTemplate(domain, sliceName, template, fieldsSpec);
+
+    fs.mkdirSync(targetDir, { recursive: true });
     fs.writeFileSync(targetFile, content, 'utf-8');
   } catch (err) {
     return Err({
@@ -525,11 +621,23 @@ export function scaffoldCrud(
 export function scaffoldShared(name: string, baseDir: string = process.cwd()): Result<string, ScaffoldError> {
   const cleanName = name.replace(/\.ts$/, '');
   const sharedDir = path.resolve(baseDir, 'src', 'shared');
-  if (!fs.existsSync(sharedDir)) {
-    fs.mkdirSync(sharedDir, { recursive: true });
+
+  const nameRejection = segmentRejection('name', cleanName, 'o módulo compartilhado');
+
+  if (nameRejection) {
+    return Err(nameRejection);
   }
 
   const targetFile = path.join(sharedDir, `${cleanName}.ts`);
+
+  if (!isInsideBase(sharedDir, targetFile)) {
+    return Err({
+      code: 'INVALID_PATH_SEGMENT',
+      message: `O caminho resolvido para o módulo compartilhado '${cleanName}' sai do diretório src/shared da aplicação.`,
+      candidates: [targetFile]
+    });
+  }
+
   if (fs.existsSync(targetFile)) {
     return Err({
       code: 'SLICE_EXISTS',
@@ -563,6 +671,7 @@ export async function executeShared${pascalName}(
 `;
 
   try {
+    fs.mkdirSync(sharedDir, { recursive: true });
     fs.writeFileSync(targetFile, content, 'utf-8');
     return Ok(targetFile);
   } catch (err: unknown) {

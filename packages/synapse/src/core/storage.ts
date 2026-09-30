@@ -169,6 +169,43 @@ export class S3StorageAdapter implements StorageClient {
     return `${this.endpoint}/${cleanKey}`;
   }
 
+  /**
+   * Builds the SigV4 `Authorization` header for one request. Shared by every
+   * mutating operation — upload, delete — so no method reaches the service
+   * unauthenticated because its own signing was forgotten.
+   */
+  private buildAuthorization(
+    method: string,
+    url: URL,
+    headers: Record<string, string>,
+    payloadHash: string,
+    service = 's3'
+  ): string | null {
+    if (!this.accessKeyId || !this.secretAccessKey) {
+      return null;
+    }
+
+    const amzDate = headers['x-amz-date'];
+    const dateStamp = amzDate.slice(0, 8);
+    const sortedKeys = Object.keys(headers).sort();
+    const canonicalHeaders = sortedKeys.map((k) => `${k.toLowerCase()}:${headers[k].trim()}\n`).join('');
+    const signedHeaders = sortedKeys.map((k) => k.toLowerCase()).join(';');
+
+    const canonicalRequest = [method, url.pathname, '', canonicalHeaders, signedHeaders, payloadHash].join('\n');
+
+    const credentialScope = `${dateStamp}/${this.region}/${service}/aws4_request`;
+    const hashedCanonical = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
+    const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, hashedCanonical].join('\n');
+
+    const kDate = crypto.createHmac('sha256', `AWS4${this.secretAccessKey}`).update(dateStamp).digest();
+    const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest();
+    const kService = crypto.createHmac('sha256', kRegion).update(service).digest();
+    const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
+    const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
+
+    return `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+  }
+
   async upload(
     key: string,
     data: Uint8Array | ArrayBuffer | string,
@@ -181,7 +218,6 @@ export class S3StorageAdapter implements StorageClient {
 
     const now = new Date();
     const amzDate = now.toISOString().replace(/[:-]|\.\d{3}/g, '');
-    const dateStamp = amzDate.slice(0, 8);
     const contentSha256 = crypto.createHash('sha256').update(buffer).digest('hex');
 
     const headers: Record<string, string> = {
@@ -192,24 +228,10 @@ export class S3StorageAdapter implements StorageClient {
       host: url.host
     };
 
-    if (this.accessKeyId && this.secretAccessKey) {
-      const sortedKeys = Object.keys(headers).sort();
-      const canonicalHeaders = sortedKeys.map((k) => `${k.toLowerCase()}:${headers[k].trim()}\n`).join('');
-      const signedHeaders = sortedKeys.map((k) => k.toLowerCase()).join(';');
+    const authorization = this.buildAuthorization('PUT', url, headers, contentSha256);
 
-      const canonicalRequest = ['PUT', url.pathname, '', canonicalHeaders, signedHeaders, contentSha256].join('\n');
-
-      const credentialScope = `${dateStamp}/${this.region}/s3/aws4_request`;
-      const hashedCanonical = crypto.createHash('sha256').update(canonicalRequest).digest('hex');
-      const stringToSign = ['AWS4-HMAC-SHA256', amzDate, credentialScope, hashedCanonical].join('\n');
-
-      const kDate = crypto.createHmac('sha256', `AWS4${this.secretAccessKey}`).update(dateStamp).digest();
-      const kRegion = crypto.createHmac('sha256', kDate).update(this.region).digest();
-      const kService = crypto.createHmac('sha256', kRegion).update('s3').digest();
-      const kSigning = crypto.createHmac('sha256', kService).update('aws4_request').digest();
-      const signature = crypto.createHmac('sha256', kSigning).update(stringToSign).digest('hex');
-
-      headers.Authorization = `AWS4-HMAC-SHA256 Credential=${this.accessKeyId}/${credentialScope}, SignedHeaders=${signedHeaders}, Signature=${signature}`;
+    if (authorization) {
+      headers.Authorization = authorization;
     }
 
     const response = await fetch(targetUrl, {
@@ -281,7 +303,26 @@ export class S3StorageAdapter implements StorageClient {
     try {
       const cleanKey = sanitizeStorageKey(key);
       const targetUrl = this.getUrl(cleanKey);
-      const res = await fetch(targetUrl, { method: 'DELETE' });
+      const url = new URL(targetUrl);
+
+      // Signed with the same routine as upload(): an unauthenticated DELETE is
+      // either silently rejected by the service or, against a public-write bucket,
+      // an anonymous destructive request.
+      const headers: Record<string, string> = { host: url.host };
+      const amzDate = new Date().toISOString().replace(/[:-]|\.\d{3}/g, '');
+      const payloadHash = crypto.createHash('sha256').update('').digest('hex');
+
+      headers['x-amz-content-sha256'] = payloadHash;
+      headers['x-amz-date'] = amzDate;
+
+      const authorization = this.buildAuthorization('DELETE', url, headers, payloadHash);
+
+      if (authorization) {
+        headers.Authorization = authorization;
+      }
+
+      const res = await fetch(targetUrl, { method: 'DELETE', headers });
+
       return res.status === 200 || res.status === 204;
     } catch {
       return false;

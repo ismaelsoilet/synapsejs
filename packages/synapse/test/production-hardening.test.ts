@@ -111,19 +111,46 @@ describe('Production Hardening & Reliability (Wave 8)', () => {
     });
   });
 
-  describe('3. Rate Limiter LRU Boundedness', () => {
-    it('limits total tracked buckets in memory with LRU eviction', () => {
+  describe('3. Rate Limiter Boundedness & Saturation', () => {
+    it('keeps the registry bounded and never evicts a live counter to admit a new identity', () => {
       const limiter = new TokenBucketRateLimiter({
         maxBuckets: 5,
         capacity: 10,
         refillRate: 10
       });
 
-      for (let i = 1; i <= 6; i++) {
-        limiter.consume(`client_${i}`);
+      const real = limiter.consume('real-client');
+      expect(real.allowed).toBe(true);
+
+      for (let i = 1; i <= 20; i++) {
+        limiter.consume(`synthetic_${i}`);
       }
 
+      // Memory bound holds, and the real client still has its allowance.
       expect(limiter.activeKeysCount).toBeLessThanOrEqual(5);
+      expect(limiter.consume('real-client').allowed).toBe(true);
+
+      limiter.close();
+    });
+
+    it('does not forgive a client that is over its allowance when the registry saturates', () => {
+      const limiter = new TokenBucketRateLimiter({
+        maxBuckets: 3,
+        capacity: 1,
+        refillRate: 0.001
+      });
+
+      limiter.consume('abuser');
+      expect(limiter.consume('abuser').allowed).toBe(false);
+
+      for (let i = 0; i < 50; i++) {
+        limiter.consume(`flood_${i}`);
+      }
+
+      const stillRefused = limiter.consume('abuser');
+      expect(stillRefused.allowed).toBe(false);
+      expect(limiter.activeKeysCount).toBeLessThanOrEqual(3);
+
       limiter.close();
     });
   });
@@ -166,22 +193,32 @@ describe('Production Hardening & Reliability (Wave 8)', () => {
     });
   });
 
-  describe('5. HttpOnly Cookies & Serialization', () => {
-    it('serializes cookies with HttpOnly, Secure, SameSite, Max-Age, and Path', () => {
-      const cookieStr = serializeCookie('synapse_token', 'jwt_secret_token_123', {
-        httpOnly: true,
-        secure: true,
-        sameSite: 'lax',
-        maxAge: 3600,
-        path: '/'
-      });
+  describe('5. Secure-by-default cookie serialization', () => {
+    it('applies HttpOnly, Secure and SameSite=Lax without being asked', () => {
+      // The assertion must not supply the attributes it is testing: a serializer that
+      // only honours explicit flags is not secure by default.
+      const cookieStr = serializeCookie('synapse_token', 'jwt_secret_token_123');
 
       expect(cookieStr).toContain('synapse_token=jwt_secret_token_123');
       expect(cookieStr).toContain('HttpOnly');
       expect(cookieStr).toContain('Secure');
       expect(cookieStr).toContain('SameSite=Lax');
-      expect(cookieStr).toContain('Max-Age=3600');
       expect(cookieStr).toContain('Path=/');
+    });
+
+    it('honours an explicit stricter policy and an explicit opt-out', () => {
+      const strict = serializeCookie('synapse_token', 'v', { sameSite: 'strict', maxAge: 60 });
+
+      expect(strict).toContain('SameSite=Strict');
+      expect(strict).toContain('HttpOnly');
+      expect(strict).toContain('Secure');
+      expect(strict).toContain('Max-Age=60');
+
+      const optedOut = serializeCookie('theme', 'dark', { httpOnly: false, secure: false });
+
+      expect(optedOut).not.toContain('HttpOnly');
+      expect(optedOut).not.toContain('Secure');
+      expect(optedOut).toContain('SameSite=Lax');
     });
 
     it('records pending cookies in ActionContext and propagates them', () => {
@@ -228,7 +265,8 @@ describe('Production Hardening & Reliability (Wave 8)', () => {
     it('blocks SSRF attempts in Image Optimizer with 403', async () => {
       const port = server.port;
       const res = await fetch(
-        `http://localhost:${port}/_synapse/images/optimize?url=http://169.254.169.254/latest/meta-data`
+        `http://localhost:${port}/_synapse/images/optimize?url=http://169.254.169.254/latest/meta-data`,
+        { headers: { 'x-user-id': 'image-auditor' } }
       );
       expect(res.status).toBe(403);
       const json = await res.json();
@@ -238,7 +276,9 @@ describe('Production Hardening & Reliability (Wave 8)', () => {
 
     it('blocks local path traversal in Image Optimizer with 403', async () => {
       const port = server.port;
-      const res = await fetch(`http://localhost:${port}/_synapse/images/optimize?url=../../package.json`);
+      const res = await fetch(`http://localhost:${port}/_synapse/images/optimize?url=../../package.json`, {
+        headers: { 'x-user-id': 'image-auditor' }
+      });
       expect(res.status).toBe(403);
       const json = await res.json();
       expect(json.ok).toBe(false);
@@ -345,6 +385,35 @@ describe('Production Hardening & Reliability (Wave 8)', () => {
       expect(setCookie).toContain('Secure');
       expect(setCookie).toContain('SameSite=Strict');
       expect(setCookie).toContain('Max-Age=7200');
+    });
+
+    it('hardens the documented no-option call: the wire cookie carries the defaults', async () => {
+      server.registerSlice({
+        key: 'testing/cookie-defaults',
+        domain: 'testing',
+        name: 'cookie-defaults',
+        routePath: '/testing/cookie-defaults',
+        rpcPath: '/_synapse/rpc/testing/cookie-defaults',
+        webhookPath: '/_synapse/webhooks/testing/cookie-defaults',
+        wsPath: '/_synapse/ws/testing/cookie-defaults',
+        filePath: 'test.slice.tsx',
+        actionFn: async (_payload: any, ctx: any) => {
+          ctx.setCookie('synapse_session', 'sem_opcoes');
+          return { ok: true, value: { success: true } };
+        }
+      });
+
+      const res = await fetch(`http://localhost:${server.port}/_synapse/rpc/cookie-defaults`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+
+      const setCookie = res.headers.get('set-cookie') ?? '';
+      expect(setCookie).toContain('synapse_session=sem_opcoes');
+      expect(setCookie).toContain('HttpOnly');
+      expect(setCookie).toContain('Secure');
+      expect(setCookie).toContain('SameSite=Lax');
     });
   });
 });

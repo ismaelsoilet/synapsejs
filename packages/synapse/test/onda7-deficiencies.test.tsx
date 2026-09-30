@@ -252,7 +252,8 @@ export function RoomComponent() {
     it('connects to slice WebSocket endpoint, receives WELCOME and echoes messages', async () => {
       const wsUrl = `ws://localhost:${serverPort}/_synapse/ws/chat/room`;
 
-      const client = new WebSocket(wsUrl);
+      // The upgrade is fail-closed on origin; a loopback origin is the local carve-out.
+      const client = new WebSocket(wsUrl, { headers: { origin: 'http://localhost:3000' } } as never);
       const messages: any[] = [];
 
       await new Promise<void>((resolve, reject) => {
@@ -285,7 +286,9 @@ export function RoomComponent() {
     });
 
     it('returns 404 if slice does not declare sliceSocket on websocket endpoint', async () => {
-      const res = await fetch(`http://localhost:${serverPort}/_synapse/ws/catalog/products`);
+      const res = await fetch(`http://localhost:${serverPort}/_synapse/ws/catalog/products`, {
+        headers: { origin: 'http://localhost:3000' }
+      });
       expect(res.status).toBe(404);
       const json = await res.json();
       expect(json.error).toContain('não declara sliceSocket');

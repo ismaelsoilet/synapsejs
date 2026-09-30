@@ -174,7 +174,7 @@ export function measureAppSurface(appRoot: string): AppSurface {
 
 export function renderSurfaceReport(surfaces: AppSurface[]): string {
   const lines = [
-    '| app | feature | arquivos (app) | tokens (app, est.) | arquivos (total) | tokens (total, est.) |',
+    '| app | feature | arquivos (app) | tokens (app, est.) | arquivos (total, não comparável) | tokens (total, est., não comparável) |',
     '|---|---|---|---|---|---|'
   ];
 
@@ -186,6 +186,12 @@ export function renderSurfaceReport(surfaces: AppSurface[]): string {
       );
     }
   }
+
+  lines.push(
+    '',
+    'As colunas `app` são as comparáveis (os arquivos da própria funcionalidade em cada aplicação).',
+    'As colunas `total` cobrem conjuntos de arquivos diferentes por repositório e não são comparáveis'
+  );
 
   return lines.join('\n');
 }

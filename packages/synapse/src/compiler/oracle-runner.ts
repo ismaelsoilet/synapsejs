@@ -157,6 +157,11 @@ export interface OracleRunOptions {
   /** Injected by tests: runs a command and returns its exit code and output. */
   spawn?: (args: string[], cwd: string) => Promise<{ exitCode: number; output: string }>;
   /** Enable Jev System One semantic test triage on failures. Default: true */
+  /**
+   * Opt-in (default: disabled). The triage consults an external model provider when
+   * one is configured, so a programmatic caller must ask for it explicitly; the CLI
+   * enables it only when the environment declares the gate.
+   */
   enableJevTriage?: boolean;
 }
 
@@ -246,7 +251,7 @@ export async function runSliceOracles(
 
   if (!fs.existsSync(reportPath)) {
     let triageResult: TestTriageResult | undefined;
-    if (options.enableJevTriage !== false) {
+    if (options.enableJevTriage === true) {
       try {
         triageResult = await triageTestFailure(output.trim() || `O runner Bun test falhou com exit ${exitCode}`);
       } catch {}
@@ -280,7 +285,7 @@ export async function runSliceOracles(
 
   if (totalCases === 0) {
     let triageResult: TestTriageResult | undefined;
-    if (options.enableJevTriage !== false) {
+    if (options.enableJevTriage === true) {
       try {
         triageResult = await triageTestFailure(`Nenhum invariante foi executado em ${results.length} fatia(s).`);
       } catch {}
@@ -301,7 +306,7 @@ export async function runSliceOracles(
 
   const isPass = passedSlices === results.length;
   let triageResult: TestTriageResult | undefined;
-  if (!isPass && options.enableJevTriage !== false) {
+  if (!isPass && options.enableJevTriage === true) {
     try {
       const failedSummaries = results
         .filter((r) => !r.passed)

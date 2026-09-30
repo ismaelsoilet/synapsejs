@@ -385,9 +385,15 @@ export function extractSliceSchema(sourceFile: ts.SourceFile): string | null {
   return ddl;
 }
 
+export interface RunMigrationsOptions {
+  /** Consult the Jev abort gate after a failure (default: disabled). */
+  enableJevGate?: boolean;
+}
+
 export async function runSliceMigrations(
   baseDir: string = process.cwd(),
-  customDb?: DatabaseClient
+  customDb?: DatabaseClient,
+  options: RunMigrationsOptions = {}
 ): Promise<MigrationReport> {
   const db = customDb || getDatabase();
   const isPostgres = db instanceof PostgresDatabaseClient;
@@ -531,8 +537,10 @@ export async function runSliceMigrations(
       }
     }
 
+    // Opt-in (default: disabled): the abort gate consults an external model provider
+    // when one is configured, so a programmatic caller asks for it explicitly.
     let abortSignal: AbortGateResult | undefined;
-    if (hasFailure) {
+    if (hasFailure && options?.enableJevGate === true) {
       try {
         const failureDetails = migrations
           .filter((m) => m.status === 'FAILED')

@@ -24,7 +24,22 @@ export const sliceSchema = `
     tax_id TEXT NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- down:
+  DELETE FROM invoices WHERE customer_id IN (SELECT id FROM customers);
+  DROP TABLE IF EXISTS customers;
 `;
+
+// ============================================================================
+// 1.5. METADADOS DE SERVIDOR (SEO / Open Graph)
+// `sliceMeta` é avaliado no servidor a cada render e removido do bundle do cliente.
+// ============================================================================
+export const sliceMeta = (props: { created?: string }) => ({
+  title: props?.created ? `Cliente ${props.created} | SynapseJS CRM` : 'Novo cliente | SynapseJS CRM',
+  description: 'Cadastro de clientes no CRM de referência do SynapseJS, com contrato TypeBox e DDL declarativo.',
+  keywords: ['crm', 'clientes', 'synapsejs'],
+  ogImage: '/og/customers.png'
+});
 
 // ============================================================================
 // 2. MODELAGEM ESTRITA DO DOMÍNIO (Result<T, E>)

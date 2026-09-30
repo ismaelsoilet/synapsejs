@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { generateSliceTemplate, scaffoldSlice } from '../src/compiler/scaffolder';
+import { generateSliceTemplate, scaffoldCrud, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
 
 let sandbox: string;
 
@@ -139,6 +139,110 @@ describe('scaffoldSlice', () => {
       expect(content).toContain('oauth_accounts');
       expect(content).toContain('https://github.com/login/oauth/access_token');
       expect(content).toContain('sliceTests');
+    }
+  });
+});
+
+describe('scaffoldSlice containment', () => {
+  it('refuses traversal in the domain argument without writing anything', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'billing'), { recursive: true });
+
+    const created = scaffoldSlice('../../../../tmp', 'pwn', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_PATH_SEGMENT');
+    }
+    expect(fs.existsSync(path.join('/tmp', 'pwn.slice.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join('/tmp', 'pwn'))).toBe(false);
+  });
+
+  it('refuses traversal in the slice-name argument', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'billing'), { recursive: true });
+
+    const created = scaffoldSlice('billing', '../../../outside/pwn', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_PATH_SEGMENT');
+    }
+    expect(fs.existsSync(path.join(sandbox, 'outside'))).toBe(false);
+  });
+
+  it('refuses every operation of a traversing crud resource', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'billing'), { recursive: true });
+
+    const created = scaffoldCrud('billing', '../../escape', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_PATH_SEGMENT');
+    }
+    expect(fs.existsSync(path.join(sandbox, 'escape'))).toBe(false);
+  });
+
+  it('refuses a field name carrying a statement terminator, before writing the slice', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'store'), { recursive: true });
+
+    const created = scaffoldSlice(
+      'store',
+      'create-product',
+      appDir,
+      'create',
+      'title); DROP TABLE customers; --:string'
+    );
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_FIELD_NAME');
+    }
+    expect(fs.existsSync(path.join(appDir, 'src', 'slices', 'store', 'create-product.slice.tsx'))).toBe(false);
+  });
+
+  it('still scaffolds a valid field grammar after the guard', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'store'), { recursive: true });
+
+    const created = scaffoldSlice('store', 'create-product', appDir, 'create', 'title:string,amount:number');
+
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      const content = fs.readFileSync(created.value, 'utf-8');
+      expect(content).toContain('title: Type.String(');
+      expect(content).toContain('amount REAL NOT NULL');
+    }
+  });
+});
+
+describe('scaffoldShared containment', () => {
+  it('refuses a traversing module name without creating any directory', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(appDir, { recursive: true });
+
+    const created = scaffoldShared('../../../escape', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_PATH_SEGMENT');
+    }
+    expect(fs.existsSync(path.join(sandbox, 'escape.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(appDir, 'src', 'shared'))).toBe(false);
+  });
+
+  it('still scaffolds an ordinary module name', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(appDir, { recursive: true });
+
+    const created = scaffoldShared('billing-rules', appDir);
+
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      expect(created.value).toBe(path.join(appDir, 'src', 'shared', 'billing-rules.ts'));
+      expect(fs.existsSync(created.value)).toBe(true);
     }
   });
 });

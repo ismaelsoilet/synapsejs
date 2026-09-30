@@ -1,4 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import {
   type ActionContext,
   AnonymousSession,
@@ -99,5 +102,16 @@ describe('ActionContext & Service Extensibility', () => {
   test('loadSynapseConfig gracefully returns empty config if synapse.config.ts is missing', async () => {
     const config = await loadSynapseConfig('/non-existent-dir');
     expect(config).toEqual({});
+  });
+
+  test('loadSynapseConfig treats a broken configuration file as fatal', async () => {
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-config-'));
+    fs.writeFileSync(path.join(sandbox, 'synapse.config.ts'), 'export default { this is not valid typescript', 'utf-8');
+
+    // A config file that cannot be loaded must not degrade to defaults: it carries
+    // security-relevant settings nobody would have chosen.
+    await expect(loadSynapseConfig(sandbox)).rejects.toThrow(/falha ao carregar/);
+
+    fs.rmSync(sandbox, { recursive: true, force: true });
   });
 });

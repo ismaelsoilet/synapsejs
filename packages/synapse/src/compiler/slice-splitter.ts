@@ -67,10 +67,14 @@ export interface SplitVerification {
 const CLIENT_ROOTS = [...COMPONENT_SUFFIXES];
 const TEST_ONLY_NAMES: readonly string[] = [...TEST_ONLY_EXPORTS];
 
-const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
+/** The expressions that must never survive into a client bundle. Exported so the
+ * linear-time guarantee can be asserted directly against each of them. */
+export const SERVER_ONLY_PATTERNS: Array<{ label: string; pattern: RegExp }> = [
   // `SELECT ... FROM` e não `SELECT` seguido de qualquer palavra: sem o FROM, a
   // tag HTML `<select id="x">` de um formulário casava como vazamento de SQL.
-  { label: 'SELECT statement', pattern: /\bSELECT\s+[\w*"`][\w*"`.,\s]*\bFROM\b/i },
+  // O quantificador é limitado (uma janela fixa, não `*`): um bundle grande com
+  // muitos `SELECT` sem `FROM` fazia o motor retroceder sobre o texto inteiro.
+  { label: 'SELECT statement', pattern: /\bSELECT\s[\w*"`.,\s]{0,4096}?\bFROM\b/i },
   { label: 'INSERT statement', pattern: /\bINSERT\s+INTO\b/i },
   { label: 'UPDATE statement', pattern: /\bUPDATE\s+\w+\s+SET\b/i },
   { label: 'DELETE statement', pattern: /\bDELETE\s+FROM\b/i },

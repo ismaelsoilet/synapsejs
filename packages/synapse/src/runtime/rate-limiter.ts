@@ -27,6 +27,8 @@ export interface RateLimitResult {
   limit: number;
   remaining: number;
   resetMs: number;
+  /** True when the refusal is due to a saturated registry rather than an exhausted bucket. */
+  saturated?: boolean;
 }
 
 interface Bucket {
@@ -61,6 +63,11 @@ export class TokenBucketRateLimiter {
 
   /**
    * Consumes `cost` tokens from the bucket for `key`.
+   *
+   * When the registry is saturated with distinct identities the excess is refused
+   * instead of evicting a live bucket: eviction would hand a client that is over its
+   * allowance a fresh one, which is precisely the bypass a spoofed identity stream
+   * is looking for.
    */
   consume(key: string, cost = 1): RateLimitResult {
     const now = Date.now();
@@ -68,10 +75,13 @@ export class TokenBucketRateLimiter {
 
     if (!bucket) {
       if (this.buckets.size >= this.maxBuckets) {
-        const oldest = this.buckets.keys().next().value;
-        if (oldest !== undefined) {
-          this.buckets.delete(oldest);
-        }
+        return {
+          allowed: false,
+          limit: this.capacity,
+          remaining: 0,
+          resetMs: Math.max(1000, Math.ceil(this.idleTimeoutMs / 4)),
+          saturated: true
+        };
       }
       bucket = {
         tokens: this.capacity,

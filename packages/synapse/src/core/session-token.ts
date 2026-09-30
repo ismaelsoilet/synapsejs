@@ -24,19 +24,79 @@ export interface SessionClaims {
 
 export type SessionTokenError = 'INVALID_TOKEN' | 'EXPIRED_TOKEN' | 'TOKEN_REVOKED';
 
-const inMemoryRevokedSignatures = new Set<string>();
+/** Default bounds for the in-process revocation set. Both are configurable by env. */
+export const DEFAULT_REVOCATION_MAX_ENTRIES = 10_000;
+export const DEFAULT_REVOCATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Insertion-ordered signature -> revocation instant. Bounded by cap and TTL. */
+const inMemoryRevokedSignatures = new Map<string, number>();
+
+function revocationMaxEntries(): number {
+  const raw = Number(process.env.SYNAPSE_REVOCATION_MAX_ENTRIES);
+
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_REVOCATION_MAX_ENTRIES;
+}
+
+function revocationTtlMs(): number {
+  const raw = Number(process.env.SYNAPSE_REVOCATION_TTL_MS);
+
+  return Number.isFinite(raw) && raw >= 0 ? Math.floor(raw) : DEFAULT_REVOCATION_TTL_MS;
+}
+
+/**
+ * Drops expired entries and enforces the entry cap. Returns how many were pruned.
+ * Called on every write and read, so neither store grows without bound.
+ */
+export function pruneSessionTokenRevocations(now = Date.now()): number {
+  const ttl = revocationTtlMs();
+  let pruned = 0;
+
+  if (ttl > 0) {
+    for (const [signature, revokedAt] of inMemoryRevokedSignatures) {
+      if (now - revokedAt > ttl) {
+        inMemoryRevokedSignatures.delete(signature);
+        pruned++;
+      }
+    }
+  }
+
+  const cap = revocationMaxEntries();
+  while (inMemoryRevokedSignatures.size > cap) {
+    const oldest = inMemoryRevokedSignatures.keys().next().value;
+
+    if (oldest === undefined) {
+      break;
+    }
+
+    inMemoryRevokedSignatures.delete(oldest);
+    pruned++;
+  }
+
+  return pruned;
+}
 
 export function revokeSessionToken(token: string): boolean {
   const [, signature] = token.split('.');
   if (!signature) return false;
-  inMemoryRevokedSignatures.add(signature);
+  inMemoryRevokedSignatures.set(signature, Date.now());
+  pruneSessionTokenRevocations();
   return true;
 }
 
 export function isSessionTokenRevoked(token: string): boolean {
   const [, signature] = token.split('.');
   if (!signature) return true;
+
+  pruneSessionTokenRevocations();
+
   return inMemoryRevokedSignatures.has(signature);
+}
+
+/** Test/tooling helper: how many signatures the in-process set currently holds. */
+export function sessionTokenRevocationCount(): number {
+  pruneSessionTokenRevocations();
+
+  return inMemoryRevokedSignatures.size;
 }
 
 export function clearSessionTokenRevocations(): void {
@@ -53,22 +113,62 @@ export async function revokeSessionTokenInDb(db: DatabaseClient, token: string):
   await db.query(`
     CREATE TABLE IF NOT EXISTS _synapse_session_blacklist (
       token_signature TEXT PRIMARY KEY,
-      revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      revoked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      revoked_at_ms INTEGER
     );
   `);
 
+  try {
+    await db.query('ALTER TABLE _synapse_session_blacklist ADD COLUMN revoked_at_ms INTEGER;');
+  } catch {
+    // Column already present, or the engine refuses the ALTER: either way the
+    // table carries the revocation instant it needs for pruning.
+  }
+
+  const revokedAtMs = Date.now();
+
   await db
-    .query('INSERT INTO _synapse_session_blacklist (token_signature) VALUES ($1) ON CONFLICT DO NOTHING;', [signature])
+    .query(
+      'INSERT INTO _synapse_session_blacklist (token_signature, revoked_at_ms) VALUES ($1, $2) ON CONFLICT DO NOTHING;',
+      [signature, revokedAtMs]
+    )
     .catch(async () => {
       // SQLite fallback without ON CONFLICT DO NOTHING if needed
       await db
-        .query('INSERT OR IGNORE INTO _synapse_session_blacklist (token_signature) VALUES ($1);', [signature])
+        .query('INSERT OR IGNORE INTO _synapse_session_blacklist (token_signature, revoked_at_ms) VALUES ($1, $2);', [
+          signature,
+          revokedAtMs
+        ])
         .catch(() => {});
     });
 
   // Also sync in-memory for instant local lookup
-  inMemoryRevokedSignatures.add(signature);
+  inMemoryRevokedSignatures.set(signature, revokedAtMs);
+  pruneSessionTokenRevocations();
   return true;
+}
+
+/**
+ * Deletes persisted revocations older than the retention window. Returns how many
+ * rows were removed; SQLite and PostgreSQL both compare the epoch-millisecond
+ * column, so pruning does not depend on either dialect's date functions.
+ */
+export async function pruneSessionTokenRevocationsInDb(db: DatabaseClient, ttlMs = revocationTtlMs()): Promise<number> {
+  if (ttlMs <= 0) {
+    return 0;
+  }
+
+  try {
+    const cutoff = Date.now() - ttlMs;
+    const rows = await db.query<{ token_signature: string }>(
+      'DELETE FROM _synapse_session_blacklist WHERE revoked_at_ms IS NOT NULL AND revoked_at_ms < $1 RETURNING token_signature;',
+      [cutoff]
+    );
+
+    return Array.isArray(rows) ? rows.length : 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**
@@ -85,7 +185,8 @@ export async function isSessionTokenRevokedInDb(db: DatabaseClient, token: strin
       signature
     ]);
     if (rows && rows.length > 0) {
-      inMemoryRevokedSignatures.add(signature);
+      inMemoryRevokedSignatures.set(signature, Date.now());
+      pruneSessionTokenRevocations();
       return true;
     }
   } catch {

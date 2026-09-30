@@ -146,14 +146,32 @@ export class PostgresQueueEngine {
     );
 
     for (const deadJob of deadJobs) {
-      await this.db
-        .query(
-          `INSERT INTO _synapse_jobs_dlq (id, name, payload, attempts, max_attempts, last_error, failed_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)
+      // `job_id` is NOT NULL in the table, and the id is derived from the job so a
+      // repeated recovery of the same zombie stays idempotent. A failure here is
+      // logged: swallowing it is how a dead-letter queue silently holds nothing.
+      const dlqId = `dlq_${deadJob.id}`;
+
+      try {
+        await this.db.query(
+          `INSERT INTO _synapse_jobs_dlq (id, job_id, name, payload, attempts, max_attempts, last_error, failed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (id) DO UPDATE SET attempts = EXCLUDED.attempts, last_error = EXCLUDED.last_error, failed_at = EXCLUDED.failed_at;`,
-          [deadJob.id, deadJob.name, deadJob.payload, deadJob.attempts, deadJob.max_attempts, deadJob.last_error, now]
-        )
-        .catch(() => {});
+          [
+            dlqId,
+            deadJob.id,
+            deadJob.name,
+            deadJob.payload,
+            deadJob.attempts,
+            deadJob.max_attempts,
+            deadJob.last_error,
+            now
+          ]
+        );
+      } catch (error: unknown) {
+        this.logger.warn(
+          `[DLQ] Falha ao registrar o job ${deadJob.id} na dead letter queue: ${error instanceof Error ? error.message : String(error)}`
+        );
+      }
     }
 
     const rows = await this.db.query<JobRecord>(

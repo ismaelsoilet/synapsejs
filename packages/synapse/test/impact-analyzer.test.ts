@@ -1,4 +1,6 @@
 import { describe, expect, test } from 'bun:test';
+import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import { analyzeImpact } from '../src/compiler/impact-analyzer';
 
@@ -44,11 +46,41 @@ describe('AST Diff & Cross-Slice Impact Analyzer', () => {
     expect(report.recommendedCommands).toContain('synapse db-drift');
   });
 
-  test('returns 0 impacted slices gracefully when target does not exist', () => {
+  test('fails for a target that does not exist instead of reporting an empty success', () => {
     const report = analyzeImpact('non-existent-slice', exampleCrmDir);
 
-    expect(report.status).toBe('PASS');
+    expect(report.status).toBe('FAIL');
+    expect(report.code).toBe('TARGET_NOT_RESOLVED');
+    expect(report.message).toContain('non-existent-slice');
     expect(report.totalImpacted).toBe(0);
-    expect(report.impactedSlices).toHaveLength(0);
+  });
+
+  test('succeeds with zero dependents for a target that does exist', () => {
+    const sandbox = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-impact-'));
+    fs.mkdirSync(path.join(sandbox, 'src', 'slices', 'solo'), { recursive: true });
+    fs.mkdirSync(path.join(sandbox, 'src', 'shared'), { recursive: true });
+    fs.writeFileSync(
+      path.join(sandbox, 'src', 'slices', 'solo', 'only.slice.tsx'),
+      `export const OnlyInputSchema = {};
+export const sliceSchema = 'CREATE TABLE IF NOT EXISTS only_table (id TEXT PRIMARY KEY);';
+export async function onlyAction() { return { ok: true }; }
+`,
+      'utf-8'
+    );
+    fs.writeFileSync(path.join(sandbox, 'src', 'shared', 'unused.ts'), 'export const unused = 1;\n', 'utf-8');
+
+    try {
+      const slice = analyzeImpact('only', sandbox);
+      expect(slice.status).toBe('PASS');
+      expect(slice.totalImpacted).toBe(1);
+      expect(slice.code).toBeUndefined();
+
+      // A module that exists but no slice imports is valid with zero dependents.
+      const orphan = analyzeImpact('src/shared/unused.ts', sandbox);
+      expect(orphan.status).toBe('PASS');
+      expect(orphan.totalImpacted).toBe(0);
+    } finally {
+      fs.rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 });

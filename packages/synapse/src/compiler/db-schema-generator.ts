@@ -129,20 +129,50 @@ function splitColumnDefinitions(body: string): string[] {
   return defs;
 }
 
+/** Index of the `)` matching the `(` at `openIndex`, or -1. Linear in the input. */
+function findMatchingParen(text: string, openIndex: number): number {
+  let depth = 0;
+
+  for (let index = openIndex; index < text.length; index++) {
+    const char = text[index];
+
+    if (char === '(') {
+      depth++;
+    } else if (char === ')') {
+      depth--;
+
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+
+  return -1;
+}
+
 /**
  * Parses DDL string to extract all table and column definitions.
+ *
+ * The header is matched first and the column body is delimited by scanning for the
+ * matching parenthesis. The previous single-pattern form (`([\s\S]*?)\)(?:\s*;|\s*$)`)
+ * backtracked quadratically on a large DDL.
  */
 export function parseDdlToCatalog(ddl: string, sourceSlice?: string): TableDefinition[] {
   const tables: TableDefinition[] = [];
+  const createTableHeader = /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([a-zA-Z0-9_]+)["'`]?\s*\(/gi;
 
-  // Match CREATE TABLE [IF NOT EXISTS] <name> (<columns>)
-  const createTableRegex =
-    /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?["'`]?([a-zA-Z0-9_]+)["'`]?\s*\(([\s\S]*?)\)(?:\s*;|\s*$)/gi;
+  let header: RegExpExecArray | null = createTableHeader.exec(ddl);
 
-  let match: RegExpExecArray | null = createTableRegex.exec(ddl);
-  while (match !== null) {
-    const tableName = match[1].toLowerCase();
-    const body = match[2];
+  while (header !== null) {
+    const openParen = header.index + header[0].length - 1;
+    const closeParen = findMatchingParen(ddl, openParen);
+
+    if (closeParen === -1) {
+      break;
+    }
+
+    const tableName = header[1].toLowerCase();
+    const body = ddl.slice(openParen + 1, closeParen);
     const rawDefs = splitColumnDefinitions(body);
     const columns: ColumnDefinition[] = [];
 
@@ -202,7 +232,8 @@ export function parseDdlToCatalog(ddl: string, sourceSlice?: string): TableDefin
       sourceSlice
     });
 
-    match = createTableRegex.exec(ddl);
+    createTableHeader.lastIndex = closeParen + 1;
+    header = createTableHeader.exec(ddl);
   }
 
   return tables;

@@ -32,6 +32,7 @@ import {
   createSession,
   type DatabaseClient,
   getDatabase,
+  hasAnyRole,
   loadSynapseConfig,
   normalizeCacheKey,
   optimizeImage,
@@ -40,11 +41,11 @@ import {
   type SliceCacheConfig,
   type SliceSocketDefinition,
   type SynapseConfig,
-  type SynapseWebSocket,
   serializeCookie
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
-import { verifySessionToken } from '../core/session-token';
+import { isSessionTokenRevoked, isSessionTokenRevokedInDb, verifySessionToken } from '../core/session-token';
+import { declaredTopic, type RealtimeRejectionCode, scopedTopic } from '../core/topics';
 import { SYNAPSE_VERSION } from '../version';
 import { serializeClientProps } from './client-entry';
 import { isAction, isCache, isComponent, isJob, isLoader, isMeta, isSocket, isWebhook } from './discovery-rules';
@@ -132,6 +133,15 @@ const ERROR_STATUS: Array<{ pattern: RegExp; status: number }> = [
   { pattern: /^(INVALID_|MALFORMED)/, status: 422 },
   { pattern: /^(NO_DATABASE|PERSISTENCE_FAILED)/, status: 500 },
   { pattern: /_FAILED$/, status: 500 }
+];
+
+const RATE_LIMITED_PREFIXES = [
+  '/_synapse/rpc/',
+  '/_synapse/files/',
+  '/_synapse/webhooks/',
+  '/_synapse/sse/',
+  '/_synapse/images/',
+  '/_synapse/api/'
 ];
 
 export const TURBO_ROUTER_SCRIPT = `(function() {
@@ -249,6 +259,150 @@ export function formatLogLine(entry: {
   return JSON.stringify({ ts: new Date().toISOString(), ...entry });
 }
 
+/** Backstop ceiling for any request body: 12 MiB, above every per-route limit. */
+export const DEFAULT_MAX_REQUEST_BODY_BYTES = 12 * 1024 * 1024;
+
+/** The runtime mode, from SYNAPSE_ENV or NODE_ENV. */
+function runtimeMode(): string {
+  return (process.env.SYNAPSE_ENV ?? process.env.NODE_ENV ?? '').trim().toLowerCase();
+}
+
+/**
+ * True when the process declares a mode other than the development ones — an exact
+ * `production` spelling, but also `prod`, `staging` or any other value an operator
+ * clearly intends as a real deployment. An unset value is not production-like here:
+ * the request layer still requires the explicit development opt-in below.
+ */
+export function isProductionLikeMode(): boolean {
+  const mode = runtimeMode();
+
+  if (!mode) {
+    return false;
+  }
+
+  return !['development', 'dev', 'test'].includes(mode);
+}
+
+/**
+ * Caller-supplied identity (x-user-id, x-user-roles, the roles cookie) is honoured
+ * only under an explicit development opt-in: `SYNAPSE_DEV_HEADERS=true`, or a
+ * development/test runtime mode. Any other state — unset, staging, production —
+ * resolves to an anonymous session, so a mistyped variable cannot grant identity,
+ * and the explicit flag is the acknowledgement an operator gives by name.
+ */
+export function headerTrustEnabled(): boolean {
+  const explicit = (process.env.SYNAPSE_DEV_HEADERS ?? '').trim().toLowerCase();
+
+  if (explicit === 'true') {
+    return true;
+  }
+
+  if (explicit === 'false') {
+    return false;
+  }
+
+  if (isProductionLikeMode()) {
+    return false;
+  }
+
+  const mode = runtimeMode();
+
+  return mode === 'development' || mode === 'dev' || mode === 'test';
+}
+
+/**
+ * The process-level body ceiling: explicit config first, then
+ * SYNAPSE_MAX_REQUEST_BODY_BYTES, then the default.
+ */
+export function maxRequestBodyBytes(config?: SynapseConfig): number {
+  const configured = config?.maxRequestBodyBytes;
+
+  if (typeof configured === 'number' && Number.isFinite(configured) && configured > 0) {
+    return Math.floor(configured);
+  }
+
+  const raw = Number(process.env.SYNAPSE_MAX_REQUEST_BODY_BYTES);
+
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : DEFAULT_MAX_REQUEST_BODY_BYTES;
+}
+
+export interface ExternalFetchResult {
+  ok: boolean;
+  body?: Uint8Array;
+  contentType?: string;
+  status?: number;
+  code?: string;
+}
+
+/**
+ * Fetches a URL whose host has already passed `validateExternalUrl`, connecting to the
+ * address that was validated rather than resolving the hostname a second time: the URL
+ * is rewritten to the pinned address, the original Host header is preserved and TLS
+ * validation still checks the certificate against the real hostname (serverName).
+ *
+ * The response is read through the same streaming ceiling as every other body reader,
+ * the whole fetch is bounded by a timeout, and redirects are refused rather than
+ * followed (a hop would have to be revalidated, and refusing cannot be defeated).
+ */
+export async function fetchPinnedExternal(
+  rawUrl: string,
+  resolvedIp: string | undefined,
+  options: { maxBytes: number; timeoutMs: number }
+): Promise<ExternalFetchResult> {
+  const parsed = new URL(rawUrl);
+  const hostname = parsed.hostname;
+  const pinnedHost = resolvedIp?.includes(':') ? `[${resolvedIp}]` : resolvedIp;
+  const port = parsed.port ? `:${parsed.port}` : '';
+  const target = pinnedHost ? `${parsed.protocol}//${pinnedHost}${port}${parsed.pathname}${parsed.search}` : rawUrl;
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), options.timeoutMs);
+
+  try {
+    const response = await fetch(target, {
+      headers: { host: parsed.host },
+      redirect: 'manual',
+      signal: controller.signal,
+      ...(parsed.protocol === 'https:' ? { tls: { serverName: hostname } } : {})
+    } as RequestInit);
+
+    if (!response.ok) {
+      return { ok: false, status: 502, code: 'UPSTREAM_RESPONSE_FAILED' };
+    }
+
+    const body = await readBodyWithinLimit(response.body, options.maxBytes);
+
+    if (!body.ok) {
+      return { ok: false, status: 413, code: 'UPSTREAM_RESPONSE_TOO_LARGE' };
+    }
+
+    return {
+      ok: true,
+      body: body.value,
+      contentType: response.headers.get('content-type') || 'application/octet-stream'
+    };
+  } catch (err) {
+    const aborted = err instanceof Error && (err.name === 'AbortError' || err.message.includes('aborted'));
+
+    return aborted
+      ? { ok: false, status: 504, code: 'UPSTREAM_TIMEOUT' }
+      : { ok: false, status: 502, code: 'UPSTREAM_FETCH_FAILED' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+export interface ShutdownSummary {
+  /** Requests that were still being handled when the drain began and finished in time. */
+  drained: number;
+  /** Requests still running when the drain timeout expired; each received 503 DRAINING. */
+  aborted: number;
+  /** Jobs returned to the queue by the shutdown, exactly one attempt counted. */
+  jobsRequeued: number;
+  /** Jobs whose attempt budget was already exhausted; marked failed. */
+  jobsFailed: number;
+}
+
 export class SynapseServer {
   private slices: Map<string, DiscoveredSlice> = new Map();
   private baseDir: string;
@@ -304,33 +458,150 @@ export class SynapseServer {
     if (config) {
       this.config = { ...config };
     }
-    this.rateLimiter = new TokenBucketRateLimiter({ maxBuckets: 10_000 });
+    this.rateLimiter = new TokenBucketRateLimiter({
+      maxBuckets: config?.rateLimit?.maxBuckets ?? 10_000,
+      capacity: config?.rateLimit?.capacity,
+      refillRate: config?.rateLimit?.refillRate
+    });
     this.ssrCache = new BoundedLruCache(this.config.cache?.maxEntries || 1000);
     this.queueEngine = new QueueEngine({
       dbPath: path.join(this.baseDir, '.synapse/queue.sqlite'),
       logger: createDefaultLogger('QueueEngine')
     });
+
+    // Pending until shutdown reaches its drain deadline; every request races it.
+    this.drainSignal = new Promise<Response>((resolve) => {
+      this.drainSignalResolve = resolve;
+    });
   }
 
   /**
-   * Gracefully shuts down the HTTP server and closes database connections.
+   * Resolves when in-flight requests must stop waiting — the drain deadline. It stays
+   * pending while the server is running, so every handler races it from the moment it
+   * begins and a request that is still running when the deadline fires is answered
+   * with 503 DRAINING instead of being cut off with no response.
    */
-  async stop(drainTimeoutMs = 5000): Promise<void> {
-    if (this.httpServer) {
-      this.httpServer.stop(false);
-      this.httpServer = null;
+  private drainSignal: Promise<Response>;
+  private drainSignalResolve: ((response: Response) => void) | null = null;
+  private inFlightCount = 0;
+  private abortedCount = 0;
+  private drainedCount = 0;
+  private shutdownPromise: Promise<ShutdownSummary> | null = null;
+  private openStreams = new Set<ReadableStreamDefaultController<Uint8Array>>();
+
+  /** What a `stop()` call reports and logs: the observable result of the drain. */
+  private lastShutdownSummary: ShutdownSummary | null = null;
+
+  /**
+   * Gracefully shuts down the HTTP server and closes database connections.
+   *
+   * Waits for the promise Bun's own drain returns, raced against the configured
+   * timeout — the value is honoured instead of being replaced by a shorter fixed
+   * wait — and only then closes the rate limiter, the queue engine and the
+   * database, so a request that queries the database late in the drain still can.
+   * A second call is safe: it resolves with the same summary and closes nothing twice.
+   */
+  async stop(drainTimeoutMs = 5000): Promise<ShutdownSummary> {
+    if (this.shutdownPromise) {
+      return this.shutdownPromise;
     }
+
+    this.shutdownPromise = this.performShutdown(drainTimeoutMs);
+
+    return this.shutdownPromise;
+  }
+
+  private async performShutdown(drainTimeoutMs: number): Promise<ShutdownSummary> {
+    // No new background work is claimed from this point on: a job enqueued by an
+    // in-flight request stays pending for the next process.
+    this.queueEngine.stopClaiming();
+
+    const inFlightAtStart = this.inFlightCount;
+    const stopPromise: Promise<unknown> = this.httpServer ? this.httpServer.stop(false) : Promise.resolve();
+    this.httpServer = null;
+
+    let timedOut = false;
+
     if (drainTimeoutMs > 0) {
-      await new Promise((resolve) => setTimeout(resolve, Math.min(drainTimeoutMs, 200)));
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const deadline = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), drainTimeoutMs);
+      });
+
+      // Fires only when the deadline expires: everything still outstanding is then
+      // answered with 503 DRAINING, deliberately, before persistence is closed.
+      deadline.then(() => {
+        this.abortedCount = this.inFlightCount;
+        this.closeOpenStreams();
+
+        this.drainSignalResolve?.(
+          Response.json(
+            { ok: false, error: 'DRAINING', message: 'O servidor está encerrando e não concluiu esta requisição.' },
+            { status: 503 }
+          )
+        );
+      });
+
+      // The wait is always bounded: a connection that never finishes producing its
+      // request must not hold the shutdown open past the configured timeout.
+      const outcome = await Promise.race([stopPromise.then(() => 'drained' as const), deadline]);
+
+      if (timer) {
+        clearTimeout(timer);
+      }
+
+      timedOut = outcome === 'timeout';
     }
+    // A configured timeout of zero skips the wait entirely.
+
+    if (timedOut) {
+      // What outlived the deadline is terminated deliberately and reported; the
+      // race in the request path has already answered each one with 503 DRAINING.
+      this.closeOpenStreams();
+    }
+
+    this.drainedCount = inFlightAtStart - this.abortedCount;
+
+    const jobs = this.queueEngine.interruptRunningJobs();
+
     this.rateLimiter.close();
     this.queueEngine.close();
     await this.db.close?.();
     resetDatabaseInstance();
+
+    this.lastShutdownSummary = {
+      drained: Math.max(0, this.drainedCount),
+      aborted: this.abortedCount,
+      jobsRequeued: jobs.requeued,
+      jobsFailed: jobs.failed
+    };
+
+    return this.lastShutdownSummary;
+  }
+
+  private closeOpenStreams(): void {
+    for (const controller of this.openStreams) {
+      try {
+        controller.close();
+      } catch {
+        // already closed
+      }
+    }
+
+    this.openStreams.clear();
+  }
+
+  get shutdownSummary(): ShutdownSummary | null {
+    return this.lastShutdownSummary;
   }
 
   get database(): DatabaseClient {
     return this.db;
+  }
+
+  /** How many slices were discovered and registered — the benchmark's own sanity check. */
+  get loadedSliceCount(): number {
+    return this.slices.size;
   }
 
   get queue(): QueueEngine {
@@ -349,7 +620,13 @@ export class SynapseServer {
       rpcSuccessCount: this.metrics.rpcSuccessCount,
       rpcErrorCount: this.metrics.rpcErrorCount,
       ssrRenderCount: this.metrics.ssrRenderCount,
-      staticFileCount: this.metrics.staticFileCount
+      staticFileCount: this.metrics.staticFileCount,
+      /** Requests that have begun handling and not yet produced a response. */
+      inFlightRequests: this.inFlightCount,
+      /** Open event streams: reported apart from drainable work. */
+      openStreams: this.openStreams.size,
+      shuttingDown: this.shutdownPromise !== null,
+      shutdown: this.lastShutdownSummary
     };
   }
 
@@ -357,13 +634,15 @@ export class SynapseServer {
     return this.config;
   }
 
-  private createActionContext(sliceName: string, session: SessionContext): ActionContext {
+  private createActionContext(sliceKey: string, session: SessionContext): ActionContext {
     return createActionContext({
       db: this.db,
       session,
       tenantId: session.tenantId,
       services: (this.config.services as Record<string, unknown>) || {},
-      logger: createDefaultLogger(sliceName),
+      logger: createDefaultLogger(sliceKey),
+      // Publishing is owner-checked: only the slice that declared a topic may write to it.
+      sliceOwner: sliceKey,
       enqueue: (jobOrName, payload, options) => this.queueEngine.enqueue(jobOrName, payload, options),
       invalidateCache: (tags) => this.invalidateCache(tags)
     });
@@ -588,6 +867,57 @@ export class SynapseServer {
     };
   }
 
+  /**
+   * Client identity for rate limiting. Forwarding headers are honoured only when the
+   * deployment explicitly declares a trusted proxy (SYNAPSE_TRUST_PROXY=true or
+   * config.trustProxy), so a direct client rotating X-Forwarded-For cannot mint a
+   * fresh allowance out of thin air.
+   */
+  private clientIdentity(req: Request): string {
+    const peer = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
+    const trustProxy = process.env.SYNAPSE_TRUST_PROXY === 'true' || this.config.trustProxy === true;
+
+    if (!trustProxy) {
+      return peer;
+    }
+
+    return req.headers.get('cf-connecting-ip') || req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || peer;
+  }
+
+  /**
+   * Consumes one token for the request's client identity. Returns a 429 response when
+   * the allowance is exhausted, or null when the request may proceed.
+   */
+  private rateLimitRefusal(req: Request, pathname: string, startedAt: number): Response | null {
+    const rateResult = this.rateLimiter.consume(this.clientIdentity(req));
+
+    if (rateResult.allowed) {
+      return null;
+    }
+
+    const cors = this.corsHeaders(req);
+    this.logRequest(req, pathname, 429, startedAt);
+
+    return new Response(
+      JSON.stringify({
+        ok: false,
+        error: 'RATE_LIMIT_EXCEEDED',
+        message: 'Muitas requisições. Tente novamente mais tarde.'
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Retry-After': String(Math.ceil(rateResult.resetMs / 1000)),
+          'X-RateLimit-Limit': String(rateResult.limit),
+          'X-RateLimit-Remaining': String(rateResult.remaining),
+          'X-RateLimit-Reset': String(Math.ceil((Date.now() + rateResult.resetMs) / 1000)),
+          ...(cors ?? {})
+        }
+      }
+    );
+  }
+
   /** Records request metrics and writes one JSON line per request when SYNAPSE_LOG=json. */
   private logRequest(
     request: Request,
@@ -647,21 +977,25 @@ export class SynapseServer {
 
     if (secret) {
       if (!token) {
-        return AnonymousSession(tenantId);
+        return AnonymousSession();
       }
       const verified = verifySessionToken(token, secret);
+
+      // The tenant comes exclusively from the verified claims: with a secret
+      // configured, neither the tenant header nor the subdomain can supply one.
       return verified.ok
         ? createSession({
             userId: verified.value.userId,
-            tenantId: verified.value.tenantId || tenantId,
+            tenantId: verified.value.tenantId,
             roles: verified.value.roles,
             token
           })
-        : AnonymousSession(tenantId);
+        : AnonymousSession();
     }
 
-    // Em produção sem SYNAPSE_SESSION_SECRET, forjamento de headers é terminantemente proibido (CWE-287)
-    if (process.env.NODE_ENV === 'production') {
+    // Sem segredo, a identidade forjável por header só é aceita sob opt-in explícito
+    // de desenvolvimento; qualquer outro estado resolve para anônimo.
+    if (!headerTrustEnabled()) {
       return AnonymousSession(tenantId);
     }
 
@@ -686,6 +1020,60 @@ export class SynapseServer {
     }
 
     return AnonymousSession(tenantId);
+  }
+
+  /** Signature -> memoised revocation verdict, bounded by TTL and entry cap. */
+  private revocationMemo = new Map<string, { revoked: boolean; checkedAt: number }>();
+
+  /**
+   * The session for a request, with revocation consulted on every request. A
+   * signature is queried against the persisted store at most once per TTL window,
+   * so the common case costs nothing; the in-process set short-circuits it entirely.
+   */
+  async requestSession(request: Request): Promise<SessionContext> {
+    const session = this.sessionFrom(request);
+
+    if (!session.isAuthenticated || !session.token) {
+      return session;
+    }
+
+    return (await this.isTokenRevoked(session.token)) ? AnonymousSession() : session;
+  }
+
+  private async isTokenRevoked(token: string): Promise<boolean> {
+    if (isSessionTokenRevoked(token)) {
+      return true;
+    }
+
+    const signature = token.split('.')[1];
+
+    if (!signature) {
+      return true;
+    }
+
+    const ttlMs = Number(process.env.SYNAPSE_REVOCATION_MEMO_TTL_MS ?? '');
+    const ttl = Number.isFinite(ttlMs) && ttlMs >= 0 ? ttlMs : 30_000;
+    const cached = this.revocationMemo.get(signature);
+
+    if (cached && Date.now() - cached.checkedAt < ttl) {
+      return cached.revoked;
+    }
+
+    const revoked = await isSessionTokenRevokedInDb(this.db, token);
+
+    while (this.revocationMemo.size >= 5000) {
+      const oldest = this.revocationMemo.keys().next().value;
+
+      if (oldest === undefined) {
+        break;
+      }
+
+      this.revocationMemo.delete(oldest);
+    }
+
+    this.revocationMemo.set(signature, { revoked, checkedAt: Date.now() });
+
+    return revoked;
   }
 
   /**
@@ -746,25 +1134,235 @@ export class SynapseServer {
   }
 
   /**
-   * Returns stylesheet links, respecting SYNAPSE_DISABLE_CDN and detecting public/synapse.css
+   * The third-party origins, opt-in only. Enabling them without an integrity hash
+   * emits nothing: an unpinned third-party script (or stylesheet) in an origin that
+   * holds a script-readable session cookie is the risk this switch exists to gate.
+   */
+  private thirdPartyOrigins(): { enabled: boolean; script?: string; fontStyles?: string; fontFiles?: string } {
+    const enabled =
+      this.config.cdn?.enabled === true ||
+      process.env.SYNAPSE_ENABLE_CDN === 'true' ||
+      process.env.SYNAPSE_ENABLE_CDN === '1';
+
+    if (!enabled) {
+      return { enabled: false };
+    }
+
+    return {
+      enabled: true,
+      script: this.config.cdn?.scriptIntegrity || process.env.SYNAPSE_CDN_INTEGRITY || undefined,
+      fontStyles: this.config.cdn?.fontIntegrity || process.env.SYNAPSE_FONTS_INTEGRITY || undefined,
+      fontFiles: 'https://fonts.gstatic.com'
+    };
+  }
+
+  /**
+   * The Content-Security-Policy every HTML response carries. An operator-supplied
+   * policy replaces it (never weakened); otherwise the policy is same-origin, with
+   * third-party origins appearing only when explicitly enabled and pinned.
+   */
+  private contentSecurityPolicy(): string {
+    const operatorPolicy = this.config.contentSecurityPolicy || process.env.SYNAPSE_CSP;
+
+    if (operatorPolicy) {
+      return operatorPolicy;
+    }
+
+    const thirdParty = this.thirdPartyOrigins();
+    const scriptSources = ["'self'", "'unsafe-inline'"];
+    const styleSources = ["'self'", "'unsafe-inline'"];
+    const fontSources = ["'self'", 'data:'];
+
+    if (thirdParty.script) {
+      scriptSources.push('https://cdn.tailwindcss.com');
+    }
+
+    if (thirdParty.fontStyles) {
+      styleSources.push('https://fonts.googleapis.com');
+      fontSources.push('https://fonts.gstatic.com');
+    }
+
+    return [
+      "default-src 'self'",
+      `script-src ${scriptSources.join(' ')}`,
+      `style-src ${styleSources.join(' ')}`,
+      "img-src 'self' data: https:",
+      `font-src ${fontSources.join(' ')}`,
+      "connect-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'"
+    ].join('; ');
+  }
+
+  /** The baseline headers every response carries — routed, unrouted, static or error. */
+  private baselineHeaders(req: Request): Record<string, string> {
+    const headers: Record<string, string> = {
+      'X-Content-Type-Options': 'nosniff',
+      'Referrer-Policy': 'strict-origin-when-cross-origin',
+      'X-Frame-Options': 'DENY',
+      'Content-Security-Policy': this.contentSecurityPolicy()
+    };
+
+    const forwardedProto = req.headers.get('x-forwarded-proto');
+    const trustProxy = process.env.SYNAPSE_TRUST_PROXY === 'true' || this.config.trustProxy === true;
+    const isTls =
+      new URL(req.url).protocol === 'https:' || (trustProxy && forwardedProto?.split(',')[0]?.trim() === 'https');
+
+    if (isTls) {
+      headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains';
+    }
+
+    return headers;
+  }
+
+  /** Adds the baseline headers to a response without overriding what it already sets. */
+  private withBaselineHeaders(response: Response, req: Request): Response {
+    for (const [name, value] of Object.entries(this.baselineHeaders(req))) {
+      if (!response.headers.has(name)) {
+        response.headers.set(name, value);
+      }
+    }
+
+    // The response is returned as it came, so a `Bun.file` body keeps its
+    // zero-copy send instead of being re-wrapped as a stream.
+    return response;
+  }
+
+  /**
+   * A realtime refusal: the same machine-readable shape on both transports, with the
+   * code always drawn from the set the machine contract enumerates.
+   */
+  private realtimeRefusal(
+    code: RealtimeRejectionCode,
+    status: number,
+    message: string,
+    cors?: Record<string, string> | null
+  ): Response {
+    return Response.json({ ok: false, error: code, message }, { status, headers: cors ?? undefined });
+  }
+
+  /** Concurrent realtime connections held per client identity. */
+  private realtimeConnections = new Map<string, number>();
+
+  private releaseRealtimeConnection(clientKey: string): void {
+    const open = this.realtimeConnections.get(clientKey) ?? 0;
+
+    if (open <= 1) {
+      this.realtimeConnections.delete(clientKey);
+    } else {
+      this.realtimeConnections.set(clientKey, open - 1);
+    }
+  }
+
+  private realtimeBounds(): { maxTopics: number; maxSubscriptions: number; maxConnectionsPerClient: number } {
+    return {
+      maxTopics: this.config.realtime?.maxTopics ?? 1000,
+      maxSubscriptions: this.config.realtime?.maxSubscriptions ?? 1000,
+      maxConnectionsPerClient: this.config.realtime?.maxConnectionsPerClient ?? 8
+    };
+  }
+
+  /**
+   * The origin check for a WebSocket upgrade, fail-closed: an allow-list must be
+   * configured and must contain the request's origin (or the wildcard). An absent
+   * origin and the opaque `null` origin are refused. The one carve-out is a loopback
+   * origin, so local development works without a production-grade allow-list.
+   */
+  private webSocketOriginAllowed(req: Request): boolean {
+    const origin = req.headers.get('origin');
+
+    if (!origin || origin === 'null') {
+      return false;
+    }
+
+    if (this.isLoopbackOrigin(origin)) {
+      return true;
+    }
+
+    const allowed = (process.env.SYNAPSE_ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter((entry) => entry.length > 0);
+
+    return allowed.includes('*') || allowed.includes(origin);
+  }
+
+  private isLoopbackOrigin(origin: string): boolean {
+    try {
+      const parsed = new URL(origin);
+
+      return (
+        parsed.hostname === 'localhost' ||
+        parsed.hostname === '127.0.0.1' ||
+        parsed.hostname === '::1' ||
+        parsed.hostname === '[::1]'
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * The response for an unexpected internal failure: a stable code plus a
+   * correlation identifier that also appears on the log record. Outside development
+   * the exception text is never part of the body — it goes to the log only.
+   */
+  private internalFailure(err: unknown, pathname: string, cors?: Record<string, string> | null): Response {
+    const correlationId = crypto.randomUUID();
+    const message = err instanceof Error ? err.message : String(err);
+
+    console.error(`[SynapseServer] Falha interna [${correlationId}] em ${pathname}: ${message}`);
+
+    return Response.json(
+      {
+        ok: false,
+        error: 'INTERNAL_ERROR',
+        correlationId,
+        ...(isProductionLikeMode() ? {} : { message })
+      },
+      { status: 500, headers: cors ?? undefined }
+    );
+  }
+
+  /**
+   * Returns stylesheet links. The application's own stylesheet always wins; nothing
+   * third-party is referenced unless explicitly enabled and integrity-pinned.
    */
   private renderStylesheets(): string {
-    const disableCdn = process.env.SYNAPSE_DISABLE_CDN === 'true' || process.env.SYNAPSE_DISABLE_CDN === '1';
     const localCssPath = path.join(this.baseDir, 'public', 'synapse.css');
-    const hasLocalCss = fs.existsSync(localCssPath);
+
+    if (fs.existsSync(localCssPath)) {
+      return '  <link rel="stylesheet" href="/synapse.css">';
+    }
+
+    const thirdParty = this.thirdPartyOrigins();
+
+    if (!thirdParty.enabled) {
+      return '';
+    }
 
     const elements: string[] = [];
-    if (!disableCdn) {
-      elements.push('  <script src="https://cdn.tailwindcss.com"></script>');
+
+    if (thirdParty.script) {
+      elements.push(
+        `  <script src="https://cdn.tailwindcss.com" integrity="${thirdParty.script}" crossorigin="anonymous"></script>`
+      );
+    } else {
+      console.warn(
+        '[SynapseServer] CDN habilitado sem um hash de integridade (SYNAPSE_CDN_INTEGRITY): o script de terceiros não será emitido.'
+      );
+    }
+
+    if (thirdParty.fontStyles) {
       elements.push('  <link rel="preconnect" href="https://fonts.googleapis.com">');
       elements.push('  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>');
       elements.push(
-        '  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">'
+        `  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" integrity="${thirdParty.fontStyles}" crossorigin="anonymous">`
       );
     }
-    if (hasLocalCss) {
-      elements.push('  <link rel="stylesheet" href="/synapse.css">');
-    }
+
     return elements.join('\n');
   }
 
@@ -783,8 +1381,8 @@ export class SynapseServer {
     hasError?: boolean;
     error?: string;
   }> {
-    const session = this.sessionFrom(req);
-    const actionCtx = this.createActionContext(slice.name, session);
+    const session = await this.requestSession(req);
+    const actionCtx = this.createActionContext(slice.key, session);
     const params = Object.fromEntries(url.searchParams.entries());
     const dataProps: Record<string, unknown> = {
       ...params,
@@ -835,9 +1433,10 @@ export class SynapseServer {
     let hasError = false;
     let renderError: string | null = loaderError;
 
-    const isProduction = process.env.NODE_ENV === 'production';
+    const isProduction = isProductionLikeMode();
     if (loaderError) {
       hasError = true;
+      console.error(`[SynapseServer] Loader de ${slice.key} falhou: ${loaderError}`);
       const displayMsg = isProduction ? 'Ocorreu um erro interno ao carregar os dados.' : escapeHtml(loaderError);
       contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${displayMsg}</div>`;
     } else if (slice.componentFn) {
@@ -853,9 +1452,9 @@ export class SynapseServer {
         const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
         contentHtml = renderToString(rootEl);
       } catch (e: any) {
-        if (!isProduction) console.error('[SSR Render Error]', e);
         hasError = true;
         const errMessage = e instanceof Error ? e.message : String(e);
+        console.error(`[SynapseServer] Erro na renderização SSR de ${slice.key}: ${errMessage}`);
         renderError = errMessage;
         const displayMsg = isProduction ? 'Ocorreu um erro interno durante a renderização.' : escapeHtml(errMessage);
         contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${displayMsg}</div>`;
@@ -1150,8 +1749,17 @@ ${this.renderStylesheets()}
       }
     }
 
+    /**
+     * Process-level ceiling on any request body. It is the backstop behind the
+     * per-route limits (RPC 5 MiB, webhook 10 MiB, upload 5 MiB): every body-reading
+     * path is bounded even before its own guard runs, so no single request can
+     * exhaust process memory.
+     */
+    const processBodyCeiling = maxRequestBodyBytes(this.config);
+
     this.httpServer = Bun.serve({
       port: this.port,
+      maxRequestBodySize: processBodyCeiling,
       websocket: {
         open: async (ws: any) => {
           const socketDef = ws.data?.socketDef;
@@ -1182,6 +1790,10 @@ ${this.renderStylesheets()}
           }
         },
         close: async (ws: any, code: number, reason: string) => {
+          if (ws.data?.clientKey) {
+            this.releaseRealtimeConnection(ws.data.clientKey);
+          }
+
           const socketDef = ws.data?.socketDef;
           if (socketDef?.onClose) {
             try {
@@ -1193,11 +1805,24 @@ ${this.renderStylesheets()}
         }
       },
       fetch: async (req: Request) => {
+        // Every request that has begun handling and has not produced a response is
+        // outstanding work the drain waits for. An unbounded event stream is not:
+        // it is tracked separately and closed when shutdown begins.
+        this.inFlightCount++;
+        let released = false;
+        const releaseInFlight = () => {
+          if (!released) {
+            released = true;
+            this.inFlightCount--;
+          }
+        };
+
         if (this.config.plugins) {
           for (const plugin of this.config.plugins) {
             if (plugin.onRequest) {
               const intercepted = await plugin.onRequest(req);
               if (intercepted instanceof Response) {
+                releaseInFlight();
                 return intercepted;
               }
             }
@@ -1211,50 +1836,43 @@ ${this.renderStylesheets()}
 
           // WebSocket Upgrade for slices: /_synapse/ws/:domain/:name
           if (pathname.startsWith('/_synapse/ws/')) {
-            const origin = req.headers.get('origin');
-            const allowed = (process.env.SYNAPSE_ALLOWED_ORIGINS ?? '')
-              .split(',')
-              .map((entry) => entry.trim())
-              .filter((entry) => entry.length > 0);
-            if (origin && allowed.length > 0 && !allowed.includes(origin) && !allowed.includes('*')) {
-              return new Response(JSON.stringify({ error: 'Origin não permitida para conexão WebSocket' }), {
-                status: 403,
-                headers: { 'Content-Type': 'application/json' }
-              });
-            }
-
-            const trustProxy = process.env.SYNAPSE_TRUST_PROXY !== 'false' && this.config.trustProxy !== false;
-            let clientIp: string;
-            if (trustProxy) {
-              clientIp =
-                req.headers.get('cf-connecting-ip') ||
-                req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-                this.httpServer?.requestIP(req)?.address ||
-                '127.0.0.1';
-            } else {
-              clientIp = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
-            }
-            const rateResult = this.rateLimiter.consume(clientIp);
-            if (!rateResult.allowed) {
-              return new Response(
-                JSON.stringify({
-                  ok: false,
-                  error: 'RATE_LIMIT_EXCEEDED',
-                  message: 'Muitas conexões WebSocket. Tente novamente mais tarde.'
-                }),
-                {
-                  status: 429,
-                  headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Retry-After': String(Math.ceil(rateResult.resetMs / 1000))
-                  }
-                }
+            // Fail-closed: no allow-list means no upgrade, with a loopback carve-out
+            // for local development. An absent or opaque origin is refused too.
+            if (!this.webSocketOriginAllowed(req)) {
+              this.logRequest(req, pathname, 403, startedAt);
+              return this.realtimeRefusal(
+                'ORIGIN_NOT_ALLOWED',
+                403,
+                'Origem não permitida para conexão WebSocket.',
+                this.corsHeaders(req)
               );
             }
+
+            const rateRefusal = this.rateLimitRefusal(req, pathname, startedAt);
+
+            if (rateRefusal) {
+              return rateRefusal;
+            }
+
+            const wsBounds = this.realtimeBounds();
+            const wsClientKey = this.clientIdentity(req);
+            const wsOpen = this.realtimeConnections.get(wsClientKey) ?? 0;
+
+            if (wsOpen >= wsBounds.maxConnectionsPerClient) {
+              this.logRequest(req, pathname, 429, startedAt);
+              return this.realtimeRefusal(
+                'REALTIME_LIMIT_EXCEEDED',
+                429,
+                'Limite de conexões simultâneas por cliente atingido.'
+              );
+            }
+
+            this.realtimeConnections.set(wsClientKey, wsOpen + 1);
 
             const target = pathname.slice('/_synapse/ws/'.length);
             const resolved = this.resolveSlice(target);
             if (!resolved.ok) {
+              this.releaseRealtimeConnection(wsClientKey);
               return new Response(JSON.stringify({ error: resolved.message }), {
                 status: resolved.status,
                 headers: { 'Content-Type': 'application/json' }
@@ -1262,23 +1880,27 @@ ${this.renderStylesheets()}
             }
             const socketDef = resolved.slice.socketDef;
             if (!socketDef) {
+              this.releaseRealtimeConnection(wsClientKey);
               return new Response(JSON.stringify({ error: `Fatia ${resolved.slice.key} não declara sliceSocket` }), {
                 status: 404,
                 headers: { 'Content-Type': 'application/json' }
               });
             }
-            const session = this.sessionFrom(req);
+            const session = await this.requestSession(req);
             const upgraded = (this.httpServer as any)?.upgrade(req, {
               data: {
                 id: crypto.randomUUID(),
                 sliceKey: resolved.slice.key,
                 socketDef,
-                session
+                session,
+                clientKey: wsClientKey
               }
             });
             if (upgraded) {
               return undefined as any;
             }
+
+            this.releaseRealtimeConnection(wsClientKey);
             return new Response('Falha no upgrade de WebSocket', { status: 400 });
           }
 
@@ -1308,6 +1930,18 @@ ${this.renderStylesheets()}
             });
           }
 
+          // 1.5 Rate Limiter for every accepting surface (machine endpoints, RPC,
+          // uploads, webhooks, SSE, images). Server-rendered page loads are covered
+          // separately, right before the render begins. Static files, the dashboard
+          // and the generated client bundles are not part of this budget.
+          if (RATE_LIMITED_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
+            const refusal = this.rateLimitRefusal(req, pathname, startedAt);
+
+            if (refusal) {
+              return refusal;
+            }
+          }
+
           // 2. Machine Endpoints for AI
           if (pathname === '/_synapse/api/repo-map') {
             const repoMapPath = path.join(this.baseDir, '.codebase/repo-map.d.ts');
@@ -1335,28 +1969,34 @@ ${this.renderStylesheets()}
             const healthy = dbHealthy && !this.discoveryError;
             const status = healthy ? 'OK' : 'DEGRADED';
             const httpStatus = healthy ? 200 : 503;
+            const session = await this.requestSession(req);
 
-            this.logRequest(req, pathname, httpStatus, startedAt);
-            return Response.json(
-              {
-                status,
-                framework: 'SynapseJS',
-                version: SYNAPSE_VERSION,
-                uptime: process.uptime(),
-                database: dbHealthy ? 'connected' : 'disconnected',
-                ...(dbError ? { databaseError: dbError } : {}),
-                slicesLoaded: this.slices.size,
-                slicesResolutionError: this.discoveryError,
-                loadErrors: this.loadErrors,
-                slices: Array.from(this.slices.values()).map((s) => ({
-                  domain: s.domain,
-                  name: s.name,
-                  route: s.routePath,
-                  rpc: s.rpcPath
-                }))
-              },
-              { status: httpStatus }
-            );
+            // This endpoint requires no authentication, so it discloses only the
+            // aggregate verdict: no absolute path, no discovery candidate, no load-error
+            // text and no route inventory. The detailed inventory is authenticated.
+            const payload: Record<string, unknown> = {
+              status,
+              framework: 'SynapseJS',
+              version: SYNAPSE_VERSION,
+              uptime: process.uptime(),
+              database: dbHealthy ? 'connected' : 'disconnected',
+              slicesLoaded: this.slices.size
+            };
+
+            if (session.isAuthenticated) {
+              payload.databaseError = dbError;
+              payload.slicesResolutionError = this.discoveryError;
+              payload.loadErrors = this.loadErrors;
+              payload.slices = Array.from(this.slices.values()).map((s) => ({
+                domain: s.domain,
+                name: s.name,
+                route: s.routePath,
+                rpc: s.rpcPath
+              }));
+            }
+
+            this.logRequest(req, pathname, httpStatus, startedAt, session);
+            return Response.json(payload, { status: httpStatus });
           }
 
           if (pathname === '/_synapse/api/metrics') {
@@ -1367,26 +2007,27 @@ ${this.renderStylesheets()}
             this.logRequest(req, pathname, 200, startedAt);
 
             if (formatParam === 'prometheus' || acceptHeader.includes('text/plain')) {
-              const promText =
-                [
-                  '# HELP synapse_uptime_seconds SynapseJS server uptime in seconds',
-                  '# TYPE synapse_uptime_seconds gauge',
-                  `synapse_uptime_seconds ${uptimeSeconds}`,
-                  '# HELP synapse_requests_total Total number of HTTP requests received',
-                  '# TYPE synapse_requests_total counter',
-                  `synapse_requests_total ${this.metrics.totalRequests}`,
-                  '# HELP synapse_rpc_success_total Total successful RPC action calls',
-                  '# TYPE synapse_rpc_success_total counter',
-                  `synapse_rpc_success_total ${this.metrics.rpcSuccessCount}`,
-                  '# HELP synapse_rpc_error_total Total failed RPC action calls',
-                  '# TYPE synapse_rpc_error_total counter',
-                  `synapse_rpc_error_total ${this.metrics.rpcErrorCount}`,
-                  '# HELP synapse_ssr_renders_total Total server-side rendered pages',
-                  '# TYPE synapse_ssr_renders_total counter',
-                  `synapse_ssr_renders_total ${this.metrics.ssrRenderCount}`
-                ].join('\n') + '\n';
+              const promText = [
+                '# HELP synapse_uptime_seconds SynapseJS server uptime in seconds',
+                '# TYPE synapse_uptime_seconds gauge',
+                `synapse_uptime_seconds ${uptimeSeconds}`,
+                '# HELP synapse_requests_total Total number of HTTP requests received',
+                '# TYPE synapse_requests_total counter',
+                `synapse_requests_total ${this.metrics.totalRequests}`,
+                '# HELP synapse_rpc_success_total Total successful RPC action calls',
+                '# TYPE synapse_rpc_success_total counter',
+                `synapse_rpc_success_total ${this.metrics.rpcSuccessCount}`,
+                '# HELP synapse_rpc_error_total Total failed RPC action calls',
+                '# TYPE synapse_rpc_error_total counter',
+                `synapse_rpc_error_total ${this.metrics.rpcErrorCount}`,
+                '# HELP synapse_ssr_renders_total Total server-side rendered pages',
+                '# TYPE synapse_ssr_renders_total counter',
+                `synapse_ssr_renders_total ${this.metrics.ssrRenderCount}`
+              ].join('\n');
 
-              return new Response(promText, {
+              const promTextWithNewline = `${promText}\n`;
+
+              return new Response(promTextWithNewline, {
                 headers: { 'Content-Type': 'text/plain; version=0.0.4; charset=utf-8' }
               });
             }
@@ -1400,51 +2041,6 @@ ${this.renderStylesheets()}
               ssrRenderCount: this.metrics.ssrRenderCount,
               staticFileCount: this.metrics.staticFileCount
             });
-          }
-
-          // 3. Rate Limiter for Sensitive Endpoints (RPC, Uploads, Webhooks, SSE)
-          if (
-            pathname.startsWith('/_synapse/rpc/') ||
-            pathname.startsWith('/_synapse/files/') ||
-            pathname.startsWith('/_synapse/webhooks/') ||
-            pathname.startsWith('/_synapse/sse/')
-          ) {
-            const trustProxy = process.env.SYNAPSE_TRUST_PROXY !== 'false' && this.config.trustProxy !== false;
-            let clientIp: string;
-            if (trustProxy) {
-              clientIp =
-                req.headers.get('cf-connecting-ip') ||
-                req.headers.get('x-forwarded-for')?.split(',')[0].trim() ||
-                this.httpServer?.requestIP(req)?.address ||
-                '127.0.0.1';
-            } else {
-              clientIp = this.httpServer?.requestIP(req)?.address || '127.0.0.1';
-            }
-            const clientKey = clientIp;
-
-            const rateResult = this.rateLimiter.consume(clientKey);
-            if (!rateResult.allowed) {
-              const cors = this.corsHeaders(req);
-              this.logRequest(req, pathname, 429, startedAt);
-              return new Response(
-                JSON.stringify({
-                  ok: false,
-                  error: 'RATE_LIMIT_EXCEEDED',
-                  message: 'Muitas requisições. Tente novamente mais tarde.'
-                }),
-                {
-                  status: 429,
-                  headers: {
-                    'Content-Type': 'application/json; charset=utf-8',
-                    'Retry-After': String(Math.ceil(rateResult.resetMs / 1000)),
-                    'X-RateLimit-Limit': String(rateResult.limit),
-                    'X-RateLimit-Remaining': String(rateResult.remaining),
-                    'X-RateLimit-Reset': String(Math.ceil((Date.now() + rateResult.resetMs) / 1000)),
-                    ...(cors ?? {})
-                  }
-                }
-              );
-            }
           }
 
           // 3. RPC Actions Dispatcher (POST /_synapse/rpc/:sliceName)
@@ -1534,8 +2130,8 @@ ${this.renderStylesheets()}
             }
 
             try {
-              const session = this.sessionFrom(req);
-              const actionCtx = this.createActionContext(slice.name, session);
+              const session = await this.requestSession(req);
+              const actionCtx = this.createActionContext(slice.key, session);
 
               const result = await slice.actionFn(body, actionCtx, session, actionCtx);
               const status = result.ok ? 200 : httpStatusForError(result.error);
@@ -1552,9 +2148,9 @@ ${this.renderStylesheets()}
               }
 
               return new Response(JSON.stringify(result), { status, headers });
-            } catch (err: any) {
+            } catch (err: unknown) {
               this.logRequest(req, pathname, 500, startedAt, undefined, 'rpc_error');
-              return Response.json({ ok: false, error: `Falha interna no RPC: ${err.message}` }, { status: 500 });
+              return this.internalFailure(err, pathname, cors);
             }
           }
 
@@ -1628,8 +2224,8 @@ ${this.renderStylesheets()}
                 json = null;
               }
 
-              const session = this.sessionFrom(req);
-              const actionCtx = this.createActionContext(slice.name, session);
+              const session = await this.requestSession(req);
+              const actionCtx = this.createActionContext(slice.key, session);
 
               const result = await slice.webhookFn(
                 {
@@ -1649,12 +2245,8 @@ ${this.renderStylesheets()}
               }
               return Response.json(result, { status, headers: cors ?? undefined });
             } catch (err: unknown) {
-              const message = err instanceof Error ? err.message : String(err);
               this.logRequest(req, pathname, 500, startedAt);
-              return Response.json(
-                { ok: false, error: `Falha no processamento de webhook: ${message}` },
-                { status: 500 }
-              );
+              return this.internalFailure(err, pathname, cors);
             }
           }
 
@@ -1674,11 +2266,64 @@ ${this.renderStylesheets()}
             const topic = decodeURIComponent(rawTopic);
 
             if (!topic) {
-              return Response.json({ ok: false, error: 'Tópico de subscrição inválido.' }, { status: 400 });
+              return this.realtimeRefusal('TOPIC_NOT_FOUND', 404, 'Tópico de subscrição inválido.', cors);
             }
 
+            const session = await this.requestSession(req);
+
+            // Access is declared, not inferred: a name is not a permission.
+            const declaration = declaredTopic(topic, session.tenantId);
+
+            if (!session.isAuthenticated && !declaration?.public) {
+              return this.realtimeRefusal('UNAUTHENTICATED', 401, 'Subscrição requer uma sessão autenticada.', cors);
+            }
+
+            if (!declaration) {
+              return this.realtimeRefusal('TOPIC_NOT_FOUND', 404, 'Tópico não declarado.', cors);
+            }
+
+            if (declaration.readRoles?.length && !hasAnyRole(session, declaration.readRoles)) {
+              return this.realtimeRefusal('TOPIC_FORBIDDEN', 403, 'Sessão sem papel para este tópico.', cors);
+            }
+
+            const bounds = this.realtimeBounds();
+
+            if (this.openStreams.size >= bounds.maxSubscriptions) {
+              return this.realtimeRefusal(
+                'REALTIME_LIMIT_EXCEEDED',
+                429,
+                'Limite de subscrições simultâneas atingido.',
+                cors
+              );
+            }
+
+            const effectiveTopic = scopedTopic(topic, session.tenantId);
             const eventHub = getEventHub();
-            const session = this.sessionFrom(req);
+            const isNewTopic = eventHub.listenerCount(effectiveTopic) === 0;
+
+            if (isNewTopic && eventHub.activeTopics().length >= bounds.maxTopics) {
+              return this.realtimeRefusal(
+                'REALTIME_LIMIT_EXCEEDED',
+                429,
+                'Limite de tópicos registrados atingido.',
+                cors
+              );
+            }
+
+            const clientKey = this.clientIdentity(req);
+            const openForClient = this.realtimeConnections.get(clientKey) ?? 0;
+
+            if (openForClient >= bounds.maxConnectionsPerClient) {
+              return this.realtimeRefusal(
+                'REALTIME_LIMIT_EXCEEDED',
+                429,
+                'Limite de conexões simultâneas por cliente atingido.',
+                cors
+              );
+            }
+
+            this.realtimeConnections.set(clientKey, openForClient + 1);
+
             let unsubscribe: (() => void) | null = null;
             let keepAliveTimer: ReturnType<typeof setInterval> | null = null;
 
@@ -1691,12 +2336,26 @@ ${this.renderStylesheets()}
                 unsubscribe();
                 unsubscribe = null;
               }
+              const open = this.realtimeConnections.get(clientKey) ?? 0;
+              if (open <= 1) {
+                this.realtimeConnections.delete(clientKey);
+              } else {
+                this.realtimeConnections.set(clientKey, open - 1);
+              }
             };
 
             req.signal.addEventListener('abort', cleanup);
 
-            const stream = new ReadableStream({
+            let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+            const server = this;
+            const stream = new ReadableStream<Uint8Array>({
               start(controller) {
+                streamController = controller;
+                // An open stream is not drainable work: it never completes on its own.
+                // It is tracked separately and closed deliberately when shutdown begins.
+                server.openStreams.add(controller);
+                releaseInFlight();
+
                 const encoder = new TextEncoder();
                 controller.enqueue(encoder.encode(': connected\n\n'));
 
@@ -1708,16 +2367,19 @@ ${this.renderStylesheets()}
                   }
                 }, 15000);
 
-                unsubscribe = eventHub.subscribe(topic, (data) => {
+                unsubscribe = eventHub.subscribe(effectiveTopic, (data) => {
                   try {
                     const eventData = JSON.stringify(data);
                     controller.enqueue(encoder.encode(`event: message\ndata: ${eventData}\n\n`));
                   } catch (err) {
-                    console.error(`[SSE] Erro ao serializar evento para tópico "${topic}":`, err);
+                    console.error(`[SSE] Erro ao serializar evento para tópico "${effectiveTopic}":`, err);
                   }
                 });
               },
               cancel() {
+                if (streamController) {
+                  server.openStreams.delete(streamController);
+                }
                 cleanup();
               }
             });
@@ -1756,7 +2418,7 @@ ${this.renderStylesheets()}
             const outcome = await saveUpload(req, {
               baseDir: this.baseDir,
               domain: resolvedUpload.slice.domain,
-              session: this.sessionFrom(req)
+              session: await this.requestSession(req)
             });
 
             this.logRequest(req, pathname, outcome.status, startedAt);
@@ -1769,6 +2431,11 @@ ${this.renderStylesheets()}
             const cors = this.corsHeaders(req);
             if (req.method === 'OPTIONS') {
               return new Response(null, { status: cors ? 204 : 404, headers: cors ?? undefined });
+            }
+
+            const session = await this.requestSession(req);
+            if (!session.isAuthenticated) {
+              return Response.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401, headers: cors ?? undefined });
             }
 
             const fileUrl = url.searchParams.get('url');
@@ -1800,15 +2467,20 @@ ${this.renderStylesheets()}
                   );
                 }
 
-                const res = await fetch(fileUrl);
-                if (!res.ok) {
+                const fetched = await fetchPinnedExternal(fileUrl, validation.resolvedIp, {
+                  maxBytes: this.config.imageOptimizer?.maxResponseBytes ?? 10 * 1024 * 1024,
+                  timeoutMs: this.config.imageOptimizer?.timeoutMs ?? 10_000
+                });
+
+                if (!fetched.ok || !fetched.body) {
                   return Response.json(
-                    { ok: false, error: 'FETCH_IMAGE_FAILED' },
-                    { status: 502, headers: cors ?? undefined }
+                    { ok: false, error: fetched.code || 'FETCH_IMAGE_FAILED' },
+                    { status: fetched.status ?? 502, headers: cors ?? undefined }
                   );
                 }
-                buffer = new Uint8Array(await res.arrayBuffer());
-                mimeType = res.headers.get('content-type') || mimeType;
+
+                buffer = fetched.body;
+                mimeType = fetched.contentType || mimeType;
               } else {
                 const publicDir = path.resolve(this.baseDir, 'public');
                 const cleanRel = fileUrl.replace(/^\/+/, '');
@@ -1846,8 +2518,7 @@ ${this.renderStylesheets()}
                 }
               });
             } catch (err: unknown) {
-              const msg = err instanceof Error ? err.message : String(err);
-              return Response.json({ ok: false, error: msg }, { status: 500 });
+              return this.internalFailure(err, pathname, cors);
             }
           }
 
@@ -1902,7 +2573,16 @@ ${this.renderStylesheets()}
 
           if (resolvedSlice) {
             const slice = resolvedSlice;
-            const session = this.sessionFrom(req);
+
+            // A rendered page load is an accepting surface too, and it is the most
+            // expensive one: refuse before any loader or action runs.
+            const pageRefusal = this.rateLimitRefusal(req, pathname, startedAt);
+
+            if (pageRefusal) {
+              return pageRefusal;
+            }
+
+            const session = await this.requestSession(req);
             const cacheConfig = slice.cacheConfig;
             const scopePrefix = `${session.tenantId || 'global'}:${session.userId !== 'anon' ? session.userId : 'public'}`;
             const normalizedKey = cacheConfig
@@ -2003,7 +2683,20 @@ ${this.renderStylesheets()}
           return new Response('404 Not Found in SynapseJS Router', { status: 404 });
         };
 
-        let response = await handleRequest();
+        let response: Response | undefined;
+
+        try {
+          response = await Promise.race([handleRequest(), this.drainSignal]);
+        } finally {
+          releaseInFlight();
+        }
+
+        // A successful WebSocket upgrade returned nothing: the connection is no
+        // longer an HTTP response, so neither plugins nor headers apply to it.
+        if (!(response instanceof Response)) {
+          return response as unknown as Response;
+        }
+
         if (this.config.plugins) {
           for (const plugin of this.config.plugins) {
             if (plugin.onResponse) {
@@ -2011,7 +2704,10 @@ ${this.renderStylesheets()}
             }
           }
         }
-        return response;
+
+        // The baseline security headers are applied here, so every response — routed,
+        // unrouted, static or an error page — carries the same set.
+        return this.withBaselineHeaders(response, req);
       }
     });
 

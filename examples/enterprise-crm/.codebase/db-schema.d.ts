@@ -4,6 +4,28 @@
  * Regenerate with 'synapse skeleton' or 'synapse db-schema'. DO NOT EDIT MANUALLY.
  */
 
+export interface DbWelcomeEmails {
+  id: string; /** Primary Key */
+  customer_id: string;
+  email: string;
+  status: string;
+  created_at?: string | null;
+}
+
+export interface DbPaymentDeliveries {
+  delivery_id: string; /** Primary Key */
+  amount_cents: number;
+  signature: string;
+  received_at?: string | null;
+}
+
+export interface DbCatalogProducts {
+  id: string; /** Primary Key */
+  name: string;
+  category: string;
+  price_cents: number;
+}
+
 export interface DbCustomers {
   id: string; /** Primary Key */
   name: string;
@@ -30,6 +52,9 @@ export interface DbInvoices {
 }
 
 export interface DatabaseSchema {
+  welcome_emails: DbWelcomeEmails;
+  payment_deliveries: DbPaymentDeliveries;
+  catalog_products: DbCatalogProducts;
   customers: DbCustomers;
   products: DbProducts;
   invoices: DbInvoices;

@@ -187,12 +187,14 @@ describe('Onda 4: Plugin Infrastructure Lifecycle Hooks (DEF-12)', () => {
   });
 
   it('handles image optimization endpoint with error guards', async () => {
-    const missingUrlRes = await fetch(`${baseUrl}/_synapse/images/optimize`);
+    const headers = { 'x-user-id': 'image-tester' };
+
+    const missingUrlRes = await fetch(`${baseUrl}/_synapse/images/optimize`, { headers });
     expect(missingUrlRes.status).toBe(400);
     const missingJson = await missingUrlRes.json();
     expect(missingJson.error).toBe('MISSING_URL_PARAM');
 
-    const notFoundRes = await fetch(`${baseUrl}/_synapse/images/optimize?url=nonexistent-img.png`);
+    const notFoundRes = await fetch(`${baseUrl}/_synapse/images/optimize?url=nonexistent-img.png`, { headers });
     expect(notFoundRes.status).toBe(404);
     const notFoundJson = await notFoundRes.json();
     expect(notFoundJson.error).toBe('IMAGE_NOT_FOUND');

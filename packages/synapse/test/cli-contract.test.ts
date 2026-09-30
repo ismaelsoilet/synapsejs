@@ -185,6 +185,160 @@ describe('synapse new-slice', () => {
   });
 });
 
+describe('write-path containment', () => {
+  it('refuses traversal in the domain argument on standard output', async () => {
+    const result = await runCli(['new-slice', '../../../../tmp', 'pwn']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('INVALID_PATH_SEGMENT');
+    expect(result.json?.status).toBe('ERROR');
+    expect(fs.existsSync(path.join('/tmp', 'pwn.slice.tsx'))).toBe(false);
+  });
+
+  it('refuses traversal in the slice-name argument on standard output', async () => {
+    const result = await runCli(['new-slice', 'billing', '../../../outside/pwn']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('INVALID_PATH_SEGMENT');
+    expect(fs.existsSync(path.join(sandbox, 'outside'))).toBe(false);
+  });
+
+  it('refuses a traversing shared-module name on standard output', async () => {
+    const result = await runCli(['new-shared', '../../../escape']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('INVALID_PATH_SEGMENT');
+    expect(fs.existsSync(path.join(sandbox, 'escape.ts'))).toBe(false);
+  });
+
+  it('refuses an escaping project name without creating a directory', async () => {
+    const result = await runCli(['new', '../../escaped-app']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('INVALID_PATH_SEGMENT');
+    expect(fs.existsSync(path.resolve(sandbox, '../../escaped-app'))).toBe(false);
+  });
+
+  it('refuses a field name carrying SQL metacharacters before writing the slice', async () => {
+    const result = await runCli(['new-slice', 'store', 'create-product', '--fields=title); DROP TABLE x; --:string']);
+
+    expect(result.exitCode).toBe(1);
+    expect(result.json?.code).toBe('INVALID_FIELD_NAME');
+    expect(fs.existsSync(path.join(sandbox, 'src', 'slices', 'store', 'create-product.slice.tsx'))).toBe(false);
+  });
+});
+
+describe('synapse start', () => {
+  it('refuses to start in production without a session secret unless the risk is acknowledged', async () => {
+    const env = cliEnv();
+    env.NODE_ENV = 'production';
+    delete env.SYNAPSE_SESSION_SECRET;
+    delete env.SYNAPSE_DEV_HEADERS;
+    delete env.SYNAPSE_ACKNOWLEDGE_INSECURE;
+
+    const proc = Bun.spawn([process.execPath, 'run', CLI, 'start', '0'], {
+      cwd: sandbox,
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+    const [stdout, exitCode] = await Promise.all([new Response(proc.stdout).text(), proc.exited]);
+
+    expect(exitCode).not.toBe(0);
+
+    const json = JSON.parse(stdout.trim());
+    expect(json.status).toBe('FAIL');
+    expect(json.code).toBe('MISSING_SESSION_SECRET');
+  });
+
+  it('starts when the missing secret is explicitly acknowledged', async () => {
+    const env = cliEnv();
+    env.NODE_ENV = 'production';
+    delete env.SYNAPSE_SESSION_SECRET;
+    delete env.SYNAPSE_DEV_HEADERS;
+
+    const proc = Bun.spawn([process.execPath, 'run', CLI, 'start', '0', '--acknowledge-insecure'], {
+      cwd: sandbox,
+      env,
+      stdout: 'pipe',
+      stderr: 'pipe'
+    });
+
+    // It starts: wait for the listening line, then terminate it.
+    const reader = proc.stdout.getReader();
+    const decoder = new TextDecoder();
+    let output = '';
+    const deadline = Date.now() + 10_000;
+
+    while (Date.now() < deadline && !output.includes('Executando em')) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      output += decoder.decode(chunk.value);
+    }
+
+    proc.kill();
+    await proc.exited;
+
+    expect(output).toContain('Executando em');
+  });
+});
+
+describe('unknown flags are refused on every subcommand', () => {
+  const subcommands = [
+    'check',
+    'migrate',
+    'rollback',
+    'mcp',
+    'skeleton',
+    'db-schema',
+    'db-drift',
+    'impact',
+    'split',
+    'new-slice',
+    'new-shared',
+    'build',
+    'contract',
+    'test',
+    'new',
+    'worker',
+    'info'
+  ];
+
+  for (const subcommand of subcommands) {
+    it(`rejects an unrecognised flag on '${subcommand}'`, async () => {
+      const result = await runCli([subcommand, '--banana']);
+
+      expect(result.exitCode).toBe(1);
+      expect(result.json?.code).toBe('UNKNOWN_FLAG');
+      expect(result.json?.status).toBe('FAIL');
+    });
+  }
+});
+
+describe('synapse impact', () => {
+  it('fails with a non-zero exit for a target that does not exist', async () => {
+    const sliceDir = path.join(sandbox, 'src', 'slices', 'demo');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'known.slice.tsx'),
+      `export const KnownInputSchema = {};
+export const sliceSchema = 'CREATE TABLE IF NOT EXISTS known_table (id TEXT PRIMARY KEY);';
+export async function knownAction() { return { ok: true }; }
+`,
+      'utf-8'
+    );
+
+    const missing = await runCli(['impact', 'tabela-inexistente']);
+    expect(missing.exitCode).toBe(1);
+    expect(missing.json?.status).toBe('FAIL');
+    expect(missing.json?.code).toBe('TARGET_NOT_RESOLVED');
+
+    const resolved = await runCli(['impact', 'known_table']);
+    expect(resolved.exitCode).toBe(0);
+    expect(resolved.json?.status).toBe('PASS');
+  });
+});
+
 describe('synapse new', () => {
   it('generates a project that does not depend on this monorepo', async () => {
     const result = await runCli(['new', 'my-app']);
@@ -196,7 +350,11 @@ describe('synapse new', () => {
     const pkg = JSON.parse(manifest);
 
     expect(pkg.name).toBe('my-app');
-    expect(pkg.dependencies['@ismaelsoilet/synapsejs'] || pkg.dependencies.synapsejs).toMatch(/^\^1\.1\.\d+$/);
+    // The scaffold must depend on the version this framework ships, not on a frozen pin.
+    const frameworkManifest = JSON.parse(fs.readFileSync(path.resolve(import.meta.dir, '../package.json'), 'utf-8'));
+    expect(pkg.dependencies['@ismaelsoilet/synapsejs'] || pkg.dependencies.synapsejs).toBe(
+      `^${frameworkManifest.version}`
+    );
     expect(manifest).not.toContain('workspace:*');
     expect(pkg.engines.bun).toBeDefined();
 

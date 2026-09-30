@@ -27,6 +27,7 @@ import { renderContractJson, renderContractMarkdown } from '../src/compiler/cont
 import { generateDatabaseSchemaCatalog } from '../src/compiler/db-schema-generator';
 import { analyzeImpact } from '../src/compiler/impact-analyzer';
 import { rollbackSliceMigrations, runSliceMigrations } from '../src/compiler/migration-runner';
+import { analyzeOptionalItemCoverage, unionCoverage } from '../src/compiler/optional-coverage';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
 import { scaffoldCrud, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
 import { checkSchemaDrift } from '../src/compiler/schema-drift';
@@ -34,13 +35,83 @@ import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discover
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { SLICE_TEMPLATES, type SliceTemplate } from '../src/compiler/slice-templates';
 import { buildStandalone } from '../src/compiler/standalone-builder';
+import { isInsideBase } from '../src/core/path-guard';
 import { SynapseMcpServer } from '../src/mcp/server';
+import { projectStatus } from '../src/project-status';
 import { SynapseServer } from '../src/runtime/server';
+import { SYNAPSE_VERSION } from '../src/version';
 
 const command = process.argv[2] || 'check';
 const root = process.cwd();
 
+/**
+ * The flags each subcommand accepts. An unrecognised flag is refused on every
+ * command, with the same machine-readable failure code — a machine consumer must
+ * not be told "PASS" for a flag the command silently ignored.
+ */
+const KNOWN_FLAGS: Record<string, string[]> = {
+  dev: ['--watch'],
+  start: ['--acknowledge-insecure'],
+  check: [],
+  migrate: [],
+  rollback: ['--steps'],
+  mcp: [],
+  skeleton: [],
+  'db-schema': [],
+  'db-drift': [],
+  impact: [],
+  split: [],
+  'new-slice': ['--template', '--fields'],
+  'new-shared': [],
+  build: ['--standalone'],
+  contract: ['--markdown'],
+  test: ['--gate'],
+  new: [],
+  create: [],
+  init: [],
+  worker: [],
+  info: [],
+  coverage: []
+};
+
+/** Returns the first unrecognised flag, or null when every flag is declared. */
+function unknownFlag(argv: string[]): string | null {
+  const known = KNOWN_FLAGS[command] ?? [];
+
+  for (const argument of argv.slice(3)) {
+    if (!argument.startsWith('--')) {
+      continue;
+    }
+
+    const name = argument.split('=')[0];
+
+    if (!known.includes(name)) {
+      return argument;
+    }
+  }
+
+  return null;
+}
+
 async function main() {
+  const offendingFlag = unknownFlag(process.argv);
+
+  if (offendingFlag) {
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          status: 'FAIL',
+          code: 'UNKNOWN_FLAG',
+          operation: 'FLAG_VALIDATION',
+          message: `Flag desconhecida: ${offendingFlag}. Flags aceitas por '${command}': ${(KNOWN_FLAGS[command] ?? []).join(', ') || 'nenhuma'}.`
+        },
+        null,
+        2
+      )}\n`
+    );
+    process.exit(1);
+  }
+
   switch (command) {
     case 'dev': {
       const watch = process.argv.includes('--watch');
@@ -62,12 +133,32 @@ async function main() {
 
     case 'start': {
       const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
-      const isProduction = process.env.NODE_ENV === 'production';
+      const { isProductionLikeMode } = await import('../src/runtime/server');
+      const acknowledged =
+        process.argv.includes('--acknowledge-insecure') ||
+        process.env.SYNAPSE_ACKNOWLEDGE_INSECURE === 'true' ||
+        process.env.SYNAPSE_DEV_HEADERS === 'true';
 
-      if (isProduction && !process.env.SYNAPSE_SESSION_SECRET) {
+      if (isProductionLikeMode() && !process.env.SYNAPSE_SESSION_SECRET && !acknowledged) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'FAIL',
+              operation: 'START',
+              code: 'MISSING_SESSION_SECRET',
+              message:
+                'Modo de produção sem SYNAPSE_SESSION_SECRET: toda requisição resolveria para anônimo. Configure o segredo ou passe --acknowledge-insecure para assumir o risco explicitamente.'
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
+      if (!process.env.SYNAPSE_SESSION_SECRET && acknowledged) {
         console.warn(
-          '⚠️  [AVISO DE SEGURANÇA] NODE_ENV=production ativo sem SYNAPSE_SESSION_SECRET configurado!\n' +
-            '   Sessões de usuário permanecerão anônimas por padrão.'
+          '⚠️  [AVISO DE SEGURANÇA] Iniciando sem SYNAPSE_SESSION_SECRET: identidade e papéis vindos de headers do chamador (x-user-id, x-user-roles) NÃO serão confiados; requisições permanecem anônimas.'
         );
       }
 
@@ -79,13 +170,24 @@ async function main() {
       const gracefulShutdown = async (signal: string) => {
         if (shuttingDown) return;
         shuttingDown = true;
-        console.log(`\n🛑 [SynapseJS] Recebido sinal ${signal}, iniciando encerramento gracioso...`);
         try {
-          await server.stop();
-          console.log('✅ [SynapseJS] Servidor e conexões de persistência encerrados com sucesso.');
+          const summary = await server.stop();
+          process.stdout.write(
+            `${JSON.stringify({
+              status: 'PASS',
+              operation: 'GRACEFUL_SHUTDOWN',
+              signal,
+              drainedRequests: summary.drained,
+              abortedRequests: summary.aborted,
+              jobsRequeued: summary.jobsRequeued,
+              jobsFailed: summary.jobsFailed
+            })}\n`
+          );
           process.exit(0);
         } catch (err) {
-          console.error('❌ [SynapseJS] Erro durante encerramento gracioso:', err);
+          process.stderr.write(
+            `${JSON.stringify({ status: 'ERROR', operation: 'GRACEFUL_SHUTDOWN', error: String(err) })}\n`
+          );
           process.exit(1);
         }
       };
@@ -257,7 +359,9 @@ async function main() {
 
       const report = analyzeImpact(target, root);
       process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
-      process.exit(0);
+      // A target that does not exist is a failure; a valid target with no
+      // dependents is not.
+      process.exit(report.status === 'PASS' ? 0 : 1);
       break;
     }
 
@@ -341,7 +445,7 @@ async function main() {
       const name = process.argv[4];
 
       if (!domain || !name) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify({
             status: 'ERROR',
             message: 'Parâmetros obrigatórios ausentes. Uso: synapse new-slice <domain> <name>'
@@ -409,7 +513,7 @@ async function main() {
       const created = scaffoldSlice(domain, name, root, template, fieldsArg);
 
       if (!created.ok) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify(
             {
               status: 'ERROR',
@@ -445,7 +549,7 @@ async function main() {
     case 'new-shared': {
       const name = process.argv[3];
       if (!name) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify({
             status: 'ERROR',
             message: 'Nome do módulo compartilhado ausente. Uso: synapse new-shared <nome>'
@@ -458,7 +562,7 @@ async function main() {
       const created = scaffoldShared(name, root);
 
       if (!created.ok) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify(
             {
               status: 'ERROR',
@@ -572,6 +676,52 @@ async function main() {
       break;
     }
 
+    case 'coverage': {
+      // Which optional contract items the committed slices exercise — across every
+      // shipped application, so the report covers the union.
+      const targets = [
+        root,
+        ...(fs.existsSync(path.join(root, 'examples'))
+          ? fs
+              .readdirSync(path.join(root, 'examples'), { withFileTypes: true })
+              .filter((entry) => entry.isDirectory())
+              .map((entry) => path.join(root, 'examples', entry.name))
+          : [])
+      ];
+
+      const reports = targets.map((target) => analyzeOptionalItemCoverage(target));
+      const resolvable = reports.filter((report) => report.status !== 'FAIL' || report.totalSlices > 0);
+
+      if (resolvable.length === 0) {
+        process.stdout.write(
+          `${JSON.stringify(reports[0] ?? { status: 'FAIL', operation: 'OPTIONAL_ITEM_COVERAGE' }, null, 2)}\n`
+        );
+        process.exit(1);
+      }
+
+      const union = unionCoverage(resolvable);
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: union.unexercised.length === 0 ? 'PASS' : 'FAIL',
+            operation: 'OPTIONAL_ITEM_COVERAGE',
+            applications: resolvable.map((report) => ({
+              appDir: report.appDir,
+              totalSlices: report.totalSlices,
+              items: report.items
+            })),
+            covered: union.covered,
+            unexercised: union.unexercised
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(union.unexercised.length === 0 ? 0 : 1);
+      break;
+    }
+
     case 'contract': {
       // O framework se descreve numa chamada: e o que o agente le em vez de adivinhar.
       const asMarkdown = process.argv.includes('--markdown');
@@ -597,7 +747,7 @@ async function main() {
     case 'init': {
       const rawTarget = process.argv[3];
       if (!rawTarget) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify({
             status: 'ERROR',
             message: 'Nome do projeto obrigatório. Uso: synapse new <project-name>'
@@ -607,15 +757,34 @@ async function main() {
       }
 
       const targetDir = path.resolve(root, rawTarget);
+
+      if (!isInsideBase(root, targetDir)) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'ERROR',
+              operation: 'CREATE_PROJECT',
+              code: 'INVALID_PATH_SEGMENT',
+              message: `O caminho '${rawTarget}' resolve para fora do diretório atual (${root}). Um projeto novo é criado dentro dele; use um nome simples ou um subdiretório.`
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
       const cleanProjectName = path
         .basename(targetDir)
         .toLowerCase()
         .replace(/[^a-z0-9-_]/g, '-');
 
       if (fs.existsSync(targetDir)) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify({
             status: 'ERROR',
+            operation: 'CREATE_PROJECT',
+            code: 'TARGET_EXISTS',
             message: `O diretório '${rawTarget}' já existe em ${targetDir}.`
           })}\n`
         );
@@ -633,9 +802,11 @@ async function main() {
       const templateDir = candidates.find((dir) => fs.existsSync(dir));
 
       if (!templateDir) {
-        process.stderr.write(
+        process.stdout.write(
           `${JSON.stringify({
             status: 'ERROR',
+            operation: 'CREATE_PROJECT',
+            code: 'TEMPLATE_NOT_FOUND',
             message: 'Template oficial starter não encontrado nos diretórios candidatos.'
           })}\n`
         );
@@ -660,9 +831,11 @@ async function main() {
             let content = fs.readFileSync(s, 'utf-8');
             if (entry.name === 'package.json') {
               content = content.replace('"starter-app"', `"${cleanProjectName}"`);
+              // The scaffold depends on the version this CLI ships, never on a frozen
+              // older pin: a new project must receive every fix since then.
               content = content.replace(
                 /"(@ismaelsoilet\/)?synapsejs":\s*"[^"]+"/g,
-                '"@ismaelsoilet/synapsejs": "^1.1.1"'
+                `"@ismaelsoilet/synapsejs": "^${SYNAPSE_VERSION}"`
               );
             }
             fs.writeFileSync(d, content, 'utf-8');
@@ -712,6 +885,7 @@ async function main() {
                 typeof exportVal === 'object' &&
                 'name' in (exportVal as Record<string, unknown>)
               ) {
+                // biome-ignore lint/suspicious/noExplicitAny: slice export boundary, validated by the shape check above
                 queue.registerJob(exportVal as any);
               }
             }
@@ -724,9 +898,21 @@ async function main() {
       console.log('⚡ [SynapseJS Worker] Fila de background jobs ativa e processando...');
       let running = true;
       const shutdown = () => {
+        if (!running) return;
         running = false;
-        console.log('\n🛑 [SynapseJS Worker] Encerrando worker...');
+        // Stop claiming first, then return whatever was running to the queue with its
+        // attempt counter already advanced by the interrupted claim.
+        queue.stopClaiming();
+        const interrupted = queue.interruptRunningJobs();
         queue.close();
+        process.stdout.write(
+          `${JSON.stringify({
+            status: 'PASS',
+            operation: 'WORKER_SHUTDOWN',
+            jobsRequeued: interrupted.requeued,
+            jobsFailed: interrupted.failed
+          })}\n`
+        );
         process.exit(0);
       };
       process.on('SIGINT', shutdown);
@@ -750,234 +936,26 @@ async function main() {
     }
 
     case 'info': {
-      process.stdout.write(
-        `${JSON.stringify(
-          {
-            framework: 'SynapseJS',
-            version: '1.6.0',
-            runtime: 'Bun + Bun.serve',
-            database: 'Embedded SQLite (WAL) and PostgreSQL, both verified',
-            protocols: ['REST/HTTP', 'Isomorphic RPC', 'Model Context Protocol (MCP)'],
-            features: [
-              {
-                feature: 'Vertical slices (N = 1) with Locality of Behavior',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/locality.test.ts'
-              },
-              {
-                feature: 'Result<T, E> control flow (no public throwing helper)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/machine-types.test.ts'
-              },
-              {
-                feature: 'TypeBox JIT input contracts',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/slice-contract.test.ts'
-              },
-              {
-                feature: 'Declarative sliceSchema migrations, applied once per statement',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/migration-runner.test.ts'
-              },
-              {
-                feature: 'Domain errors map to HTTP status (401/403/404/409/422/500)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
-              },
-              {
-                feature: 'React hydration from a client bundle the splitter produces',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
-              },
-              {
-                feature: 'Signed sessions (SYNAPSE_SESSION_SECRET) and static files from public/',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/runtime-server.test.ts'
-              },
-              {
-                feature: 'Login with Bun.password, signed token and cookie session (storeSession/clearSession)',
-                status: 'stable',
-                evidence:
-                  'bun run --cwd apps/crm synapse test (login oracle: the server accepts the issued token) + bun test packages/synapse/test/session-cookie.test.ts'
-              },
-              {
-                feature: 'Cross-slice atomicity through src/shared modules (db.transaction, rollback proven on SQLite)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/shared-modules.test.ts'
-              },
-              {
-                feature: 'Slice boundary: a slice never imports another slice (SLICE_IMPORTS_SLICE)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/slice-splitter.test.ts'
-              },
-              {
-                feature: 'Browser RPC transport that never throws (RPC_MALFORMED/RPC_UNREACHABLE as values)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/rpc-client.test.ts'
-              },
-              {
-                feature: 'Pre-built client bundles with a manifest (synapse build)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/client-bundler.test.ts'
-              },
-              {
-                feature: 'Uploads with session, size limit and traversal guard (/_synapse/files)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/uploads.test.ts'
-              },
-              {
-                feature: 'Embedded SQLite engine (WAL, prepared-statement cache)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/sqlite-client.test.ts'
-              },
-              {
-                feature: 'Zero-wiring routing, SSR shell and RPC dispatcher',
-                status: 'stable',
-                evidence: 'bun --cwd examples/enterprise-crm test:e2e'
-              },
-              {
-                feature: 'Slice discovery resolution (never reports PASS with zero slices)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/slice-discovery.test.ts'
-              },
-              {
-                feature: 'MCP stdio server (11 tools)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/mcp-server.test.ts'
-              },
-              {
-                feature: 'AST skeletonizer to .codebase/repo-map.d.ts',
-                status: 'stable',
-                evidence: 'bun --cwd examples/enterprise-crm skeleton'
-              },
-              {
-                feature: 'Centralized Database Schema Catalog (.codebase/db-schema.d.ts)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/db-schema-generator.test.ts'
-              },
-              {
-                feature: 'Unified Object Storage (LocalStorage + AWS S3/R2 with SigV4)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/storage.test.ts'
-              },
-              {
-                feature: 'Distributed PostgreSQL Queue (SKIP LOCKED, Full Jitter, DLQ)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/postgres-queue.test.ts'
-              },
-              {
-                feature: 'Isomorphic slice splitter (shared/server/client modules)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/slice-splitter.test.ts'
-              },
-              {
-                feature: 'Slice invariants executed by bun:test (per-invariant reporting)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/oracle-runner.test.ts'
-              },
-              {
-                feature: 'Incremental diagnostics cache across processes',
-                status: 'roadmap',
-                evidence: 'removido na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s)'
-              },
-              {
-                feature: 'PostgreSQL parity (migrations, DDL, action round-trip)',
-                status: 'stable',
-                evidence: 'bun run test:postgres (CI roda contra um serviço postgres:16)'
-              },
-              {
-                feature: 'Context surface benchmark (files/tokens an agent must read)',
-                status: 'stable',
-                evidence: 'bun run bench'
-              },
-              {
-                feature: 'Isolated SQLite Queue & Background Jobs (defineJob, exponential backoff)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/jobs-queue.test.ts'
-              },
-              {
-                feature: 'Bidirectional DDL migrations with transactional rollback (synapse rollback)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda2.test.ts'
-              },
-              {
-                feature: 'Vendor code-splitting and dynamic metadata (sliceMeta)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda1.test.ts'
-              },
-              {
-                feature: 'Hierarchical domain layouts (_layout.tsx)',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda1.test.ts'
-              },
-              {
-                feature: 'Sliding-window rate limiting & streaming upload guard',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda2.test.ts'
-              },
-              {
-                feature: 'Distributed PostgreSQL Event Hub & Isomorphic i18n',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda3.test.ts'
-              },
-              {
-                feature: 'Token revocation, TOTP 2FA, image optimization & plugin hooks',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/onda4.test.ts'
-              },
-              {
-                feature: 'SSRF & Private Network Guard',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
-              },
-              {
-                feature: 'Bounded LRU SSR Cache & Query Normalization',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
-              },
-              {
-                feature: 'SQLite Queue Zombie Job Visibility Recovery',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
-              },
-              {
-                feature: 'HttpOnly Cookie Authentication via ActionContext',
-                status: 'stable',
-                evidence: 'bun test packages/synapse/test/production-hardening.test.ts'
-              }
-            ],
-            commands: [
-              'new',
-              'dev',
-              'start',
-              'check',
-              'migrate',
-              'rollback',
-              'db-drift',
-              'impact',
-              'mcp',
-              'skeleton',
-              'db-schema',
-              'split',
-              'build',
-              'test',
-              'worker',
-              'new-slice',
-              'contract',
-              'info'
-            ]
-          },
-          null,
-          2
-        )}\n`
-      );
+      // One machine-readable source: version, adoption, tool inventory and feature
+      // status all come from the same module the docs gate reads.
+      process.stdout.write(`${JSON.stringify(projectStatus(), null, 2)}\n`);
       process.exit(0);
       break;
     }
 
     default: {
-      process.stderr.write(
-        `Unknown command: ${command}\nAvailable: start, dev, check, migrate, rollback, mcp, skeleton, db-schema, db-drift, impact, split, build, test, worker, new, new-slice, contract, info\n`
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: 'FAIL',
+            code: 'UNKNOWN_COMMAND',
+            operation: 'COMMAND_VALIDATION',
+            message: `Comando desconhecido: ${command}.`,
+            commands: Object.keys(KNOWN_FLAGS)
+          },
+          null,
+          2
+        )}\n`
       );
       process.exit(1);
     }

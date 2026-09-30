@@ -1,5 +1,81 @@
 # Changelog
 
+## 1.9.0 — Production-readiness audit fixes (security hardening)
+
+Four behaviour changes are breaking. Each one states what it replaces, what it does now, and the flag
+that restores the previous behaviour where one exists.
+
+- **BREAKING — response cookies are secure by default.** Previously `ctx.setCookie(name, value)`
+  emitted a bare `name=value; Path=/` and the security attributes were opt-in. A cookie written with
+  no options now carries `HttpOnly`, `Secure` and `SameSite=Lax`. *Migration:* pass the attribute
+  explicitly to change it (`{ secure: false }`, `{ httpOnly: false }`, `{ sameSite: 'none' }`); there
+  is no global switch, because the previous default was the defect. The browser helper
+  (`storeSession`) is unchanged in behaviour and still cannot set `HttpOnly` — `document.cookie`
+  never can.
+
+- **BREAKING — the event stream requires a declared topic and an authenticated subscriber.**
+  Previously `GET /_synapse/sse/<anything>` accepted any topic name from any caller. A topic must now
+  be declared in the slice that owns it with
+  `defineTopic({ name, owner, readRoles?, tenantId?, public? })`; an undeclared topic answers
+  `404 TOPIC_NOT_FOUND`, an anonymous subscriber `401 UNAUTHENTICATED` (unless the declaration is
+  `public`), a session without a declared role `403 TOPIC_FORBIDDEN`, and topics are namespaced per
+  tenant. `ctx.broadcast(topic, data)` notifies zero subscribers unless the calling slice is the
+  declared `owner`. *Migration:* add the `defineTopic` call to each slice that publishes, and mark a
+  genuinely public topic `public: true`. There is no flag that restores an undeclared topic.
+
+- **BREAKING — the WebSocket upgrade is refused when no origin allow-list is configured.**
+  Previously an unset `SYNAPSE_ALLOWED_ORIGINS` meant "allow every origin", and an absent origin
+  skipped the check entirely. The upgrade is now fail-closed: an allow-list must be configured and
+  must contain the request's origin (or `*`), and an absent or opaque (`null`) origin is always
+  refused. *Migration:* set `SYNAPSE_ALLOWED_ORIGINS=https://your-app.example` in production. A
+  loopback origin (`http://localhost:*`, `http://127.0.0.1:*`) is still accepted so local development
+  keeps working without configuration.
+
+- **BREAKING — the third-party CDN is opt-in and the default content-security policy is strict.**
+  Previously every rendered page loaded `cdn.tailwindcss.com` and Google Fonts, and no policy was
+  emitted. Both origins are now opt-in (`SYNAPSE_ENABLE_CDN=true` plus `SYNAPSE_CDN_INTEGRITY` and
+  `SYNAPSE_FONTS_INTEGRITY` — without an integrity hash the tag is not emitted), an application
+  stylesheet in `public/synapse.css` always wins over a third-party origin, and every response now
+  carries `Content-Security-Policy`, `X-Content-Type-Options: nosniff`,
+  `Referrer-Policy: strict-origin-when-cross-origin` and `X-Frame-Options: DENY`. *Migration:* ship a
+  stylesheet (or set the opt-in and pin the hashes); supply `SYNAPSE_CSP` to emit your own policy
+  instead. The old `SYNAPSE_DISABLE_CDN` variable is obsolete — the default is already off.
+
+### Security fixes in this release, with the test that fails if they return
+
+| class of defect | severity | regression test |
+|---|---|---|
+| Path traversal in the scaffolder and the upload parser (a slice planted in a sibling app was imported, migrated and exposed as RPC) | critical | `packages/synapse/test/scaffolder.test.ts`, `cli-contract.test.ts` (containment) |
+| Unauthenticated SSE topics, fail-open WebSocket origin, no per-client connection bound | critical | `packages/synapse/test/sse-gateway.test.ts`, `http-response-hardening.test.ts` |
+| No security response headers anywhere, third-party CDN on by default, internal errors disclosed on the RPC path | high | `packages/synapse/test/http-response-hardening.test.ts` |
+| Browser-writable session identity (headers trusted without an opt-in), tenant taken from a spoofable header | high | `packages/synapse/test/session-security.test.ts` |
+| Revocation recorded but never consulted at request time | high | `packages/synapse/test/session-security.test.ts` (request-time revocation) |
+| Multipart uploads buffered without a ceiling; declared-length idiom admitted unknown lengths | high | `packages/synapse/test/uploads.test.ts`, `abuse-resistance.test.ts` |
+| Unbounded rate-limit registry that evicted live counters; spoofable client identity | medium | `packages/synapse/test/production-hardening.test.ts` |
+| SSRF pre-check discarded the validated address (a second resolution could reach a private host) | medium | `packages/synapse/test/abuse-resistance.test.ts` (pinning) |
+| Unauthenticated S3 `delete`; unauthenticated image optimizer | medium | `packages/synapse/test/storage.test.ts`, `http-response-hardening.test.ts` |
+| Health endpoint published the route table, paths and error text to anonymous callers | medium | `packages/synapse/test/runtime-server.test.ts` |
+| Shutdown closed the database on a 200 ms timer and discarded the drain promise | medium | `packages/synapse/test/graceful-shutdown.test.ts` |
+| Quadratic-backtracking patterns in the split leak gate and the DDL generator | low | `packages/synapse/test/abuse-resistance.test.ts` (time bound) |
+
+Feature ratings moved in the same release: capabilities whose only evidence was a template
+assertion, a test double or a generated-source substring were reclassified from `stable` to
+`experimental`, and several gained real evidence instead — background jobs, WebSockets, the SSR
+cache, webhooks with signature verification, `sliceMeta`, reversible migration blocks and React
+hydration are now demonstrated by committed slices or a mounted DOM. The counts now live in
+`packages/synapse/src/project-status.ts` (46 `stable`, 3 `experimental`, 1 `roadmap`) and
+`bun run docs:check` fails when a document disagrees with them. The project records **zero external
+adopters**, and `synapse info` says so rather than presenting the stable rating as adoption.
+
+Additional non-breaking hardening in the same release: a process-level request-body ceiling backed by
+per-route streaming guards on every body reader, a pinned outbound fetch that connects to the address
+`validateExternalUrl` approved, a signed S3 `delete`, rate limiting on the machine endpoints and
+rendered pages, opt-in proxy-header trust, a bounded allowance registry that refuses the excess rather
+than evicting a live counter, tenant identity only from verified claims, request-time revocation with
+a bounded memo and a prunable blacklist table, a real drain on shutdown (the configured
+`drainTimeoutMs` is honoured, outstanding work is answered `503 DRAINING`, and persistence is closed
+only afterwards), and one path-segment validator applied to every write surface.
+
 ## 1.8.0 — Jev System One Autonomous Agent Integration & Production Zero-Trust Hardening (Wave 10)
 
 - **Jev System One Autonomous Agent Integration**:

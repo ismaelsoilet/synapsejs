@@ -6,6 +6,8 @@
  * DataForm/DataTable specs, and Fast-Check PBT test arbitraries.
  */
 
+import { Err, Ok, type Result } from '../core/machine-types';
+
 export type FieldType = 'string' | 'number' | 'integer' | 'boolean' | 'enum' | 'date' | 'timestamp' | 'json';
 
 export interface ParsedField {
@@ -15,6 +17,32 @@ export interface ParsedField {
   enumValues?: string[];
   format?: string;
   label: string;
+}
+
+/**
+ * Field and enum-value names are interpolated into generated DDL and generated
+ * TypeScript, so they must be plain identifiers before any code generation runs.
+ */
+const FIELD_NAME_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+/**
+ * Validates every field name (and enum value) in a parsed field list.
+ * Returns the first offending name as the error value.
+ */
+export function validateFieldNames(fields: ParsedField[]): Result<ParsedField[], string> {
+  for (const field of fields) {
+    if (!FIELD_NAME_PATTERN.test(field.name)) {
+      return Err(field.name);
+    }
+
+    for (const value of field.enumValues ?? []) {
+      if (!FIELD_NAME_PATTERN.test(value)) {
+        return Err(value);
+      }
+    }
+  }
+
+  return Ok(fields);
 }
 
 function fieldToLabel(name: string): string {
@@ -173,7 +201,6 @@ export function generateSqlColumns(fields: ParsedField[]): string {
       case 'json':
       case 'string':
       case 'enum':
-      default:
         sqlType = 'TEXT';
         break;
     }

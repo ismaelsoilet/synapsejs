@@ -272,16 +272,22 @@ describe('static files, CORS and CSRF', () => {
 });
 
 describe('discovery failures are visible', () => {
-  it('reports the slice that failed to load in /health', async () => {
-    const payload = (await (await fetch(`${base}/_synapse/api/health`)).json()) as {
-      slicesLoaded: number;
-      loadErrors: Array<{ file: string; message: string }>;
-    };
+  it('reports the slice count anonymously and the failure detail only when authenticated', async () => {
+    const anonymous = (await (await fetch(`${base}/_synapse/api/health`)).json()) as Record<string, unknown>;
 
-    expect(payload.slicesLoaded).toBe(2);
-    expect(payload.loadErrors.length).toBe(1);
-    expect(payload.loadErrors[0].file).toContain('cannot-load.slice.tsx');
-    expect(payload.loadErrors[0].message).toContain('falha proposital');
+    expect(anonymous.slicesLoaded).toBe(2);
+    // The unauthenticated payload carries no paths, no load-error text and no route table.
+    expect(anonymous.loadErrors).toBeUndefined();
+    expect(anonymous.slices).toBeUndefined();
+    expect(JSON.stringify(anonymous)).not.toContain('cannot-load.slice.tsx');
+
+    const authenticated = (await (
+      await fetch(`${base}/_synapse/api/health`, { headers: { 'x-user-id': 'auditor' } })
+    ).json()) as { loadErrors: Array<{ file: string; message: string }> };
+
+    expect(authenticated.loadErrors.length).toBe(1);
+    expect(authenticated.loadErrors[0].file).toContain('cannot-load.slice.tsx');
+    expect(authenticated.loadErrors[0].message).toContain('falha proposital');
   });
 
   it('shows the failure on the dashboard rather than hiding it', async () => {

@@ -179,6 +179,56 @@ describe('SynapseMcpServer over stdio', () => {
     expect(content).toContain('age REAL NOT NULL');
   });
 
+  it('bounds the payload and drops absolute paths for a large workspace', async () => {
+    const slicesDir = path.join(sandbox, 'src', 'slices', 'big');
+    fs.mkdirSync(slicesDir, { recursive: true });
+
+    // The first slice owns the referenced table; the rest depend on it, so the target
+    // resolves and the impact list is larger than the cap.
+    fs.writeFileSync(
+      path.join(slicesDir, 'slice-owner.slice.tsx'),
+      `export const SliceOwnerInputSchema = {};
+export const sliceSchema = 'CREATE TABLE IF NOT EXISTS shared_table (id TEXT PRIMARY KEY);';
+export async function sliceOwnerAction() { return { ok: true }; }
+`,
+      'utf-8'
+    );
+
+    for (let index = 0; index < 120; index++) {
+      fs.writeFileSync(
+        path.join(slicesDir, `slice-${index}.slice.tsx`),
+        `export const Slice${index}InputSchema = {};
+export const sliceSchema = 'CREATE TABLE IF NOT EXISTS table_${index} (id TEXT PRIMARY KEY, shared_id TEXT, FOREIGN KEY (shared_id) REFERENCES shared_table(id));';
+export async function slice${index}Action() { return { ok: true }; }
+`,
+        'utf-8'
+      );
+    }
+
+    const { responses } = await runMcp([
+      {
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'tools/call',
+        params: { name: 'synapse_diff_impact', arguments: { target: 'shared_table' } }
+      }
+    ]);
+
+    const text = responses[0].result.content[0].text as string;
+    const payload = JSON.parse(text);
+
+    // The caller's context is bounded: at most the cap, with the total still reported.
+    expect(payload.impactedSlices.length).toBeLessThanOrEqual(100);
+    expect(payload.impactedTruncated).toBe(true);
+    expect(payload.totalImpacted).toBeGreaterThan(100);
+
+    // No absolute filesystem path leaks into the tool result.
+    expect(text).not.toContain(sandbox);
+    for (const slice of payload.impactedSlices) {
+      expect(path.isAbsolute(slice.filePath)).toBe(false);
+    }
+  });
+
   it('runs schema drift check tool', async () => {
     const { responses } = await runMcp([
       {
@@ -199,6 +249,19 @@ describe('SynapseMcpServer over stdio', () => {
   });
 
   it('runs diff impact analysis tool', async () => {
+    // The tool now fails for a target the project does not contain, so the fixture
+    // declares the table the request asks about.
+    const sliceDir = path.join(sandbox, 'src', 'slices', 'crm');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'create-customer.slice.tsx'),
+      `export const CustomerInputSchema = {};
+export const sliceSchema = 'CREATE TABLE IF NOT EXISTS customers (id TEXT PRIMARY KEY, name TEXT);';
+export async function createCustomerAction() { return { ok: true }; }
+`,
+      'utf-8'
+    );
+
     const { responses } = await runMcp([
       {
         jsonrpc: '2.0',

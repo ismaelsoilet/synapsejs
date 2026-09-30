@@ -1,137 +1,191 @@
+#!/usr/bin/env bun
 /**
- * SynapseJS - Concurrency & Load Stress Benchmark
+ * SynapseJS - Concurrency Benchmark
  *
- * Measures real-world throughput, latency percentiles (p50, p95, p99),
- * and memory overhead under high concurrency.
+ * Boots the reference application with its slices actually discovered, then measures
+ * three arms with a load generator that runs in a **separate process** so the client
+ * cannot be measured against its own event loop:
  *
- * Part of the SureForge Radical Candor protocol: NO fabricated numbers!
+ *   1. `baseline-static-json` — a bare `Bun.serve` returning a fixed JSON payload.
+ *      This is the floor, and it is **not comparable** to the framework arms: it
+ *      renders nothing and touches no database.
+ *   2. `ssr-render` — a real server-rendered slice page (loader + component + shell).
+ *   3. `rpc-persisted-write` — a real RPC action that writes a row through SQLite.
+ *
+ * Every number this script prints is produced by this run, on this machine. It is a
+ * measurement, not a claim: throughput depends on the host, the SQLite file and the
+ * concurrency configured below. What it does *not* measure: multi-instance behaviour,
+ * PostgreSQL, or any network beyond loopback.
+ *
+ * Usage: bun run bench:concurrency [--json]
  */
 
 import * as path from 'path';
 import { SynapseServer } from '../packages/synapse/src/runtime/server';
 
-interface BenchmarkResult {
-  operation: string;
-  totalRequests: number;
+interface ArmResult {
+  arm: string;
+  url: string;
+  requests: number;
   concurrency: number;
-  durationMs: number;
   requestsPerSecond: number;
-  latencies: {
-    minMs: number;
-    p50Ms: number;
-    p95Ms: number;
-    p99Ms: number;
-    maxMs: number;
-  };
+  latencyMs: { p50: number; p95: number; p99: number; max: number };
   errors: number;
-  memoryDeltaMb: number;
 }
 
-function calculatePercentiles(latencies: number[]): {
-  minMs: number;
-  p50Ms: number;
-  p95Ms: number;
-  p99Ms: number;
-  maxMs: number;
-} {
-  const sorted = [...latencies].sort((a, b) => a - b);
-  const n = sorted.length;
-  if (n === 0) {
-    return { minMs: 0, p50Ms: 0, p95Ms: 0, p99Ms: 0, maxMs: 0 };
+const REQUESTS = Number(process.env.SYNAPSE_BENCH_REQUESTS ?? 300);
+const CONCURRENCY = Number(process.env.SYNAPSE_BENCH_CONCURRENCY ?? 20);
+
+async function runArm(config: {
+  arm: string;
+  url: string;
+  method: 'GET' | 'POST';
+  body?: string;
+  headers?: Record<string, string>;
+}): Promise<ArmResult> {
+  const worker = Bun.spawn(
+    [
+      process.execPath,
+      path.resolve(import.meta.dir, 'bench-concurrency-worker.ts'),
+      JSON.stringify({
+        url: config.url,
+        method: config.method,
+        body: config.body,
+        headers: config.headers,
+        requests: REQUESTS,
+        concurrency: CONCURRENCY
+      })
+    ],
+    { stdout: 'pipe', stderr: 'pipe' }
+  );
+
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(worker.stdout).text(),
+    new Response(worker.stderr).text(),
+    worker.exited
+  ]);
+
+  if (exitCode !== 0) {
+    throw new Error(`load generator failed for ${config.arm}: ${stderr || stdout}`);
   }
 
-  const p50 = sorted[Math.floor(n * 0.5)] || 0;
-  const p95 = sorted[Math.floor(n * 0.95)] || 0;
-  const p99 = sorted[Math.floor(n * 0.99)] || 0;
+  const measured = JSON.parse(stdout.trim()) as Omit<ArmResult, 'arm' | 'url' | 'concurrency'>;
 
-  return {
-    minMs: Number(sorted[0].toFixed(2)),
-    p50Ms: Number(p50.toFixed(2)),
-    p95Ms: Number(p95.toFixed(2)),
-    p99Ms: Number(p99.toFixed(2)),
-    maxMs: Number(sorted[n - 1].toFixed(2))
-  };
+  return { arm: config.arm, url: config.url, concurrency: CONCURRENCY, ...measured };
 }
 
-async function runHttpBenchmark(
-  serverUrl: string,
-  totalRequests: number,
-  concurrency: number
-): Promise<BenchmarkResult> {
-  const initialMem = process.memoryUsage().rss;
-  const latencies: number[] = [];
-  let errors = 0;
+async function main(): Promise<void> {
+  const asJson = process.argv.includes('--json');
+  const appDir = path.resolve(import.meta.dir, '../examples/enterprise-crm');
 
-  const startTime = performance.now();
-  let completed = 0;
+  // The development header opt-in is what the reference application's own e2e suite uses.
+  process.env.SYNAPSE_DEV_HEADERS = 'true';
 
-  async function worker() {
-    while (completed < totalRequests) {
-      completed++;
-      const reqStart = performance.now();
-      try {
-        const res = await fetch(`${serverUrl}/_synapse/api/health`);
-        if (!res.ok) {
-          errors++;
-        }
-        latencies.push(performance.now() - reqStart);
-      } catch {
-        errors++;
-      }
-    }
+  const baseline = Bun.serve({
+    port: 0,
+    fetch: () => Response.json({ status: 'OK' })
+  });
+
+  // The limiter is widened so this measures rendering and persistence rather than the
+  // allowance: the limiter's own behaviour is covered by the abuse-resistance suite.
+  const server = new SynapseServer(appDir, 0, undefined, {
+    rateLimit: { capacity: 1_000_000, refillRate: 1_000_000 }
+  });
+
+  // The server's startup chatter goes to stdout; a machine consumer of this script
+  // gets exactly one JSON document, so it is silenced for the bootstrap only.
+  const startupLog = console.log;
+  console.log = () => {};
+  try {
+    await server.discoverSlices();
+    await server.start();
+  } finally {
+    console.log = startupLog;
   }
 
-  const workers = Array.from({ length: concurrency }, () => worker());
-  await Promise.all(workers);
+  const slicesLoaded = server.loadedSliceCount;
 
-  const durationMs = performance.now() - startTime;
-  const finalMem = process.memoryUsage().rss;
+  if (slicesLoaded === 0) {
+    throw new Error('the benchmark server discovered zero slices: it would measure nothing');
+  }
 
-  return {
-    operation: 'HTTP_HEALTH_CONCURRENCY',
-    totalRequests,
-    concurrency,
-    durationMs: Number(durationMs.toFixed(2)),
-    requestsPerSecond: Number(((totalRequests / durationMs) * 1000).toFixed(2)),
-    latencies: calculatePercentiles(latencies),
-    errors,
-    memoryDeltaMb: Number(((finalMem - initialMem) / 1024 / 1024).toFixed(2))
-  };
-}
-
-async function main() {
-  const crmDir = path.resolve(__dirname, '../examples/enterprise-crm');
-  const server = new SynapseServer(crmDir, 0);
-
-  await server.start();
-  // biome-ignore lint/suspicious/noExplicitAny: internal port
-  const port = (server as any).httpServer.port;
-  const serverUrl = `http://localhost:${port}`;
+  const base = `http://localhost:${server.port}`;
+  const sessionHeaders = { 'x-user-id': 'bench', 'x-user-roles': 'sales' } as Record<string, string>;
+  // The write arm persists rows, so each run gets its own identity prefix: a repeated
+  // run must measure a write, not a duplicate rejection.
+  const runId = crypto.randomUUID().slice(0, 8);
 
   try {
-    const totalRequests = 1000;
-    const concurrency = 50;
+    const arms: ArmResult[] = [];
 
-    const result = await runHttpBenchmark(serverUrl, totalRequests, concurrency);
-
-    process.stdout.write(
-      `${JSON.stringify(
-        {
-          status: 'PASS',
-          benchmark: 'SYNAPSE_CONCURRENCY_BENCHMARK',
-          result
-        },
-        null,
-        2
-      )}\n`
+    arms.push(
+      await runArm({
+        arm: 'baseline-static-json (not comparable: no render, no database)',
+        url: `http://localhost:${baseline.port}/_synapse/api/health`,
+        method: 'GET'
+      })
     );
+
+    arms.push(
+      await runArm({
+        arm: 'ssr-render (loader + component + shell)',
+        url: `${base}/customers/create-customer`,
+        method: 'GET',
+        headers: sessionHeaders
+      })
+    );
+
+    arms.push(
+      await runArm({
+        arm: 'rpc-persisted-write (action + SQLite write)',
+        url: `${base}/_synapse/rpc/customers/create-customer`,
+        method: 'POST',
+        headers: { ...sessionHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Cliente Benchmark',
+          email: `bench-${runId}-{{i}}@example.com`,
+          taxId: `TAX-${runId}-{{i}}`
+        })
+      })
+    );
+
+    const report = {
+      status: 'PASS',
+      benchmark: 'SYNAPSE_CONCURRENCY_BENCHMARK',
+      application: path.relative(path.resolve(import.meta.dir, '..'), appDir),
+      slicesLoaded,
+      requestsPerArm: REQUESTS,
+      concurrency: CONCURRENCY,
+      loadGeneratorProcess: 'separate',
+      measures: 'loopback throughput and latency on this host, one process, one SQLite file',
+      doesNotMeasure: 'multi-instance behaviour, PostgreSQL, real network latency',
+      arms
+    };
+
+    if (asJson) {
+      process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+    } else {
+      const lines = [
+        `SYNAPSE_CONCURRENCY_BENCHMARK — ${report.application}, ${slicesLoaded} slices, ${REQUESTS} requests/arm at concurrency ${CONCURRENCY}`,
+        ''
+      ];
+
+      for (const arm of arms) {
+        lines.push(
+          `${arm.arm}\n  throughput ${arm.requestsPerSecond} req/s · p50 ${arm.latencyMs.p50} ms · p95 ${arm.latencyMs.p95} ms · p99 ${arm.latencyMs.p99} ms · errors ${arm.errors}`
+        );
+      }
+
+      lines.push('', `Does not measure: ${report.doesNotMeasure}.`);
+      process.stdout.write(`${lines.join('\n')}\n`);
+    }
   } finally {
-    // biome-ignore lint/suspicious/noExplicitAny: stop server
-    (server as any).httpServer?.stop(true);
+    await server.stop(1000);
+    baseline.stop(true);
   }
 }
 
-main().catch((err) => {
-  process.stderr.write(`Benchmark failed: ${err.message}\n`);
+main().catch((error: unknown) => {
+  process.stderr.write(`bench-concurrency failed: ${error instanceof Error ? error.message : String(error)}\n`);
   process.exit(1);
 });

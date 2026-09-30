@@ -50,6 +50,8 @@ export class QueueEngine {
   private registry: Map<string, JobDefinition<unknown>> = new Map();
   private logger: StructuredLogger;
   private visibilityTimeoutMs: number;
+  /** Set at the start of shutdown: no new claim is taken from that moment on. */
+  private claimingStopped = false;
 
   constructor(options: QueueEngineOptions = {}) {
     this.logger = options.logger || createDefaultLogger('QueueEngine');
@@ -143,10 +145,55 @@ export class QueueEngine {
   }
 
   /**
+   * Stops the engine from claiming any new work. Jobs enqueued by a request that
+   * was in flight remain pending for the next process, instead of being claimed
+   * during a shutdown that is about to close the database.
+   */
+  stopClaiming(): void {
+    this.claimingStopped = true;
+  }
+
+  get isClaimingStopped(): boolean {
+    return this.claimingStopped;
+  }
+
+  /**
+   * Returns every job that is still marked running to the queue. The attempt
+   * counter is left exactly as the interrupted claim left it — releasing must not
+   * consume a second attempt for one claim — and a job that already reached its
+   * maximum is marked failed instead of being handed back for another run.
+   */
+  interruptRunningJobs(): { requeued: number; failed: number } {
+    const now = Date.now();
+
+    const failed = this.db
+      .prepare(`
+        UPDATE _synapse_jobs
+        SET status = 'failed', locked_at = NULL, updated_at = ?1, last_error = 'Interrompido pelo encerramento do processo'
+        WHERE status = 'running' AND attempts >= max_attempts
+      `)
+      .run(now);
+
+    const requeued = this.db
+      .prepare(`
+        UPDATE _synapse_jobs
+        SET status = 'pending', locked_at = NULL, updated_at = ?1, last_error = 'Interrompido pelo encerramento do processo'
+        WHERE status = 'running' AND attempts < max_attempts
+      `)
+      .run(now);
+
+    return { requeued: Number(requeued.changes ?? 0), failed: Number(failed.changes ?? 0) };
+  }
+
+  /**
    * Atomically claims the next pending job eligible for execution, or recovers
    * any stale 'running' job whose worker has died (visibility timeout exceeded).
    */
   claimNextJob(visibilityTimeoutMs?: number): JobRecord | null {
+    if (this.claimingStopped) {
+      return null;
+    }
+
     const now = Date.now();
     const timeout = visibilityTimeoutMs ?? this.visibilityTimeoutMs;
     const staleThreshold = now - timeout;

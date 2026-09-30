@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, test } from 'bun:test';
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
 import { AnonymousSession, createActionContext, MockDatabaseClient } from '../src/core';
@@ -76,6 +77,87 @@ describe('Storage Abstraction - S3StorageAdapter', () => {
     const match = presigned.match(/X-Amz-Signature=([0-9a-f]{64})/);
     expect(match).not.toBeNull();
     expect(match?.[1].length).toBe(64);
+  });
+
+  test('signs delete requests with the same SigV4 routine as upload', async () => {
+    const seen: Record<string, string> = {};
+    const upstream = Bun.serve({
+      port: 0,
+      async fetch(req) {
+        for (const [key, value] of req.headers.entries()) {
+          seen[key.toLowerCase()] = value;
+        }
+        seen[':method'] = req.method;
+        await req.arrayBuffer();
+        return new Response(null, { status: 204 });
+      }
+    });
+
+    try {
+      const s3 = new S3StorageAdapter({
+        bucket: 'fiscalizaplus-docs',
+        region: 'us-east-1',
+        accessKeyId: 'AKIA_TEST_KEY',
+        secretAccessKey: 'SECRET_TEST_KEY',
+        endpoint: `http://127.0.0.1:${upstream.port}`
+      });
+
+      const deleted = await s3.delete('laudos/antigo.pdf');
+
+      expect(deleted).toBe(true);
+      expect(seen[':method']).toBe('DELETE');
+      expect(seen.authorization).toContain('AWS4-HMAC-SHA256 Credential=AKIA_TEST_KEY/');
+      expect(seen.authorization).toMatch(/Signature=[0-9a-f]{64}$/);
+      expect(seen['x-amz-date']).toBeDefined();
+    } finally {
+      upstream.stop(true);
+    }
+  });
+
+  test('matches the published AWS SigV4 known-answer vector', () => {
+    // aws-sig-v4-test-suite / get-vanilla: the signature is the published expected
+    // value, so a fabricated string of the right shape cannot pass this test.
+    const s3 = new S3StorageAdapter({
+      bucket: 'examplebucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIDEXAMPLE',
+      secretAccessKey: 'wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY'
+    });
+
+    const payloadHash = crypto.createHash('sha256').update('').digest('hex');
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the private signing routine against a fixed vector
+    const authorization = (s3 as any).buildAuthorization(
+      'GET',
+      new URL('https://example.amazonaws.com/'),
+      { host: 'example.amazonaws.com', 'x-amz-date': '20150830T123600Z' },
+      payloadHash,
+      'service'
+    );
+
+    expect(authorization).toBe(
+      'AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20150830/us-east-1/service/aws4_request, ' +
+        'SignedHeaders=host;x-amz-date, ' +
+        'Signature=5fa00fa31553b73ebf1942676e86291e8372ff2a2260956d9b8aae1d763fbf31'
+    );
+
+    // The signature is keyed: the same request under a different secret differs.
+    const wrongKey = new S3StorageAdapter({
+      bucket: 'examplebucket',
+      region: 'us-east-1',
+      accessKeyId: 'AKIDEXAMPLE',
+      secretAccessKey: 'OUTRA_CHAVE_QUALQUER'
+    });
+
+    // biome-ignore lint/suspicious/noExplicitAny: exercising the private signing routine against a fixed vector
+    const other = (wrongKey as any).buildAuthorization(
+      'GET',
+      new URL('https://example.amazonaws.com/'),
+      { host: 'example.amazonaws.com', 'x-amz-date': '20150830T123600Z' },
+      payloadHash,
+      'service'
+    );
+
+    expect(other).not.toBe(authorization);
   });
 
   test('ActionContext exposes storage client to slice actions', async () => {

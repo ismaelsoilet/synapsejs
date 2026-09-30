@@ -1,28 +1,58 @@
-# Release checklist
+# Release checklist — 1.9.0
 
-Estado: **nada foi publicado no npm.** O pacote existe apenas neste repositório. Esta é a ordem
-operacional para o primeiro publish, com o que já está verificado e o que depende de você.
+Estado desta release: **código, documentação e gates prontos no repositório; falta a tag.**
+A tag `v1.9.0` é o gatilho do workflow de publicação (`.github/workflows/release.yml`), então ela é a
+decisão explícita do operador — nada publica por push em `main`.
 
-## O que já está verificado (por mim, localmente)
+## O que os gates deste commit dizem (executado localmente)
 
-- [x] Suíte do framework: `bun test packages/synapse/test` — 365 testes, 50 arquivos (100% PASS).
-- [x] Typecheck do monorepo: `bun run check` — 0 erros.
-- [x] Template typechecka como consumidor: `bun run check:template` — 0 erros.
-- [x] Splitter com os dois gates em ambos os apps: `bun run split` — 0 diagnósticos, 0 vazamentos.
-- [x] Oráculos das fatias com relatório por invariante: `bun run test:all` — 100% PASS.
-- [x] Paridade PostgreSQL contra `postgres:16-alpine`: `TEST_DATABASE_URL=... bun run test:postgres`.
-- [x] Ensaio de publicação completo: `bun run rehearse:publish` — 18 passos aprovados.
-- [x] Mapa do repo determinístico: regenerar não altera o arquivo commitado.
-- [x] Contrato público travado por teste (runtime + tipos) — MCP Server com ferramentas Jev System One.
-- [x] Integração Cognitiva Jev-Harness: Sistema 1 não-autorregressivo em oráculos e migrações.
-- [x] Integração OpenSpec 1.13.2: 12 skills e slash commands integrados para agentes.
-- [x] Guardrail Pre-commit: Verificação de testes ativada em `.git/hooks/pre-commit`.
-- [x] 4 Ondas Arquiteturais integradas: micro-bundles (<500B), dynamic SEO (`sliceMeta`), layouts hierárquicos, rate limiting sliding-window, proteção contra upload DoS, `PostgresEventHub`, i18n, `<DataForm>` aninhado, blacklist de revogação de tokens e TOTP 2FA.
+| Gate | Comando | Resultado |
+|---|---|---|
+| Suíte do framework | `bun test packages/synapse/test` | **567 testes, 0 falhas**, 6 skipped (Postgres sem engine local) |
+| Typecheck do monorepo | `bun run check` | 0 erros |
+| Template como consumidor | `bun run check:template` | 0 erros |
+| Lint | `bun run lint` | 0 erros, 69 warnings de fronteira aceitos |
+| Deriva de documentação | `bun run docs:check` | PASS — 567 testes / 70 arquivos / 18 tools / v1.9.0, tabela de features 46-3-1 |
+| Cobertura | `bun run coverage:check` | PASS — 60% funções / 72,4% linhas (pisos 55/70) |
+| Splitter, dois gates, três apps | `bun run split` | 0 diagnósticos, 0 vazamentos |
+| Oráculos das fatias | `bun run test:slices` · `test:crm` · `test:helpdesk` · `test:helpdesk-conventional` | 24/24 · 18/18 · 9/9 · 6/6 |
+| E2E ao vivo | `bun run test:e2e` | 7/7 |
+| Paridade PostgreSQL | `TEST_DATABASE_URL=... bun run test:postgres` | PASS (migração aplicada, segunda execução ignorada, linha persistida) |
+| Adaptadores PostgreSQL | `TEST_DATABASE_URL=... bun test packages/synapse/test/postgres-adapters.test.ts` | 3/3 — cliente com rollback real, claim atômico com dead-letter, event hub com payload offloaded |
+| Ensaio de publicação | `bun run rehearse:publish` | 18 passos aprovados |
+| Imagem de container | `docker build` + `docker run` | sobe como usuário `bun`, cria seus arquivos, `/health` OK, página SSR renderiza e o bundle da fatia é construído sob demanda (200) |
+| Benchmark de contexto | `bun run bench` | coluna `app`: 1.832 → 1.627 tokens (~11%) |
+| Benchmark de concorrência | `bun run bench:concurrency` | 3 fatias descobertas, braços SSR e RPC sem erro, gerador de carga em processo separado |
 
-## Já feito
+Números de teste mudam com o tempo: quem mantém os documentos alinhados é o gate de documentação
+(`bun run docs:check`) — se ele passa, os números citados correspondem à execução.
 
-- [x] **Push para o GitHub** (`ismaelsoilet/synapsejs`).
-- [x] **Suíte de testes e paridade**: 365 testes aprovados.
-- [x] **Release v1.1.0**: Criada no GitHub com changelog completo.
-- [x] **Release v1.2.0**: Integração Jev System One + OpenSpec + Skills de Agentes.
+## Passos para publicar
 
+1. `git tag v1.9.0 && git push origin v1.9.0` — a versão da tag **precisa** ser igual a
+   `packages/synapse/package.json` (o workflow verifica e aborta se não for).
+2. O workflow roda a suíte, os splits, os oráculos, `test:all`, `docs:check` e o ensaio de publicação;
+   qualquer falha aborta o publish.
+3. `npm publish --access public --provenance` com o secret `NPM_TOKEN` e o environment
+   `github-actions-release`. A credencial é um token de longa duração com atestado de proveniência por
+   `id-token: write` — **não** é trusted publishing sem token, e o comentário no workflow diz isso.
+4. Criar o GitHub Release com o texto de `docs/releases/1.9.0.md`.
+
+## Depois de publicar
+
+- [ ] Conferir a versão no registro (`npm view @ismaelsoilet/synapsejs version`).
+- [ ] Conferir que `bunx synapsejs new <app>` instala a 1.9.0 e sobe (`bun run dev`).
+- [ ] Avisar quem está na 1.8 apontando para `docs/migration-1.9.md` (ou `docs/migracao-1.9.pt-BR.md`).
+
+## O que esta release NÃO resolve (dito antes de perguntarem)
+
+- **Zero adotantes externos registrados** — nenhum deploy de terceiros é conhecido; `stable` significa
+  "há teste que falha se regredir", não "alguém roda em produção".
+- Sem backend compartilhado: rate limit, cache de SSR e event hub são **por processo**. N instâncias
+  atrás de um load balancer permitem N vezes a cota por instância, e a taxa de acerto do cache é por
+  instância.
+- A publicação usa um token de npm de longa duração; trusted publishing sem token não está configurado.
+- A imagem de container exige `SYNAPSE_SESSION_SECRET` (ou `--acknowledge-insecure`) em produção por
+  causa da regra nova da 1.9 — ela recusa subir sem isso, de propósito.
+- O `typescript` permanece na imagem porque o framework typechecka fatias em runtime (é dependência de
+  execução, não de build).

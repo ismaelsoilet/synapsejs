@@ -134,7 +134,8 @@ export {
   type SliceLoadError,
   type SliceLoaderContext,
   type SliceMetadata,
-  SynapseServer
+  SynapseServer,
+  type WebhookEvent
 } from './runtime/server';
 export { SYNAPSE_VERSION } from './version';
 export { fc };
