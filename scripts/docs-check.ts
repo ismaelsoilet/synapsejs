@@ -20,6 +20,7 @@ const DOCUMENTS = [
   'README.md',
   'README.pt-BR.md',
   'packages/synapse/README.md',
+  'RELEASE-CHECKLIST.md',
   'docs/migration-1.9.md',
   'docs/migracao-1.9.pt-BR.md',
   'docs/releases/1.9.0.md'
@@ -104,7 +105,12 @@ function collectDocumentedNumbers(): DocNumber[] {
 
       // A bare "N pass" line, or a badge reading "Tests-N Passing", is the same claim
       // about the suite total.
-      const passing = line.match(/^(\d+)\s+pass\b/i) ?? line.match(/(?:Tests|Testes)-(\d+)(?:%20|\s)/i);
+      // A bare "N pass" line, a badge reading "Tests-N Passing", or a suite result such as
+      // "N tests, 0 failures" all state the same total.
+      const passing =
+        line.match(/^(\d+)\s+pass\b/i) ??
+        line.match(/(?:Tests|Testes)-(\d+)(?:%20|\s)/i) ??
+        line.match(/(\d+)\s+(?:testes|tests)\b[^.]{0,40}?(?:falhas|failures|skipped)/i);
       if (passing) {
         entry.tests = Number(passing[1]);
       }

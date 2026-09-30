@@ -4,15 +4,25 @@ Estado desta release: **código, documentação e gates prontos no repositório;
 A tag `v1.9.0` é o gatilho do workflow de publicação (`.github/workflows/release.yml`), então ela é a
 decisão explícita do operador — nada publica por push em `main`.
 
+## Rodando todos os gates
+
+```bash
+bash scripts/run-gates.sh              # 21 gates sem serviço externo
+bash scripts/run-gates.sh --with-docker  # + paridade/adaptadores PostgreSQL e a imagem
+```
+
+Cada linha imprime o exit code do gate (é assim que uma lint vermelha passou batido duas vezes
+neste repositório: ler a saída em vez do código). Os resultados abaixo vieram dessa execução.
+
 ## O que os gates deste commit dizem (executado localmente)
 
 | Gate | Comando | Resultado |
 |---|---|---|
-| Suíte do framework | `bun test packages/synapse/test` | **567 testes, 0 falhas**, 6 skipped (Postgres sem engine local) |
+| Suíte do framework | `bun test packages/synapse/test` | **568 testes, 0 falhas**, 6 skipped (Postgres sem engine local) |
 | Typecheck do monorepo | `bun run check` | 0 erros |
 | Template como consumidor | `bun run check:template` | 0 erros |
 | Lint | `bun run lint` | 0 erros, 69 warnings de fronteira aceitos |
-| Deriva de documentação | `bun run docs:check` | PASS — 567 testes / 70 arquivos / 18 tools / v1.9.0, tabela de features 46-3-1 |
+| Deriva de documentação | `bun run docs:check` | PASS — 568 testes / 70 arquivos / 18 tools / v1.9.0, tabela de features 46-3-1 |
 | Cobertura | `bun run coverage:check` | PASS — 60% funções / 72,4% linhas (pisos 55/70) |
 | Splitter, dois gates, três apps | `bun run split` | 0 diagnósticos, 0 vazamentos |
 | Oráculos das fatias | `bun run test:slices` · `test:crm` · `test:helpdesk` · `test:helpdesk-conventional` | 24/24 · 18/18 · 9/9 · 6/6 |
@@ -20,6 +30,7 @@ decisão explícita do operador — nada publica por push em `main`.
 | Paridade PostgreSQL | `TEST_DATABASE_URL=... bun run test:postgres` | PASS (migração aplicada, segunda execução ignorada, linha persistida) |
 | Adaptadores PostgreSQL | `TEST_DATABASE_URL=... bun test packages/synapse/test/postgres-adapters.test.ts` | 3/3 — cliente com rollback real, claim atômico com dead-letter, event hub com payload offloaded |
 | Ensaio de publicação | `bun run rehearse:publish` | 18 passos aprovados |
+| Gates negativos | no-slices falha, fixture com vazamento derruba o gate, flag/comando desconhecidos recusados, config quebrada é fatal | os quatro passam |
 | Imagem de container | `docker build` + `docker run` | sobe como usuário `bun`, cria seus arquivos, `/health` OK, página SSR renderiza e o bundle da fatia é construído sob demanda (200) |
 | Benchmark de contexto | `bun run bench` | coluna `app`: 1.832 → 1.627 tokens (~11%) |
 | Benchmark de concorrência | `bun run bench:concurrency` | 3 fatias descobertas, braços SSR e RPC sem erro, gerador de carga em processo separado |

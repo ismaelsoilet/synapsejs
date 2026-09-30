@@ -55,8 +55,13 @@ try {
     );
   }
 
+  // Reset *every* piece of state the runner consults, not just two of the three:
+  // leaving `_synapse_migration_statements` behind made the second run of this very
+  // check skip the CREATE TABLE (already recorded) and then fail on a table that no
+  // longer existed.
   await db.query(`DROP TABLE IF EXISTS tickets`);
   await db.query(`DROP TABLE IF EXISTS _synapse_migrations`);
+  await db.query(`DROP TABLE IF EXISTS _synapse_migration_statements`);
 
   const first = await runSliceMigrations(appDir, db);
   const second = await runSliceMigrations(appDir, db);
