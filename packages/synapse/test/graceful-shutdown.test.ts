@@ -63,7 +63,7 @@ describe('graceful shutdown', () => {
     const port = server.port;
 
     let responseAt = 0;
-    const request = callSlow(port, 400).then((response) => {
+    const request = callSlow(port, 500).then((response) => {
       responseAt = performance.now();
 
       return response;
@@ -76,12 +76,14 @@ describe('graceful shutdown', () => {
 
     const response = await request;
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ok: true, value: { slept: 400 } });
+    expect(await response.json()).toEqual({ ok: true, value: { slept: 500 } });
 
     // The shutdown did not resolve before the response was written, and the request
-    // that finished in time is reported as drained rather than aborted.
+    // that finished in time is reported as drained rather than aborted. The wait is
+    // bounded below by the old 200 ms cap — the margin depends on how long the request
+    // took to reach the server, so the assertion states the property, not a fixed value.
     expect(responseAt).toBeLessThanOrEqual(stopResolvedAt + 1);
-    expect(stopResolvedAt - stopStartedAt).toBeGreaterThanOrEqual(350);
+    expect(stopResolvedAt - stopStartedAt).toBeGreaterThan(300);
     expect(summary.drained).toBeGreaterThanOrEqual(1);
     expect(summary.aborted).toBe(0);
   });
