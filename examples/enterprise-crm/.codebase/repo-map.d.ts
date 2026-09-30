@@ -55,7 +55,7 @@ export declare function CatalogView({ products = [] }: CatalogViewProps): Elemen
 export declare const RoomInputSchema: { room: string; };
 export type RoomInput = Static<typeof RoomInputSchema>;
 
-export type AnnounceOutput = Result<{ notified: number }, 'UNAUTHORIZED' | 'INVALID_SCHEMA'>;
+export type AnnounceOutput = Result<{ notified: number }, 'UNAUTHORIZED' | 'FORBIDDEN' | 'INVALID_SCHEMA'>;
 
 export declare function announceRoomAction(payload: unknown, _db: unknown, session: SessionContext, ctx: { broadcast: (topic: string, data: unknown) => number }): Promise<AnnounceOutput>;
 export interface RoomViewProps {

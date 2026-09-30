@@ -38,7 +38,14 @@ export function findSliceFiles(dir: string): string[] {
   }
 
   const results: string[] = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+  // `readdirSync` order is filesystem-dependent: on a fresh checkout it can differ from
+  // the developer's machine, which made generated artifacts (repo map, schema catalog,
+  // split order) drift between the two. Sorting makes every generated file reproducible.
+  const entries = fs
+    .readdirSync(dir, { withFileTypes: true })
+    .sort((left, right) => left.name.localeCompare(right.name));
+
+  for (const entry of entries) {
     const full = path.join(dir, entry.name);
     if (entry.isDirectory()) {
       results.push(...findSliceFiles(full));
