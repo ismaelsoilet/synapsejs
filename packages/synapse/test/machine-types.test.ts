@@ -160,7 +160,8 @@ describe('public contract (decision recorded in packages/synapse/README.md)', ()
       'SliceOutletProvider',
       'SubSlice',
       'useWebSocket',
-      'scaffoldShared'
+      'scaffoldShared',
+      'SYNAPSE_VERSION'
     ];
 
     const missing = contract.filter((name) => !(name in publicEntry));

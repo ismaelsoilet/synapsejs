@@ -8,9 +8,13 @@
 
 import {
   type AbortGateResult,
+  type ModelRouteResult,
   modulateReasoningEffort,
+  type NudgeGateResult,
   type ReasoningEffortResult,
+  routeModelTier,
   shouldAbortTrajectory,
+  shouldNudgeContinuation,
   type TestTriageResult,
   triageTestFailure,
   type VerificationResult,
@@ -28,6 +32,7 @@ import { type SliceTemplate, scaffoldCrud, scaffoldSlice } from '../compiler/sca
 import { checkSchemaDrift } from '../compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../compiler/slice-splitter';
+import { SYNAPSE_VERSION } from '../version';
 
 interface JsonRpcRequest {
   jsonrpc: string;
@@ -90,7 +95,7 @@ export class SynapseMcpServer {
             },
             serverInfo: {
               name: 'synapse-mcp',
-              version: '1.2.0'
+              version: SYNAPSE_VERSION
             }
           }
         };
@@ -269,6 +274,51 @@ export class SynapseMcpServer {
                     sessionContextTokens: {
                       type: 'number',
                       description: 'Estimated session context token count to protect prompt cache'
+                    }
+                  }
+                }
+              },
+              {
+                name: 'synapse_triage_error',
+                description:
+                  'Triage an arbitrary test failure or execution error log using Jev System One to classify root causes (env_missing vs flaky_transient vs deep_logic) and avoid token waste',
+                inputSchema: {
+                  type: 'object',
+                  required: ['failureLog'],
+                  properties: {
+                    failureLog: {
+                      type: 'string',
+                      description: 'Error log, stack trace or terminal output to triage'
+                    }
+                  }
+                }
+              },
+              {
+                name: 'synapse_route_task',
+                description:
+                  'Semantically route a development task to the optimal model/reasoning tier via Jev System One',
+                inputSchema: {
+                  type: 'object',
+                  required: ['task'],
+                  properties: {
+                    task: {
+                      type: 'string',
+                      description: 'Description of the coding, refactoring, or diagnostic task'
+                    }
+                  }
+                }
+              },
+              {
+                name: 'synapse_evaluate_nudge',
+                description:
+                  'Evaluate whether an agent is prematurely stopping or needs a proactive nudge to continue verification',
+                inputSchema: {
+                  type: 'object',
+                  required: ['transcriptTail'],
+                  properties: {
+                    transcriptTail: {
+                      type: 'string',
+                      description: 'Recent transcript steps or conversation history tail'
                     }
                   }
                 }
@@ -596,6 +646,18 @@ export class SynapseMcpServer {
               provider,
               sessionContextTokens
             });
+            contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_triage_error') {
+            const failureLog = String(args.failureLog || '');
+            const result: TestTriageResult = await triageTestFailure(failureLog);
+            contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_route_task') {
+            const task = String(args.task || '');
+            const result: ModelRouteResult = await routeModelTier(task);
+            contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_evaluate_nudge') {
+            const transcriptTail = String(args.transcriptTail || '');
+            const result: NudgeGateResult = await shouldNudgeContinuation(transcriptTail);
             contentText = JSON.stringify(result, null, 2);
           } else {
             return {

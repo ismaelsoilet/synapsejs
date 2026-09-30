@@ -136,16 +136,29 @@ export class PostgresQueueEngine {
     const now = Date.now();
     const staleThreshold = now - this.visibilityTimeoutMs;
 
-    await this.db.query(
+    // 1. Mover tarefas zumbi expiradas para a tabela de DLQ
+    const deadJobs = await this.db.query<JobRecord>(
       `UPDATE _synapse_jobs
        SET status = 'dlq', locked_at = NULL, updated_at = $1, last_error = 'Visibility timeout exceeded max attempts'
-       WHERE status = 'running' AND locked_at < $2 AND attempts >= max_attempts`,
+       WHERE status = 'running' AND locked_at < $2 AND attempts >= max_attempts
+       RETURNING *;`,
       [now, staleThreshold]
     );
 
+    for (const deadJob of deadJobs) {
+      await this.db
+        .query(
+          `INSERT INTO _synapse_jobs_dlq (id, name, payload, attempts, max_attempts, last_error, failed_at)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)
+           ON CONFLICT (id) DO UPDATE SET attempts = EXCLUDED.attempts, last_error = EXCLUDED.last_error, failed_at = EXCLUDED.failed_at;`,
+          [deadJob.id, deadJob.name, deadJob.payload, deadJob.attempts, deadJob.max_attempts, deadJob.last_error, now]
+        )
+        .catch(() => {});
+    }
+
     const rows = await this.db.query<JobRecord>(
       `UPDATE _synapse_jobs
-       SET status = 'running', locked_at = $1, updated_at = $1
+       SET status = 'running', locked_at = $1, updated_at = $1, attempts = attempts + 1
        WHERE id = (
          SELECT id FROM _synapse_jobs
          WHERE (status = 'pending' AND run_at <= $1)

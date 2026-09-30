@@ -820,6 +820,9 @@ export const sliceSchema = \`
     roles TEXT NOT NULL DEFAULT 'user',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- down:
+  DROP TABLE IF EXISTS users;
 \`;
 
 // Para criar o primeiro usuário, num seed fora da fatia:
@@ -1099,6 +1102,10 @@ export const sliceSchema = \`
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
     UNIQUE(provider, provider_user_id)
   );
+
+  -- down:
+  DROP TABLE IF EXISTS oauth_accounts;
+  DROP TABLE IF EXISTS users;
 \`;
 
 // ============================================================================
@@ -1366,6 +1373,9 @@ export const sliceSchema = \`
     enabled INTEGER DEFAULT 1,
     verified_at TIMESTAMP
   );
+
+  -- down:
+  DROP TABLE IF EXISTS ${names.table};
 \`;
 
 // ============================================================================

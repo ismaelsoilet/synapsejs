@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.8.0 — Jev System One Autonomous Agent Integration & Production Zero-Trust Hardening (Wave 10)
+
+- **Jev System One Autonomous Agent Integration**:
+  - Expanded native AI tools from 11 to 18 tools via JSON-RPC 2.0 stdio server (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_step`, `synapse_reasoning_effort`, `synapse_triage_error`, `synapse_route_task`, `synapse_evaluate_nudge`).
+  - Integrated deterministic pre-flight gating (70-300ms) with zero token waste on missing dependencies or environment issues.
+  - Added repository integration harness scripts (`bun run jev:status`, `jev:gate`, `jev:abort`, `jev:verify`, `jev:route`, `jev:metrics`) and workflow telemetry.
+
+- **In-Memory SSR Micro-Cache Thundering Herd Guard & Multi-Tenant Scoping**:
+  - Added atomic `revalidatingKeys` mutex Set to prevent redundant concurrent background revalidations (thundering herd) during Stale-While-Revalidate (SWR).
+  - Isolated SSR micro-cache storage keys per tenant and authenticated user identity (`${tenantId}:${userId}:${url}`) to prevent cross-tenant cache contamination.
+
+- **Session Security & Zero-Trust Production Shield (CWE-287)**:
+  - Cryptographically bound `tenantId` to signed session tokens (`signSessionToken` and `verifySessionToken`).
+  - In production (`NODE_ENV === 'production'`) without `SYNAPSE_SESSION_SECRET`, raw header spoofing (`x-user-id`, `x-user-roles`, `x-tenant-id`) is strictly denied, returning `AnonymousSession`.
+  - Added user-safe SSR error masking in production to prevent leaking internal runtime stack traces.
+  - Extended sliding-window token bucket rate limiter to real-time SSE endpoints (`/_synapse/sse/*`).
+
+- **Bidirectional Migration Scaffolding Out-of-the-Box**:
+  - Scaffolder (`scaffolder.ts`) and slice templates (`slice-templates.ts`) now automatically generate `-- down:` rollback blocks with `DROP TABLE IF EXISTS`, enabling one-command rollback via `synapse rollback`.
+
+- **Distributed Queue Engine DLQ Upsert Persistence**:
+  - `PostgresQueueEngine` persists expired zombie tasks past visibility timeout into `_synapse_jobs_dlq` with conflict-safe updates.
+
+- **Framework Version Centralization & Standalone Normalization**:
+  - Added `SYNAPSE_VERSION` export in `packages/synapse/src/version.ts` and public index, unified across `/ _synapse/api/health`, MCP server info, and `buildStandalone`.
+  - Standalone bundler automatically normalizes `workspace:*` dependencies to published package versions.
+
 ## 1.7.0 — Adversarial Hardening, Deep Zero-Trust Security & Transactional Resilience (Wave 9)
 
 - **Prototype Pollution Shield (CRIT-01)**:

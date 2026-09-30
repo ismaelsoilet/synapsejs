@@ -33,7 +33,7 @@ with rawBody preservation · B2B multi-tenancy & IDOR prevention (`requireTenant
 and Turbo Morphing router · explicit RBAC via `requireAuth(session, roles)` · zero-wiring routing + SSR + RPC · slice discovery
 that never reports PASS with zero slices · isomorphic splitter with compile and leak gates · typed AST skeleton map ·
 scaffolder with `--fields` grammar and templates (create, list, update, delete, login, oauth-github, crud) · standalone production bundler (`synapse build --standalone`) ·
-MCP stdio server with 11 native tools · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks ·
+MCP stdio server with 18 native tools (11 Synapse + 7 Jev) · slice invariants under `bun:test` with per-invariant reporting · PostgreSQL parity · real concurrency & load stress benchmarks ·
 SSRF & Network Guard (`validateExternalUrl`, `isPrivateOrReservedIp`) · anti-spoofing & bounded LRU rate limiting · bounded LRU SSR micro-cache with parameter normalization · strict payload size guards (RPC 5MB, Webhook 10MB) & malformed JSON protection · SQLite queue zombie job recovery with `locked_at` visibility timeout · HTTP 500 SSR error isolation & bundle suppression · secure HttpOnly cookies (`ctx.setCookie`) · graceful HTTP shutdown (`server.stop` with connection drain) ·
 Prototype Pollution Shield (`setNestedProperty`, `expandNestedObject`) · Parameterized Query Operator Allowlist (`VALID_WHERE_OPERATORS`) · Reentrant SQLite Savepoints (`txDepth` + `SAVEPOINT`) · Atomic Queue Poison-Pill Neutralization (claim increment & DLQ timeout) · Strict Multi-Tenant Context Derivation (spoofing-proof token claims) · Streaming Upload & Chunked DoS Armor (`readBodyWithinLimit`) · Origin-Validated WebSocket Upgrades (`SYNAPSE_ALLOWED_ORIGINS`) · Safe SSR Serialization (`<script type="application/json">`) & Cookie CRLF Guard.
 
@@ -130,8 +130,9 @@ bun run mcp     # JSON-RPC 2.0 over stdio
 
 Tools: `synapse_get_repo_map`, `synapse_get_db_schema`, `synapse_check`, `synapse_split`,
 `synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`, `synapse_rollback`, `synapse_contract`,
-`synapse_check_db_drift`, `synapse_diff_impact`. Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined)
-instead of reporting an empty success.
+`synapse_check_db_drift`, `synapse_diff_impact`, `synapse_test_gate`, `synapse_abort_check`,
+`synapse_verify_step`, `synapse_reasoning_effort`, `synapse_triage_error`, `synapse_route_task`, `synapse_evaluate_nudge`.
+Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined) instead of reporting an empty success.
 
 Client configuration for an agent host:
 

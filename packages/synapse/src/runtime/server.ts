@@ -45,6 +45,7 @@ import {
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { verifySessionToken } from '../core/session-token';
+import { SYNAPSE_VERSION } from '../version';
 import { serializeClientProps } from './client-entry';
 import { isAction, isCache, isComponent, isJob, isLoader, isMeta, isSocket, isWebhook } from './discovery-rules';
 import { getEventHub } from './event-hub';
@@ -270,6 +271,7 @@ export class SynapseServer {
     swrSeconds: number;
     tags: string[];
   }>;
+  private revalidatingKeys = new Set<string>();
 
   public invalidateCache(tags?: string[]): void {
     if (!tags || tags.length === 0) {
@@ -473,13 +475,20 @@ export class SynapseServer {
           if (typeof val !== 'function') {
             continue;
           }
-          if (isAction(exportName)) {
+          if (exportName === 'default' && typeof val === 'function') {
+            componentFn = val;
+            componentExport = 'default';
+          } else if (isAction(exportName)) {
             actionFn = val;
           } else if (isLoader(exportName)) {
             loaderFn = val;
           } else if (isComponent(exportName)) {
-            componentFn = val;
-            componentExport = exportName;
+            if (componentExport !== 'default') {
+              if (!componentFn || exportName.endsWith('View')) {
+                componentFn = val;
+                componentExport = exportName;
+              }
+            }
           } else if (isWebhook(exportName)) {
             webhookFn = val;
           } else if (isMeta(exportName)) {
@@ -644,11 +653,16 @@ export class SynapseServer {
       return verified.ok
         ? createSession({
             userId: verified.value.userId,
-            tenantId: (verified.value as { tenantId?: string }).tenantId,
+            tenantId: verified.value.tenantId || tenantId,
             roles: verified.value.roles,
             token
           })
         : AnonymousSession(tenantId);
+    }
+
+    // Em produção sem SYNAPSE_SESSION_SECRET, forjamento de headers é terminantemente proibido (CWE-287)
+    if (process.env.NODE_ENV === 'production') {
+      return AnonymousSession(tenantId);
     }
 
     // Modo de desenvolvimento (sem segredo configurado):
@@ -821,9 +835,11 @@ export class SynapseServer {
     let hasError = false;
     let renderError: string | null = loaderError;
 
+    const isProduction = process.env.NODE_ENV === 'production';
     if (loaderError) {
       hasError = true;
-      contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${escapeHtml(loaderError)}</div>`;
+      const displayMsg = isProduction ? 'Ocorreu um erro interno ao carregar os dados.' : escapeHtml(loaderError);
+      contentHtml = `<div class="text-rose-400">Falha no loader de ${escapeHtml(slice.key)}: ${displayMsg}</div>`;
     } else if (slice.componentFn) {
       try {
         const sliceEl = React.createElement(slice.componentFn, renderProps);
@@ -837,10 +853,12 @@ export class SynapseServer {
         const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
         contentHtml = renderToString(rootEl);
       } catch (e: any) {
+        if (!isProduction) console.error('[SSR Render Error]', e);
         hasError = true;
         const errMessage = e instanceof Error ? e.message : String(e);
         renderError = errMessage;
-        contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${escapeHtml(errMessage)}</div>`;
+        const displayMsg = isProduction ? 'Ocorreu um erro interno durante a renderização.' : escapeHtml(errMessage);
+        contentHtml = `<div class="text-rose-400">Erro na renderização SSR: ${displayMsg}</div>`;
       }
     } else {
       contentHtml = '<div class="text-slate-400">Nenhum componente de UI exportado.</div>';
@@ -1323,7 +1341,7 @@ ${this.renderStylesheets()}
               {
                 status,
                 framework: 'SynapseJS',
-                version: '1.2.0',
+                version: SYNAPSE_VERSION,
                 uptime: process.uptime(),
                 database: dbHealthy ? 'connected' : 'disconnected',
                 ...(dbError ? { databaseError: dbError } : {}),
@@ -1384,11 +1402,12 @@ ${this.renderStylesheets()}
             });
           }
 
-          // 3. Rate Limiter for Sensitive Endpoints (RPC, Uploads, Webhooks)
+          // 3. Rate Limiter for Sensitive Endpoints (RPC, Uploads, Webhooks, SSE)
           if (
             pathname.startsWith('/_synapse/rpc/') ||
             pathname.startsWith('/_synapse/files/') ||
-            pathname.startsWith('/_synapse/webhooks/')
+            pathname.startsWith('/_synapse/webhooks/') ||
+            pathname.startsWith('/_synapse/sse/')
           ) {
             const trustProxy = process.env.SYNAPSE_TRUST_PROXY !== 'false' && this.config.trustProxy !== false;
             let clientIp: string;
@@ -1885,9 +1904,11 @@ ${this.renderStylesheets()}
             const slice = resolvedSlice;
             const session = this.sessionFrom(req);
             const cacheConfig = slice.cacheConfig;
-            const cacheKey = cacheConfig
+            const scopePrefix = `${session.tenantId || 'global'}:${session.userId !== 'anon' ? session.userId : 'public'}`;
+            const normalizedKey = cacheConfig
               ? normalizeCacheKey(url, cacheConfig.allowedParams)
               : `${pathname}${url.search}`;
+            const cacheKey = `${scopePrefix}:${normalizedKey}`;
             const now = Date.now();
 
             if (cacheConfig && req.method === 'GET') {
@@ -1905,26 +1926,31 @@ ${this.renderStylesheets()}
                 }
                 if (now < cached.staleUntil) {
                   this.logRequest(req, pathname, 200, startedAt, session, 'ssr');
-                  // Revalidação em background (ISR / Stale-While-Revalidate)
-                  (async () => {
-                    try {
-                      const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale);
-                      if (!fresh.hasError) {
-                        const ttl = cacheConfig.ttlSeconds;
-                        const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
-                        this.ssrCache.set(cacheKey, {
-                          html: fresh.html,
-                          expiresAt: Date.now() + ttl * 1000,
-                          staleUntil: Date.now() + (ttl + swr) * 1000,
-                          ttlSeconds: ttl,
-                          swrSeconds: swr,
-                          tags: cacheConfig.tags || []
-                        });
+                  // Revalidação em background (ISR / Stale-While-Revalidate) - Thundering Herd Guard
+                  if (!this.revalidatingKeys.has(cacheKey)) {
+                    this.revalidatingKeys.add(cacheKey);
+                    (async () => {
+                      try {
+                        const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale);
+                        if (!fresh.hasError) {
+                          const ttl = cacheConfig.ttlSeconds;
+                          const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
+                          this.ssrCache.set(cacheKey, {
+                            html: fresh.html,
+                            expiresAt: Date.now() + ttl * 1000,
+                            staleUntil: Date.now() + (ttl + swr) * 1000,
+                            ttlSeconds: ttl,
+                            swrSeconds: swr,
+                            tags: cacheConfig.tags || []
+                          });
+                        }
+                      } catch (err) {
+                        console.error(`[SynapseServer] Revalidação ISR em background de ${slice.key} falhou:`, err);
+                      } finally {
+                        this.revalidatingKeys.delete(cacheKey);
                       }
-                    } catch (err) {
-                      console.error(`[SynapseServer] Revalidação ISR em background de ${slice.key} falhou:`, err);
-                    }
-                  })();
+                    })();
+                  }
 
                   return new Response(cached.html, {
                     headers: {

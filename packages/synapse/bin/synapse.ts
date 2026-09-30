@@ -977,7 +977,7 @@ async function main() {
 
     default: {
       process.stderr.write(
-        `Unknown command: ${command}\nAvailable: new, dev, check, migrate, rollback, mcp, skeleton, db-schema, split, build, test, worker, new-slice, contract, info\n`
+        `Unknown command: ${command}\nAvailable: start, dev, check, migrate, rollback, mcp, skeleton, db-schema, db-drift, impact, split, build, test, worker, new, new-slice, contract, info\n`
       );
       process.exit(1);
     }

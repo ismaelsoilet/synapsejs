@@ -27,8 +27,16 @@ jobs:
       - name: Lint And Format Check
         run: bun run lint
 
-      - name: Framework Test Suite
-        run: bun test packages/synapse/test
+      - name: Framework Test Suite with Jev Gate Trap
+        run: |
+          if ! bun test packages/synapse/test > test.log 2>&1; then
+            cat test.log
+            echo "::group::Jev System One Failure Triage"
+            bun run jev:gate -- --log test.log || true
+            echo "::endgroup::"
+            exit 1
+          fi
+          cat test.log
 
       - name: TypeScript Typecheck (whole monorepo)
         run: bun run check

@@ -17,6 +17,7 @@ import { Err, Ok, type Result } from './machine-types';
 export interface SessionClaims {
   userId: string;
   roles: string[];
+  tenantId?: string;
   /** Expiry, in seconds since the epoch. */
   exp: number;
 }
@@ -118,7 +119,7 @@ function constantTimeEquals(left: string, right: string): boolean {
 }
 
 export function signSessionToken(
-  claims: { userId: string; roles: string[] },
+  claims: { userId: string; roles: string[]; tenantId?: string },
   secret: string,
   maxAgeSeconds = 86_400
 ): string {
@@ -126,6 +127,7 @@ export function signSessionToken(
     JSON.stringify({
       userId: claims.userId,
       roles: claims.roles,
+      tenantId: claims.tenantId,
       exp: Math.floor(Date.now() / 1000) + maxAgeSeconds
     })
   );
@@ -159,6 +161,10 @@ export function verifySessionToken(
   }
 
   if (typeof claims.userId !== 'string' || !Array.isArray(claims.roles) || typeof claims.exp !== 'number') {
+    return Err('INVALID_TOKEN');
+  }
+
+  if (claims.tenantId !== undefined && typeof claims.tenantId !== 'string') {
     return Err('INVALID_TOKEN');
   }
 

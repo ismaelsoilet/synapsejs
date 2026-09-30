@@ -117,7 +117,7 @@ export JEV_PROVIDER="opencode"
 ```json
 {
   "provider": "opencode",
-  "model": "typesafe/jev",
+  "model": "jev-1.13-free",
   "skip_llm_threshold": 0.65,
   "abort_threshold": 0.70
 }

@@ -1,6 +1,6 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "private": true,
   "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",
@@ -43,7 +43,13 @@
     "rehearse:publish": "bun run scripts/rehearse-publish.ts",
     "study": "bun run scripts/study/run-task.ts",
     "lint": "bunx @biomejs/biome@2.5.14 check .",
-    "lint:fix": "bunx @biomejs/biome@2.5.14 check --write ."
+    "lint:fix": "bunx @biomejs/biome@2.5.14 check --write .",
+    "jev:status": "bunx jev-harness status",
+    "jev:gate": "bunx jev-harness test-gate",
+    "jev:abort": "bunx jev-harness abort-check",
+    "jev:verify": "bunx jev-harness verify",
+    "jev:route": "bunx jev-harness route",
+    "jev:metrics": "bunx jev-harness metrics"
   },
   "dependencies": {
     "@ismaelsoilet/jev-harness": "^0.2.1",

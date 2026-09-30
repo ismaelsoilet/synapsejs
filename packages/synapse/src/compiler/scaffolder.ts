@@ -71,6 +71,9 @@ export const sliceSchema = \`
 ${sqlCols},
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- down:
+  DROP TABLE IF EXISTS ${tableName};
 \`;
 
 // ============================================================================
@@ -222,6 +225,9 @@ export const sliceSchema = \`
     email TEXT NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
+
+  -- down:
+  DROP TABLE IF EXISTS ${tableName};
 \`;
 
 // ============================================================================

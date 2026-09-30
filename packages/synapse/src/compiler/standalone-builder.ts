@@ -9,6 +9,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { Err, Ok, type Result } from '../core/machine-types';
+import { SYNAPSE_VERSION } from '../version';
 import { type BuildReportEntry, buildAllClientBundles } from './client-bundler';
 import { resolveSlicesDir, type SlicesDirError } from './slice-discovery';
 
@@ -60,10 +61,23 @@ export async function buildStandalone(
   fs.mkdirSync(path.dirname(slicesDest), { recursive: true });
   fs.cpSync(slicesSrc, slicesDest, { recursive: true });
 
-  // 5. Copy package.json & tsconfig.json if present
+  // 5. Copy package.json & tsconfig.json if present (normalizing workspace:* dependencies)
   const pkgSrc = path.join(appRoot, 'package.json');
   if (fs.existsSync(pkgSrc)) {
-    fs.copyFileSync(pkgSrc, path.join(standaloneDir, 'package.json'));
+    try {
+      const rawPkg = fs.readFileSync(pkgSrc, 'utf-8');
+      const pkg = JSON.parse(rawPkg);
+      if (pkg.dependencies) {
+        for (const [dep, ver] of Object.entries(pkg.dependencies)) {
+          if (typeof ver === 'string' && ver.startsWith('workspace:')) {
+            pkg.dependencies[dep] = `^${SYNAPSE_VERSION}`;
+          }
+        }
+      }
+      fs.writeFileSync(path.join(standaloneDir, 'package.json'), `${JSON.stringify(pkg, null, 2)}\n`, 'utf-8');
+    } catch {
+      fs.copyFileSync(pkgSrc, path.join(standaloneDir, 'package.json'));
+    }
   }
 
   const tsconfigSrc = path.join(appRoot, 'tsconfig.json');

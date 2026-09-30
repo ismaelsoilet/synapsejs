@@ -24,7 +24,8 @@ WORKDIR /app
 
 ENV NODE_ENV=production \
     PORT=3000 \
-    SYNAPSE_LOG=json
+    SYNAPSE_LOG=json \
+    SYNAPSE_ROOT=/app/examples/enterprise-crm
 
 # Copy production artifacts and workspaces from builder
 COPY --from=builder /app/.synapse /app/.synapse

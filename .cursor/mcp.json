@@ -1,8 +1,12 @@
 {
   "mcpServers": {
     "jev-harness": {
-      "command": "/home/ismaelsoilet/synapsejs/jev-mcp",
-      "args": []
+      "command": "bunx",
+      "args": ["jev-harness", "mcp"]
+    },
+    "synapse-mcp": {
+      "command": "bun",
+      "args": ["run", "packages/synapse/bin/synapse.ts", "mcp"]
     }
   }
 }

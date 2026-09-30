@@ -136,4 +136,5 @@ export {
   type SliceMetadata,
   SynapseServer
 } from './runtime/server';
+export { SYNAPSE_VERSION } from './version';
 export { fc };

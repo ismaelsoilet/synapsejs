@@ -219,11 +219,7 @@ export class S3StorageAdapter implements StorageClient {
     });
 
     if (!response.ok && response.status !== 200 && response.status !== 204) {
-      if (response.status === 403 || response.status === 404) {
-        // Fallback for mock/test environments
-      } else {
-        throw new Error(`Storage upload failed with HTTP status ${response.status}`);
-      }
+      throw new Error(`Storage upload failed with HTTP status ${response.status}`);
     }
 
     return {

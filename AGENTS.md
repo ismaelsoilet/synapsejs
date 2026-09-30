@@ -65,7 +65,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run bench:concurrency` | JSON report | measures real throughput (req/s) and latency percentiles |
-| `bun run mcp` | stdio JSON-RPC | exposes 11 native AI tools via JSON-RPC 2.0 |
+| `bun run mcp` | stdio JSON-RPC | exposes 18 native AI tools via JSON-RPC 2.0 (11 Synapse + 7 Jev) |
 | `synapse worker` | continuous JSON log | background queue worker (SQLite or PostgreSQL) |
 
 ### Static files, CORS and logs
@@ -195,7 +195,7 @@ partial and builds its SET clause from a column allowlist, `delete` checks exist
 suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
 contract, so the description cannot drift from behavior.
 
-The native MCP server (`bun run mcp`) exposes 11 tools for autonomous agents via JSON-RPC 2.0 over stdio:
+The native MCP server (`bun run mcp`) exposes 18 tools for autonomous agents via JSON-RPC 2.0 over stdio:
 1. `synapse_get_repo_map`: skeleton AST digest (< 3000 tokens).
 2. `synapse_get_db_schema`: centralized database schema catalog from slice DDLs.
 3. `synapse_check`: compiler diagnostics with exact JSON coordinates.
@@ -207,6 +207,13 @@ The native MCP server (`bun run mcp`) exposes 11 tools for autonomous agents via
 9. `synapse_contract`: slice authoring contract and HTTP transport semantics.
 10. `synapse_check_db_drift`: compares live database schema against slice DDLs.
 11. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
+12. `synapse_test_gate`: fast semantic gating and failure triage using Jev System One.
+13. `synapse_abort_check`: circular error trajectory and futile work loop detector.
+14. `synapse_verify_step`: acceptance criteria verification oracle using Jev System One.
+15. `synapse_reasoning_effort`: dynamic Astra-Jev reasoning effort modulator.
+16. `synapse_triage_error`: classifies arbitrary runtime/test errors into env/transient/deep logic.
+17. `synapse_route_task`: semantically routes development tasks to optimal model tiers.
+18. `synapse_evaluate_nudge`: evaluates premature stop conditions and provides continuation nudges.
 
 **A slice never imports another slice.** `SLICE_IMPORTS_SLICE` fails the split when it happens,
 transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by
@@ -263,7 +270,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens (~11% reduction in feature context surface). Do not exaggerate token ratios.
-  - **Framework version is `1.7.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.8.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.

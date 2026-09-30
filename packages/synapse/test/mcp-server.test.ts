@@ -74,15 +74,18 @@ describe('SynapseMcpServer over stdio', () => {
       'synapse_check_db_drift',
       'synapse_contract',
       'synapse_diff_impact',
+      'synapse_evaluate_nudge',
       'synapse_get_db_schema',
       'synapse_get_repo_map',
       'synapse_migrate',
       'synapse_reasoning_effort',
       'synapse_rollback',
+      'synapse_route_task',
       'synapse_run_pbt',
       'synapse_scaffold_slice',
       'synapse_split',
       'synapse_test_gate',
+      'synapse_triage_error',
       'synapse_verify_completion'
     ]);
     expect(list?.result.tools.every((t: { description?: string }) => Boolean(t.description))).toBe(true);
