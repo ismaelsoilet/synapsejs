@@ -2,9 +2,6 @@ name: Release
 
 # Publica por tag, nunca por push em main: o número da versão é uma decisão explícita.
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 jobs:
