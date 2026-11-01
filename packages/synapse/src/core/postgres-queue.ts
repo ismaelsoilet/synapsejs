@@ -238,7 +238,8 @@ export class PostgresQueueEngine {
     }
 
     const jobDef = this.registry.get(job.name);
-    const attempts = Number(job.attempts) + 1;
+    // Note: attempts is already incremented in SQL by claimNextJob (`attempts = attempts + 1 RETURNING *`)
+    const attempts = Number(job.attempts);
     const now = Date.now();
 
     if (!jobDef) {

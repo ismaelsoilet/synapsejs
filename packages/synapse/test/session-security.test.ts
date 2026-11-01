@@ -402,6 +402,9 @@ describe('OAuth exchange and state', () => {
     expect(verifyOAuthState(state, state)).toBe(true);
     expect(verifyOAuthState(state, 'other')).toBe(false);
     expect(verifyOAuthState(state, null)).toBe(false);
+    // Multibyte string of matching character count must return false, not throw RangeError
+    const multibyte = 'ç'.repeat(state.length);
+    expect(verifyOAuthState(state, multibyte)).toBe(false);
   });
 
   it('aborts a slow provider and returns NETWORK_ERROR', async () => {

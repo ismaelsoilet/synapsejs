@@ -36,7 +36,7 @@ describe('PostgresQueueEngine - Distributed Background Queue', () => {
         payload: JSON.stringify({ documentId: 'doc_99' }),
         status: 'running',
         priority: 0,
-        attempts: 0,
+        attempts: 1, // In Postgres, `UPDATE ... attempts = attempts + 1 RETURNING *` returns incremented attempts
         max_attempts: 3,
         backoff_seconds: 5,
         run_at: Date.now(),
@@ -76,7 +76,7 @@ describe('PostgresQueueEngine - Distributed Background Queue', () => {
         payload: JSON.stringify({ documentId: 'doc_success' }),
         status: 'running',
         priority: 0,
-        attempts: 0,
+        attempts: 1, // In Postgres, `UPDATE ... attempts = attempts + 1 RETURNING *` returns incremented attempts
         max_attempts: 3,
         backoff_seconds: 5,
         run_at: Date.now(),
@@ -116,7 +116,7 @@ describe('PostgresQueueEngine - Distributed Background Queue', () => {
         payload: JSON.stringify({ test: 'fail' }),
         status: 'running',
         priority: 0,
-        attempts: 0,
+        attempts: 1, // In Postgres, `UPDATE ... attempts = attempts + 1 RETURNING *` returns incremented attempts
         max_attempts: 3,
         backoff_seconds: 5,
         run_at: Date.now(),
@@ -156,7 +156,7 @@ describe('PostgresQueueEngine - Distributed Background Queue', () => {
         payload: JSON.stringify({ test: 'doomed' }),
         status: 'running',
         priority: 0,
-        attempts: 2, // 2nd attempt, max is 3, so next is 3rd (exhausted)
+        attempts: 3, // 3rd attempt claimed in SQL (exhausted)
         max_attempts: 3,
         backoff_seconds: 5,
         run_at: Date.now(),

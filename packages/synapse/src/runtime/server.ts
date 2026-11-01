@@ -1582,7 +1582,7 @@ ${importMapScript}
   <div id="synapse-root" class="min-h-full flex-1 flex flex-col">${contentHtml}</div>
 
   <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse(document.getElementById('__SYNAPSE_PROPS_DATA__').textContent || '{}');</script>
+  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}');</script>
   ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
   <script type="module" src="/_synapse/turbo-router.js"></script>
@@ -1639,7 +1639,7 @@ ${importMapScript}
 
     <!-- Props de hidratacao e a entrada de cliente gerada -->
     <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse(document.getElementById('__SYNAPSE_PROPS_DATA__').textContent || '{}');</script>
+    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}');</script>
     ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
     <!-- Turbo Morphing SPA Navigation (<1.5kb, Zero Dependencies) -->

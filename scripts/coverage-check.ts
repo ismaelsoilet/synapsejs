@@ -33,6 +33,7 @@ const proc = Bun.spawn([process.execPath, 'test', 'packages/synapse/test', '--co
 const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);
 const suiteExitCode = await proc.exited;
 const output = `${stdout}\n${stderr}`;
+fs.writeFileSync('/tmp/coverage-suite-output.log', output, 'utf8');
 
 // The summary row is the one that starts with "All files".
 const summary = output
@@ -85,6 +86,16 @@ if (asJson) {
   );
 } else {
   process.stdout.write(`FAIL COVERAGE_GATE\n${failures.map((line) => `  - ${line}`).join('\n')}\n`);
+  if (suiteExitCode !== 0) {
+    const errorSnippet = output
+      .split('\n')
+      .filter((line) => line.includes('(fail)') || line.includes('error:') || line.includes('Fail:'))
+      .slice(0, 10)
+      .join('\n');
+    if (errorSnippet) {
+      process.stdout.write(`\nSuite errors:\n${errorSnippet}\n`);
+    }
+  }
 }
 
 process.exit(failures.length === 0 ? 0 : 1);

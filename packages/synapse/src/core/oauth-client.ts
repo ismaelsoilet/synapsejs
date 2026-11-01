@@ -97,11 +97,18 @@ export function generateOAuthState(): string {
 
 /** Constant-time comparison of the state emitted by the server and the value returned. */
 export function verifyOAuthState(expected: string, received: string | null | undefined): boolean {
-  if (!expected || !received || expected.length !== received.length) {
+  if (!expected || !received) {
     return false;
   }
 
-  return require('node:crypto').timingSafeEqual(Buffer.from(expected), Buffer.from(received));
+  const expectedBuf = Buffer.from(expected);
+  const receivedBuf = Buffer.from(received);
+
+  if (expectedBuf.length !== receivedBuf.length) {
+    return false;
+  }
+
+  return require('node:crypto').timingSafeEqual(expectedBuf, receivedBuf);
 }
 
 export interface OAuthTokenResponse {

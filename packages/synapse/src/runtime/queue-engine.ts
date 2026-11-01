@@ -346,23 +346,7 @@ export class QueueEngine {
       completeStmt.run(now, job.id, job.locked_at ?? null);
 
       // Reschedule recurring cron job if defined
-      if (jobDef.cron) {
-        try {
-          const nextDate = parseNextCronOccurrence(jobDef.cron, new Date(now));
-          const delaySeconds = Math.max(1, Math.floor((nextDate.getTime() - now) / 1000));
-          const nextPayload = jobDef.cronPayload ? jobDef.cronPayload() : parsedPayload;
-
-          if (!jobPayloadMatchesSchema(jobDef.schema, nextPayload)) {
-            this.logger.error(
-              `Payload da recorrência de ${jobDef.name} não satisfaz o schema; recorrência não agendada.`
-            );
-          } else {
-            await this.enqueue(jobDef, nextPayload, { delaySeconds });
-          }
-        } catch (cronErr) {
-          this.logger.error(`Falha ao reagendar job cron ${jobDef.name}: ${cronErr}`);
-        }
-      }
+      await this.rescheduleCronIfConfigured(jobDef, parsedPayload, now);
 
       return true;
     } catch (handlerErr: unknown) {
@@ -386,8 +370,37 @@ export class QueueEngine {
           WHERE id = ?3 AND (locked_at = ?4 OR locked_at IS NULL)
         `);
         failStmt.run(now, errorMsg, job.id, job.locked_at ?? null);
+
+        // Recurring cron jobs must not be permanently halted when an individual run exhausts retries
+        await this.rescheduleCronIfConfigured(jobDef, parsedPayload, now);
       }
       return true;
+    }
+  }
+
+  /**
+   * Reschedules the next occurrence of a recurring cron job.
+   */
+  private async rescheduleCronIfConfigured(
+    jobDef: JobDefinition,
+    fallbackPayload: unknown,
+    now: number
+  ): Promise<void> {
+    if (!jobDef.cron) {
+      return;
+    }
+    try {
+      const nextDate = parseNextCronOccurrence(jobDef.cron, new Date(now));
+      const delaySeconds = Math.max(1, Math.floor((nextDate.getTime() - now) / 1000));
+      const nextPayload = jobDef.cronPayload ? jobDef.cronPayload() : fallbackPayload;
+
+      if (!jobPayloadMatchesSchema(jobDef.schema, nextPayload)) {
+        this.logger.error(`Payload da recorrência de ${jobDef.name} não satisfaz o schema; recorrência não agendada.`);
+      } else {
+        await this.enqueue(jobDef, nextPayload, { delaySeconds });
+      }
+    } catch (cronErr) {
+      this.logger.error(`Falha ao reagendar job cron ${jobDef.name}: ${cronErr}`);
     }
   }
 

@@ -51,8 +51,12 @@ describe('Cron Expression Parser & Queue Integration', () => {
     const testCronJob = defineJob({
       name: 'cleanup-cron',
       cron: '* * * * *',
+      retryLimit: 1,
       handler: async () => {
         runCount++;
+        if (runCount === 2) {
+          throw new Error('Simulation of failure on 2nd occurrence');
+        }
       }
     });
 
@@ -74,6 +78,21 @@ describe('Cron Expression Parser & Queue Integration', () => {
     const statsAfter = engine.getStats();
     expect(statsAfter.completed).toBe(1);
     expect(statsAfter.pending).toBe(1);
+
+    // Occurrence 2: fails permanently. Recurring schedule MUST still reschedule next occurrence
+    engine.database.run('UPDATE _synapse_jobs SET run_at = ?1 WHERE name = ?2 AND status = ?3', [
+      Date.now() - 1000,
+      'cleanup-cron',
+      'pending'
+    ]);
+    const processed2 = await engine.processNextJob({ db });
+    expect(processed2).toBe(true);
+    expect(runCount).toBe(2);
+
+    const statsAfterFail = engine.getStats();
+    expect(statsAfterFail.completed).toBe(1);
+    expect(statsAfterFail.failed).toBe(1);
+    expect(statsAfterFail.pending).toBe(1);
 
     engine.close();
   });
