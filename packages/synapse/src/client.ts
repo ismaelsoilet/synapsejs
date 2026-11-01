@@ -39,6 +39,10 @@ export {
   useSession,
   useSynapseContext
 } from './client/context';
+export {
+  SliceErrorBoundary,
+  type SliceErrorBoundaryProps
+} from './client/error-boundary';
 // Reactive Action & Realtime Subscription Hooks
 export {
   type UseActionOptions,

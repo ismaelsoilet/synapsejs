@@ -40,6 +40,7 @@ export interface SplitArtifact {
 export interface SplitResult {
   sliceName: string;
   artifacts: SplitArtifact[];
+  lineCount?: number;
 }
 
 export type SplitErrorCode =
@@ -818,7 +819,8 @@ export function splitSlice(sliceFilePath: string, baseDir: string = process.cwd(
     )
   });
 
-  return Ok({ sliceName, artifacts });
+  const lineCount = sourceFile.text.split('\n').length;
+  return Ok({ sliceName, artifacts, lineCount });
 }
 
 export function writeSplitArtifacts(result: SplitResult, outDir: string): string[] {
@@ -899,8 +901,20 @@ export function verifySplit(result: SplitResult, outDir: string): SplitVerificat
     }
   }
 
+  if (result.lineCount && result.lineCount > 500) {
+    diagnostics.push({
+      file: `${result.sliceName}.slice.tsx`,
+      line: 1,
+      column: 1,
+      code: 'WARN_LARGE_SLICE',
+      message: `Fatia excede 500 linhas (${result.lineCount} linhas). Para manter alta densidade sem sobrecarregar agentes de IA e humanos, considere decompor este domínio em sub-fatias de intenção de negócio com <SubSlice> e src/shared/ (consulte docs/arquitetura-sistemas-grandes.pt-BR.md).`
+    });
+  }
+
+  const hasErrors = diagnostics.some((d) => !d.code.startsWith('WARN_'));
+
   return {
-    status: diagnostics.length === 0 && leaks.length === 0 ? 'PASS' : 'FAIL',
+    status: !hasErrors && leaks.length === 0 ? 'PASS' : 'FAIL',
     diagnostics,
     leaks
   };

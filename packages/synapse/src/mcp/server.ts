@@ -28,7 +28,7 @@ import { machineContract } from '../compiler/contract';
 import { analyzeImpact } from '../compiler/impact-analyzer';
 import { rollbackSliceMigrations, runSliceMigrations } from '../compiler/migration-runner';
 import { runSliceOracles } from '../compiler/oracle-runner';
-import { type SliceTemplate, scaffoldCrud, scaffoldSlice } from '../compiler/scaffolder';
+import { type SliceTemplate, scaffoldCrud, scaffoldDomain, scaffoldSlice } from '../compiler/scaffolder';
 import { checkSchemaDrift } from '../compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../compiler/slice-splitter';
@@ -414,6 +414,42 @@ export class SynapseMcpServer {
                 2
               );
             }
+          } else if (toolName === 'synapse_scaffold_domain') {
+            const domainRes = scaffoldDomain(args.domain, this.root, args.fields);
+            if (!domainRes.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify(
+                        {
+                          status: 'FAIL',
+                          code: domainRes.error.code,
+                          message: domainRes.error.message,
+                          candidates: domainRes.error.candidates
+                        },
+                        null,
+                        2
+                      )
+                    }
+                  ]
+                }
+              };
+            }
+
+            contentText = JSON.stringify(
+              {
+                status: 'PASS',
+                domain: args.domain,
+                createdFiles: domainRes.value.map((f) => path.relative(this.root, f))
+              },
+              null,
+              2
+            );
           } else if (toolName === 'synapse_contract') {
             contentText = JSON.stringify(machineContract(), null, 2);
           } else if (toolName === 'synapse_migrate') {

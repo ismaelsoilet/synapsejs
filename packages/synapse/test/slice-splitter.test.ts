@@ -1,5 +1,6 @@
 import { afterAll, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import {
   artifactDirectory,
@@ -207,5 +208,31 @@ describe('verifySplit gates', () => {
     for (const target of written) {
       expect(fs.existsSync(target)).toBe(true);
     }
+  });
+});
+
+describe('large-slice governance', () => {
+  it('warns above 500 lines without failing the split', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-large-'));
+    const result: SplitResult = { sliceName: 'large', artifacts: [], lineCount: 501 };
+
+    const verification = verifySplit(result, outDir);
+
+    expect(verification.status).toBe('PASS');
+    expect(verification.diagnostics.map((diagnostic) => diagnostic.code)).toContain('WARN_LARGE_SLICE');
+
+    fs.rmSync(outDir, { recursive: true, force: true });
+  });
+
+  it('does not warn at exactly 500 lines', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'synapse-large-'));
+    const result: SplitResult = { sliceName: 'boundary', artifacts: [], lineCount: 500 };
+
+    const verification = verifySplit(result, outDir);
+
+    expect(verification.status).toBe('PASS');
+    expect(verification.diagnostics.map((diagnostic) => diagnostic.code)).not.toContain('WARN_LARGE_SLICE');
+
+    fs.rmSync(outDir, { recursive: true, force: true });
   });
 });

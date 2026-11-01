@@ -28,7 +28,7 @@ const previousGlobals = {
 
 const React = (await import('react')).default;
 const { act, useState } = await import('react');
-const { hydrateRoot } = await import('react-dom/client');
+const { createRoot, hydrateRoot } = await import('react-dom/client');
 const { renderToString } = await import('react-dom/server');
 const { SynapseProvider } = await import('../src/client/context');
 const { createSession } = await import('../src/core/session-context');
@@ -134,5 +134,30 @@ describe('layout hydration', () => {
 
     expect(container.querySelector('#count')?.textContent).toBe('1');
     expect(acted).toBe(1);
+  });
+});
+
+describe('slice error boundary', () => {
+  it('renders a fallback when a slice throws on the client', async () => {
+    const container = window.document.createElement('div');
+    window.document.body.appendChild(container as never);
+
+    const Throwing = () => {
+      throw new Error('boom');
+    };
+
+    let root: ReturnType<typeof createRoot> | undefined;
+
+    await act(async () => {
+      root = createRoot(container as unknown as Element);
+      root.render(React.createElement(SynapseProvider, { props, session }, React.createElement(Throwing)));
+    });
+
+    expect(container.textContent).toContain('Erro na interface da fatia');
+    expect(errors.join('\n')).toContain('boom');
+
+    await act(async () => {
+      root?.unmount();
+    });
   });
 });

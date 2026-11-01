@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import * as fs from 'fs';
 import * as path from 'path';
 import { createTranslator } from '../src/client/i18n';
 import { PostgresEventHub } from '../src/runtime/postgres-event-hub';

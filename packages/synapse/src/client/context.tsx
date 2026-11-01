@@ -1,5 +1,6 @@
 import { createContext, type ReactNode, useContext } from 'react';
 import type { SessionContext } from '../core/session-context';
+import { SliceErrorBoundary, type SliceErrorBoundaryProps } from './error-boundary';
 
 export interface SynapseContextValue {
   props: Record<string, unknown>;
@@ -11,13 +12,22 @@ const SynapseContext = createContext<SynapseContextValue | null>(null);
 export interface SynapseProviderProps {
   props?: Record<string, unknown>;
   session?: SessionContext;
+  /** Defaults to true: a slice render error shows a fallback instead of a dead tree. */
+  errorBoundary?: boolean;
+  errorBoundaryFallback?: SliceErrorBoundaryProps['fallback'];
   children?: ReactNode;
 }
 
 /**
  * SynapseProvider delivers per-request SSR data isolation and seamless client hydration.
  */
-export function SynapseProvider({ props, session, children }: SynapseProviderProps) {
+export function SynapseProvider({
+  props,
+  session,
+  errorBoundary = true,
+  errorBoundaryFallback,
+  children
+}: SynapseProviderProps) {
   // On client, if props not passed directly, hydrate from window.__SYNAPSE_PROPS__
   const clientProps =
     props ??
@@ -30,7 +40,13 @@ export function SynapseProvider({ props, session, children }: SynapseProviderPro
     session
   };
 
-  return <SynapseContext.Provider value={value}>{children}</SynapseContext.Provider>;
+  const content = errorBoundary ? (
+    <SliceErrorBoundary fallback={errorBoundaryFallback}>{children}</SliceErrorBoundary>
+  ) : (
+    children
+  );
+
+  return <SynapseContext.Provider value={value}>{content}</SynapseContext.Provider>;
 }
 
 export function useSynapseContext(): SynapseContextValue {

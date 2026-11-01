@@ -27,8 +27,7 @@ const asJson = process.argv.includes('--json');
 const proc = Bun.spawn([process.execPath, 'test', 'packages/synapse/test', '--coverage', '--coverage-reporter=text'], {
   cwd: root,
   stdout: 'pipe',
-  stderr: 'pipe',
-  env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'development' }
+  stderr: 'pipe'
 });
 
 const [stdout, stderr] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text()]);

@@ -1,5 +1,45 @@
 # Changelog
 
+## 1.10.0 — Scheduled jobs, portable aggregation, RBAC permissions and UI integration
+
+- **Query engine.** `aggregate`, `count` and `exists` are available on every client. `GROUP BY`,
+  `DISTINCT` and `HAVING` are compiled with parameterized values; a `HAVING` condition that names an
+  aggregation alias is compiled to the aggregate expression, so SQLite and PostgreSQL receive the
+  same portable SQL. `exists` stops at the first matching row instead of counting the table.
+  `MockDatabaseClient.aggregate` now refuses aggregation it cannot model with
+  `UNSUPPORTED_OPERATION` instead of returning raw rows.
+- **BREAKING — `HAVING` aliases.** A condition that referenced only an output alias is now compiled
+  to the aggregate expression (or rejected when it cannot be mapped). *Migration:* use the
+  structured `{ fn, column, op, value }` condition or the same aggregate expression in `having`.
+- **Scheduled jobs.** Cron follows POSIX/Vixie semantics: when day-of-month and day-of-week are both
+  restricted, they are ORed. The parser validates ranges/steps, accepts Sunday as `0` or `7`, and
+  rejects names, `L`, `W`, `#` and `?` with a clear error. `runAt` is honored (and is mutually
+  exclusive with `delaySeconds`), cron payloads can use a factory, and scheduled failures are
+  observable. **BREAKING:** expressions that relied on the old AND behavior change schedules.
+  *Migration:* use `*` in one of the two day fields or split the schedule into two jobs.
+- **PostgreSQL queue scope.** Cron is implemented in the SQLite `QueueEngine`. The
+  `PostgresQueueEngine` refuses a cron job with `CRON_UNSUPPORTED_ENGINE` instead of ignoring it;
+  PostgreSQL parity is scheduled for 1.11.
+- **Sessions and OAuth.** Signed session tokens carry fine-grained `permissions` (bounded and
+  validated); legacy tokens remain valid with an empty list. The admin/superadmin bypass is
+  configurable through `SYNAPSE_RBAC_ADMIN_BYPASS` (default `true`). OAuth token exchange has a
+  timeout/abort, and `generateOAuthState`/`verifyOAuthState` provide constant-time state validation.
+- **UI and assets.** The local CSS bundle is produced by `synapse build`, `dev` and `start`, so the
+  HTML link and the route no longer deadlock; no theme is injected when the application has no
+  stylesheet. `SliceErrorBoundary` is wrapped around the client slice view by default (opt-out via
+  `errorBoundary={false}`). SPA morphing preserves focus, value, `checked`, `selectedIndex` and
+  scroll for marked elements.
+- **Scaffolding.** `synapse new-domain` is transactional: a partial failure returns `Err` and
+  removes the files it created, or returns `PARTIAL_WRITE` with the remaining paths. The
+  `WARN_LARGE_SLICE` threshold is 500 lines in code and documentation (non-blocking).
+- **TypeScript.** The compiler dependency is pinned to `~5.9.3`; a resolved compiler without the
+  in-process API fails with `COMPILER_API_UNAVAILABLE` and names the detected version. TypeScript 7
+  migration is scheduled for 1.11.
+- **Evidence.** The default `bun test packages/synapse/test` command is green without an external
+  `NODE_ENV`; `docs-check` and `coverage-check` no longer re-inject it. The release evidence is
+  executable and the docs drift gate covers the READMEs, `AGENTS.md`, the checklist and this
+  changelog. 19 MCP tools are registered.
+
 ## 1.9.0 — Production-readiness audit fixes (security hardening)
 
 Four behaviour changes are breaking. Each one states what it replaces, what it does now, and the flag

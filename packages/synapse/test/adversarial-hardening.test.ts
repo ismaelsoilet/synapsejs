@@ -165,8 +165,27 @@ describe('SureForge Adversarial Hardening Suite', () => {
     expect(inDb1.attempts).toBe(1);
     expect(inDb1.status).toBe('running');
 
-    // Simulate worker crash: wait for visibility timeout to expire
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Simulate worker crash: wait until the lock is observably stale instead of
+    // relying on a fixed sleep that races the visibility timeout under load.
+    const waitForStaleLock = async () => {
+      const deadline = Date.now() + 3000;
+
+      while (Date.now() < deadline) {
+        const row = db.query("SELECT locked_at FROM _synapse_jobs WHERE id = 'job_poison'").get() as {
+          locked_at?: number | null;
+        } | null;
+
+        if (row?.locked_at && row.locked_at <= Date.now() - 120) {
+          return;
+        }
+
+        await Bun.sleep(10);
+      }
+
+      throw new Error('the visibility timeout did not expire within 3s');
+    };
+
+    await waitForStaleLock();
 
     // Second claim: recovered from stale running, attempts incremented to 2
     const claimed2 = queue.claimNextJob();
@@ -176,8 +195,8 @@ describe('SureForge Adversarial Hardening Suite', () => {
     const inDb2 = db.query("SELECT attempts, status FROM _synapse_jobs WHERE id = 'job_poison'").get() as any;
     expect(inDb2.attempts).toBe(2);
 
-    // Wait for visibility timeout to expire again
-    await new Promise((resolve) => setTimeout(resolve, 150));
+    // Wait for the second lock to become observably stale as well.
+    await waitForStaleLock();
 
     // Third claim: attempts reached max_attempts (2). Must NOT be claimed, must be marked 'failed'
     const claimed3 = queue.claimNextJob();

@@ -1,6 +1,9 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
   workflow_dispatch:
 
 jobs:
@@ -127,4 +130,38 @@ jobs:
 
       - name: Pack, Install Outside The Monorepo And Exercise Every Entry Point
         run: bun run rehearse:publish
+
+  typescript-7-smoke:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@735343b667d3e6f658f44d0eca948eb6282f2b76 # v2.0.2
+        with:
+          bun-version: 1.4.2
+
+      - name: The compiler guard names the TS 7 incompatibility
+        run: |
+          tmp="$(mktemp -d)"
+          cp packages/synapse/src/compiler/typescript-api.ts "$tmp/typescript-api.ts"
+          cd "$tmp"
+          bun add typescript@7.0.2 >/dev/null
+          bun -e '
+            import { assertCompilerApi } from "./typescript-api.ts";
+            try {
+              assertCompilerApi();
+              console.error("UNEXPECTED: TypeScript 7 exposed the in-process API");
+              process.exit(1);
+            } catch (error) {
+              if (error?.code === "COMPILER_API_UNAVAILABLE") {
+                console.log("PASS: TypeScript 7 is rejected with a named error");
+                process.exit(0);
+              }
+              console.error(error);
+              process.exit(1);
+            }
+          '
 

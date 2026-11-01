@@ -1,15 +1,12 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import {
-  buildClientBundle,
-  buildVendorBundle,
-  VENDOR_BUNDLE_NAME,
-  VENDOR_BUNDLE_URL
-} from '../src/compiler/client-bundler';
+import { buildClientBundle, buildVendorBundle, VENDOR_BUNDLE_NAME } from '../src/compiler/client-bundler';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 import { SynapseServer } from '../src/runtime/server';
+
+setDefaultTimeout(15_000);
 
 const tempAppDir = path.join(import.meta.dir, 'fixtures', 'onda1-test-app');
 

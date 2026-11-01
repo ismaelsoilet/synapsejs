@@ -38,10 +38,29 @@ export interface JoinClause {
   as?: string;
 }
 
+export interface AggregateItem {
+  fn: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+  column?: string;
+  as?: string;
+}
+
+export interface HavingAggregateCondition {
+  fn: 'COUNT' | 'SUM' | 'AVG' | 'MIN' | 'MAX';
+  column?: string;
+  op: WhereOperator;
+  value?: unknown;
+}
+
+export type HavingInput = WhereCondition | HavingAggregateCondition | HavingAggregateCondition[];
+
 export interface QueryOptions<T = Record<string, unknown>> {
   select?: Array<keyof T | string>;
+  distinct?: boolean;
+  aggregations?: AggregateItem[];
   where?: WhereCondition;
   join?: JoinClause[];
+  groupBy?: string[] | string;
+  having?: HavingInput;
   orderBy?: Record<string, 'asc' | 'desc' | 'ASC' | 'DESC'> | string;
   limit?: number;
   offset?: number;
@@ -72,6 +91,8 @@ const VALID_WHERE_OPERATORS = new Set<string>([
   'IS NOT NULL',
   'BETWEEN'
 ]);
+
+const VALID_AGGREGATE_FUNCTIONS = new Set<string>(['COUNT', 'SUM', 'AVG', 'MIN', 'MAX']);
 
 export function sanitizeOperator(op: string): WhereOperator {
   const normalized = op.trim().toUpperCase();
@@ -109,41 +130,114 @@ function normalizeWhere(where?: WhereCondition): WhereClauseItem[] {
   return items;
 }
 
+/** Compiles one expression and its operator into a parameterized SQL condition. */
+function compileCondition(expression: string, op: string, value: unknown, params: unknown[]): string {
+  const normalized = sanitizeOperator(op);
+
+  if (normalized === 'IS NULL' || normalized === 'IS NOT NULL') {
+    return `${expression} ${normalized}`;
+  }
+
+  if (normalized === 'IN' || normalized === 'NOT IN') {
+    const arr = Array.isArray(value) ? value : [value];
+    if (arr.length === 0) {
+      return normalized === 'IN' ? '1=0' : '1=1';
+    }
+
+    const placeholders = arr.map((entry) => {
+      params.push(entry);
+      return `$${params.length}`;
+    });
+
+    return `${expression} ${normalized} (${placeholders.join(', ')})`;
+  }
+
+  if (normalized === 'BETWEEN') {
+    const arr = Array.isArray(value) ? value : [];
+    if (arr.length !== 2) {
+      throw new Error(`BETWEEN operator requires an array of 2 values, received: ${JSON.stringify(value)}`);
+    }
+
+    params.push(arr[0]);
+    const p1 = `$${params.length}`;
+    params.push(arr[1]);
+    const p2 = `$${params.length}`;
+    return `${expression} BETWEEN ${p1} AND ${p2}`;
+  }
+
+  params.push(value);
+  return `${expression} ${normalized} $${params.length}`;
+}
+
 /** Compiles WhereClauseItem array into parameterized SQL condition strings */
 export function compileWhereClauses(whereItems: WhereClauseItem[], params: unknown[]): string[] {
+  return whereItems.map((item) => compileCondition(sanitizeIdentifier(item.column), item.op, item.value, params));
+}
+
+/**
+ * Compiles HAVING conditions. A condition that names an aggregation alias is
+ * compiled as the aggregate expression, so PostgreSQL (which rejects output
+ * aliases in HAVING) and SQLite receive the same portable SQL.
+ */
+function compileHaving(
+  having: HavingInput,
+  aggregations: AggregateItem[],
+  groupBy: string[] | string | undefined,
+  params: unknown[]
+): string[] {
+  const aliases = new Map<string, string>();
+  const groupedColumns = new Set<string>();
+
+  if (groupBy) {
+    const columns = Array.isArray(groupBy) ? groupBy : groupBy.split(',').map((column) => column.trim());
+    for (const column of columns) {
+      groupedColumns.add(sanitizeIdentifier(column.trim()));
+    }
+  }
+
+  for (const aggregation of aggregations) {
+    const fn = aggregation.fn.toUpperCase();
+    if (!VALID_AGGREGATE_FUNCTIONS.has(fn)) {
+      throw new Error(`Invalid aggregate function: "${aggregation.fn}"`);
+    }
+
+    const column = aggregation.column?.trim() || '*';
+    const expression = `${fn}(${column === '*' ? '*' : sanitizeIdentifier(column)})`;
+
+    if (aggregation.as) {
+      aliases.set(aggregation.as, expression);
+    }
+  }
+
+  const items: Array<WhereClauseItem | HavingAggregateCondition> = Array.isArray(having)
+    ? having
+    : typeof having === 'object' && having !== null && 'fn' in having
+      ? [having as HavingAggregateCondition]
+      : normalizeWhere(having as WhereCondition);
+
   const conditions: string[] = [];
 
-  for (const item of whereItems) {
-    const col = sanitizeIdentifier(item.column);
-    const op = sanitizeOperator(item.op);
+  for (const item of items) {
+    if ('fn' in item) {
+      const fn = item.fn.toUpperCase();
+      if (!VALID_AGGREGATE_FUNCTIONS.has(fn)) {
+        throw new Error(`Invalid aggregate function: "${item.fn}"`);
+      }
 
-    if (op === 'IS NULL' || op === 'IS NOT NULL') {
-      conditions.push(`${col} ${op}`);
-    } else if (op === 'IN' || op === 'NOT IN') {
-      const arr = Array.isArray(item.value) ? item.value : [item.value];
-      if (arr.length === 0) {
-        conditions.push(op === 'IN' ? '1=0' : '1=1');
-      } else {
-        const placeholders = arr.map((val) => {
-          params.push(val);
-          return `$${params.length}`;
-        });
-        conditions.push(`${col} ${op} (${placeholders.join(', ')})`);
-      }
-    } else if (op === 'BETWEEN') {
-      const arr = Array.isArray(item.value) ? item.value : [];
-      if (arr.length !== 2) {
-        throw new Error(`BETWEEN operator requires an array of 2 values, received: ${JSON.stringify(item.value)}`);
-      }
-      params.push(arr[0]);
-      const p1 = `$${params.length}`;
-      params.push(arr[1]);
-      const p2 = `$${params.length}`;
-      conditions.push(`${col} BETWEEN ${p1} AND ${p2}`);
-    } else {
-      params.push(item.value);
-      conditions.push(`${col} ${op} $${params.length}`);
+      const column = item.column?.trim() || '*';
+      const expression = `${fn}(${column === '*' ? '*' : sanitizeIdentifier(column)})`;
+      conditions.push(compileCondition(expression, item.op, item.value, params));
+      continue;
     }
+
+    const aliasExpression = aliases.get(item.column);
+    const column = sanitizeIdentifier(item.column);
+
+    if (!aliasExpression && !groupedColumns.has(column)) {
+      throw new Error(`Invalid HAVING column: "${item.column}" must be a groupBy column or an aggregation alias`);
+    }
+
+    conditions.push(compileCondition(aliasExpression ?? column, item.op, item.value, params));
   }
 
   return conditions;
@@ -200,10 +294,28 @@ export function compileSelect(table: string, options?: QueryOptions): { sql: str
         return safeCol;
       })
     );
-  } else if (!options?.join || options.join.length === 0) {
-    selectCols.push('*');
-  } else {
-    selectCols.push(`${safeTable}.*`);
+  }
+
+  // Handle explicit aggregations
+  if (options?.aggregations && options.aggregations.length > 0) {
+    for (const agg of options.aggregations) {
+      const fn = agg.fn.toUpperCase();
+      if (!VALID_AGGREGATE_FUNCTIONS.has(fn)) {
+        throw new Error(`Invalid aggregate function: "${agg.fn}"`);
+      }
+      const rawCol = agg.column?.trim() || '*';
+      const col = rawCol === '*' ? '*' : sanitizeIdentifier(rawCol);
+      const alias = agg.as ? ` AS "${sanitizeIdentifier(agg.as)}"` : '';
+      selectCols.push(`${fn}(${col})${alias}`);
+    }
+  }
+
+  if (selectCols.length === 0) {
+    if (!options?.join || options.join.length === 0) {
+      selectCols.push('*');
+    } else {
+      selectCols.push(`${safeTable}.*`);
+    }
   }
 
   // Handle joins
@@ -238,7 +350,8 @@ export function compileSelect(table: string, options?: QueryOptions): { sql: str
     }
   }
 
-  let sql = `SELECT ${selectCols.join(', ')} FROM ${safeTable}`;
+  const distinctPrefix = options?.distinct ? 'DISTINCT ' : '';
+  let sql = `SELECT ${distinctPrefix}${selectCols.join(', ')} FROM ${safeTable}`;
   if (joinClauses.length > 0) {
     sql += ` ${joinClauses.join(' ')}`;
   }
@@ -249,6 +362,25 @@ export function compileSelect(table: string, options?: QueryOptions): { sql: str
     const conditions = compileWhereClauses(whereItems, params);
     if (conditions.length > 0) {
       sql += ` WHERE ${conditions.join(' AND ')}`;
+    }
+  }
+
+  // 3. GROUP BY clause
+  if (options?.groupBy) {
+    const groupCols = Array.isArray(options.groupBy)
+      ? options.groupBy
+      : options.groupBy.split(',').map((c) => c.trim());
+    const safeGroupCols = groupCols.map((c) => sanitizeIdentifier(c.trim())).filter(Boolean);
+    if (safeGroupCols.length > 0) {
+      sql += ` GROUP BY ${safeGroupCols.join(', ')}`;
+    }
+  }
+
+  // 4. HAVING clause
+  if (options?.having) {
+    const conditions = compileHaving(options.having, options.aggregations ?? [], options.groupBy, params);
+    if (conditions.length > 0) {
+      sql += ` HAVING ${conditions.join(' AND ')}`;
     }
   }
 

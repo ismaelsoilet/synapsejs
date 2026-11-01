@@ -280,6 +280,62 @@ export const FEATURE_STATUS: FeatureStatus[] = [
     evidence: 'bun test packages/synapse/test/feature-exercise.test.ts (rollback rolls back a real statement)'
   },
   {
+    feature: 'Query aggregations, GROUP BY and portable HAVING',
+    status: 'stable',
+    evidence:
+      'bun test packages/synapse/test/query-builder.test.ts; TEST_DATABASE_URL=... bun test packages/synapse/test/postgres-adapters.test.ts'
+  },
+  {
+    feature: 'Cron scheduling with POSIX DOM/DOW semantics and runAt',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/cron-queue.test.ts'
+  },
+  {
+    feature: 'PostgreSQL cron scope fails with CRON_UNSUPPORTED_ENGINE',
+    status: 'stable',
+    evidence: 'TEST_DATABASE_URL=... bun test packages/synapse/test/postgres-adapters.test.ts'
+  },
+  {
+    feature: 'Fine-grained permissions inside signed session tokens',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/session-security.test.ts'
+  },
+  {
+    feature: 'OAuth PKCE, state validation and bounded token exchange',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/session-security.test.ts'
+  },
+  {
+    feature: 'Local CSS bundle without a CDN',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/css-bundle.test.ts'
+  },
+  {
+    feature: 'Client error boundary for slice render failures',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/hydration.test.tsx'
+  },
+  {
+    feature: 'SPA morphing preserves focus and form state',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/turbo-router.test.tsx'
+  },
+  {
+    feature: 'Transactional domain scaffolding (new-domain)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/scaffolder.test.ts'
+  },
+  {
+    feature: 'Large-slice warning (WARN_LARGE_SLICE)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/slice-splitter.test.ts'
+  },
+  {
+    feature: 'TypeScript compiler API guard (COMPILER_API_UNAVAILABLE)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/compiler-api.test.ts'
+  },
+  {
     feature: 'Incremental diagnostics cache across processes',
     status: 'roadmap',
     evidence: 'removido na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s)'

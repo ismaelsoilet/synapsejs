@@ -8,9 +8,34 @@
  * });
  */
 
+import { Value } from '@sinclair/typebox/value';
 import type { ActionContext } from './action-context';
 
 export type JobHandlerFn<TPayload = unknown> = (payload: TPayload, ctx: ActionContext) => Promise<void>;
+
+export type JobScheduleErrorCode = 'CRON_UNSUPPORTED_ENGINE' | 'CONFLICTING_SCHEDULE' | 'INVALID_CRON_PAYLOAD';
+
+export class JobScheduleError extends Error {
+  readonly code: JobScheduleErrorCode;
+
+  constructor(code: JobScheduleErrorCode, message: string) {
+    super(`${code}: ${message}`);
+    this.name = 'JobScheduleError';
+    this.code = code;
+  }
+}
+
+export function jobPayloadMatchesSchema(schema: unknown, payload: unknown): boolean {
+  if (!schema || typeof schema !== 'object') {
+    return true;
+  }
+
+  try {
+    return Value.Check(schema as never, payload);
+  } catch {
+    return true;
+  }
+}
 
 export interface JobDefinition<TPayload = unknown> {
   /** Unique name identifier for the job */
@@ -21,6 +46,12 @@ export interface JobDefinition<TPayload = unknown> {
   readonly retryLimit?: number;
   /** Initial backoff in seconds for exponential backoff retries (default: 5) */
   readonly backoffSeconds?: number;
+  /** Optional recurring cron expression (e.g. '0 0 * * *' or hourly/daily) */
+  readonly cron?: string;
+  /** Optional payload factory used for the first run and each recurrence. */
+  readonly cronPayload?: () => TPayload;
+  /** Optional future execution timestamp in milliseconds */
+  readonly runAt?: number;
   /** Optional schema validator (e.g. TypeBox schema) */
   readonly schema?: unknown;
 }
@@ -31,6 +62,9 @@ export interface JobOptions<TPayload = unknown> {
   perform?: JobHandlerFn<TPayload>;
   retryLimit?: number;
   backoffSeconds?: number;
+  cron?: string;
+  cronPayload?: () => TPayload;
+  runAt?: number;
   schema?: unknown;
 }
 
@@ -48,6 +82,9 @@ export function defineJob<TPayload = unknown>(options: JobOptions<TPayload>): Jo
     handler,
     retryLimit: options.retryLimit ?? 3,
     backoffSeconds: options.backoffSeconds ?? 5,
+    cron: options.cron,
+    cronPayload: options.cronPayload,
+    runAt: options.runAt,
     schema: options.schema
   });
 }

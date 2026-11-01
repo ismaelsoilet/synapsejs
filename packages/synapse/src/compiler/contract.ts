@@ -242,7 +242,7 @@ export function machineContract(): MachineContract {
     },
     scaffolding: {
       command:
-        'synapse new-slice <domain> <name> [--template=<template>] [--fields=<grammar>] · synapse new-shared <name> · synapse new <project>',
+        'synapse new-slice <domain> <name> [--template=<template>] [--fields=<grammar>] · synapse new-shared <name> · synapse new-domain <domain> [--fields=<grammar>] · synapse new <project>',
       containment: `The domain, the slice name, the shared-module name and the new-project directory are each one safe path segment (pattern ${PATH_SEGMENT_PATTERN}), and before anything is written the resolved target is asserted to stay inside the directory the operation owns. A field name in --fields must be a plain identifier before it is interpolated into the generated DDL or TypeScript. Every containment failure is printed as JSON on standard output with a non-zero exit code.`,
       failureCodes: { ...SCAFFOLD_FAILURE_CODES }
     },

@@ -2,7 +2,13 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
-import { generateSliceTemplate, scaffoldCrud, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
+import {
+  generateSliceTemplate,
+  scaffoldCrud,
+  scaffoldDomain,
+  scaffoldShared,
+  scaffoldSlice
+} from '../src/compiler/scaffolder';
 
 let sandbox: string;
 
@@ -244,5 +250,61 @@ describe('scaffoldShared containment', () => {
       expect(created.value).toBe(path.join(appDir, 'src', 'shared', 'billing-rules.ts'));
       expect(fs.existsSync(created.value)).toBe(true);
     }
+  });
+
+  it('scaffolds a complete modular domain with layout, slice and shared module', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices'), { recursive: true });
+
+    const created = scaffoldDomain('faturamento', appDir, 'descricao:string,valor:number');
+    expect(created.ok).toBe(true);
+    if (created.ok) {
+      expect(created.value.length).toBe(3);
+      // 1. Domain layout
+      const layoutPath = path.join(appDir, 'src', 'slices', 'faturamento', '_layout.tsx');
+      expect(fs.existsSync(layoutPath)).toBe(true);
+      const layoutContent = fs.readFileSync(layoutPath, 'utf-8');
+      expect(layoutContent).toContain('FaturamentoDomainLayout');
+
+      // 2. Initial List Slice
+      const slicePath = path.join(appDir, 'src', 'slices', 'faturamento', 'listar-faturamento.slice.tsx');
+      expect(fs.existsSync(slicePath)).toBe(true);
+
+      // 3. Shared domain module
+      const sharedPath = path.join(appDir, 'src', 'shared', 'faturamento.ts');
+      expect(fs.existsSync(sharedPath)).toBe(true);
+      const sharedContent = fs.readFileSync(sharedPath, 'utf-8');
+      expect(sharedContent).toContain('executeSharedFaturamento');
+    }
+  });
+
+  it('rejects an unsafe domain before writing anything', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices'), { recursive: true });
+
+    const created = scaffoldDomain('../../tmp', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('INVALID_PATH_SEGMENT');
+    }
+    expect(fs.existsSync(path.join(appDir, 'src', 'slices', '..', '..', 'tmp'))).toBe(false);
+  });
+
+  it('rolls back the layout and shared module when the list slice already exists', () => {
+    const appDir = path.join(sandbox, 'app');
+    const domainDir = path.join(appDir, 'src', 'slices', 'faturamento');
+    fs.mkdirSync(domainDir, { recursive: true });
+    fs.writeFileSync(path.join(domainDir, 'listar-faturamento.slice.tsx'), '// existing slice', 'utf-8');
+
+    const created = scaffoldDomain('faturamento', appDir);
+
+    expect(created.ok).toBe(false);
+    if (!created.ok) {
+      expect(created.error.code).toBe('SLICE_EXISTS');
+    }
+    expect(fs.existsSync(path.join(domainDir, '_layout.tsx'))).toBe(false);
+    expect(fs.existsSync(path.join(appDir, 'src', 'shared', 'faturamento.ts'))).toBe(false);
+    expect(fs.existsSync(path.join(domainDir, 'listar-faturamento.slice.tsx'))).toBe(true);
   });
 });

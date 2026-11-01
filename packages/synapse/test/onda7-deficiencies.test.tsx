@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
+import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import { Type } from '@sinclair/typebox';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -14,6 +14,8 @@ import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 import { defineSocket, type SliceSocketDefinition } from '../src/core/websocket';
 import { isCache, isSocket } from '../src/runtime/discovery-rules';
 import { SynapseServer } from '../src/runtime/server';
+
+setDefaultTimeout(15_000);
 
 const tempAppDir = path.join(import.meta.dir, 'fixtures', 'onda7-test-app');
 

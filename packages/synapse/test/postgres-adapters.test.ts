@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, it } from 'bun:test';
+import { defineJob } from '../src/core';
 import { resetDatabaseInstance } from '../src/core/database-factory';
 import { PostgresDatabaseClient } from '../src/core/postgres-client';
 import { PostgresQueueEngine } from '../src/core/postgres-queue';
@@ -164,5 +165,90 @@ describeWithPostgres('PostgreSQL event hub', () => {
       await publisher.close();
       await subscriber.close();
     }
+  }, 30_000);
+});
+
+describeWithPostgres('PostgreSQL cron scope', () => {
+  it('refuses cron with CRON_UNSUPPORTED_ENGINE instead of ignoring it', () => {
+    const client = new PostgresDatabaseClient(connectionString as string);
+    const engine = new PostgresQueueEngine({ db: client });
+
+    expect(() =>
+      engine.registerJob(
+        defineJob({
+          name: 'postgres-cron',
+          cron: '* * * * *',
+          handler: async () => {}
+        })
+      )
+    ).toThrow(/CRON_UNSUPPORTED_ENGINE/);
+
+    void client.close?.();
+  });
+});
+
+describeWithPostgres('PostgreSQL schedule options', () => {
+  it('honors runAt and rejects conflicting schedule options', async () => {
+    const client = new PostgresDatabaseClient(connectionString as string);
+    const engine = new PostgresQueueEngine({ db: client });
+
+    await engine.initSchema();
+    await client.query('DELETE FROM _synapse_jobs');
+
+    const runAt = Date.now() + 60_000;
+    const id = await engine.enqueue({ name: 'pg-run-at' }, {}, { runAt });
+    const rows = await client.query<{ run_at: number }>('SELECT run_at FROM _synapse_jobs WHERE id = $1', [id]);
+
+    expect(Number(rows[0].run_at)).toBe(runAt);
+    await expect(engine.enqueue({ name: 'pg-conflict' }, {}, { runAt, delaySeconds: 1 })).rejects.toThrow(
+      /CONFLICTING_SCHEDULE/
+    );
+
+    await client.close?.();
+  });
+});
+
+describeWithPostgres('PostgreSQL query aggregation portability', () => {
+  const server = { client: null as PostgresDatabaseClient | null };
+
+  afterAll(async () => {
+    await server.client?.close?.();
+    resetDatabaseInstance();
+  });
+
+  it('compiles HAVING against the aggregate expression, not the output alias', async () => {
+    const client = new PostgresDatabaseClient(connectionString as string);
+    server.client = client;
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS adapter_metrics (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        amount INTEGER NOT NULL
+      );
+    `);
+    await client.query('DELETE FROM adapter_metrics');
+    await client.insert('adapter_metrics', { id: 'm1', category: 'ELEC', amount: 100 });
+    await client.insert('adapter_metrics', { id: 'm2', category: 'ELEC', amount: 200 });
+    await client.insert('adapter_metrics', { id: 'm3', category: 'BOOK', amount: 50 });
+
+    const groups = await client.aggregate<{ category: string; count: number; total: number }>('adapter_metrics', {
+      select: ['category'],
+      aggregations: [
+        { fn: 'COUNT', column: '*', as: 'count' },
+        { fn: 'SUM', column: 'amount', as: 'total' }
+      ],
+      groupBy: 'category',
+      having: [{ column: 'total', op: '>', value: 100 }],
+      orderBy: { category: 'asc' }
+    });
+
+    expect(groups.length).toBe(1);
+    expect(groups[0].category).toBe('ELEC');
+    expect(Number(groups[0].total)).toBe(300);
+
+    expect(await client.exists('adapter_metrics', { category: 'ELEC' })).toBe(true);
+    expect(await client.exists('adapter_metrics', { category: 'TOYS' })).toBe(false);
+    expect(await client.count('adapter_metrics', { category: 'ELEC' })).toBe(2);
   }, 30_000);
 });

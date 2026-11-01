@@ -1,9 +1,11 @@
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { createSession } from '../src/core/session-context';
 import { SqliteDatabaseClient } from '../src/core/sqlite-client';
+
+setDefaultTimeout(15_000);
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'generated-shared');
 

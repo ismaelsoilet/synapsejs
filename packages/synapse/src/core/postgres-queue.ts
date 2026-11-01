@@ -14,6 +14,8 @@ import {
   createDefaultLogger,
   type JobDefinition,
   type JobEnqueueOptions,
+  JobScheduleError,
+  jobPayloadMatchesSchema,
   type SessionContext,
   type StructuredLogger
 } from './index';
@@ -97,6 +99,28 @@ export class PostgresQueueEngine {
 
   registerJob<T>(job: JobDefinition<T>): void {
     this.registry.set(job.name, job as JobDefinition<unknown>);
+
+    if (job.cron) {
+      throw new JobScheduleError(
+        'CRON_UNSUPPORTED_ENGINE',
+        `Job "${job.name}" uses cron, which the PostgreSQL queue engine does not implement yet. Use the SQLite QueueEngine or schedule externally.`
+      );
+    }
+
+    if (job.runAt !== undefined) {
+      const payload = job.cronPayload ? job.cronPayload() : ({} as T);
+
+      if (!jobPayloadMatchesSchema(job.schema, payload)) {
+        throw new JobScheduleError(
+          'INVALID_CRON_PAYLOAD',
+          `Job "${job.name}" has a schema that rejects its initial runAt payload.`
+        );
+      }
+
+      void this.enqueue(job, payload, { runAt: job.runAt }).catch((err) => {
+        this.logger.error(`Falha ao registrar agendamento runAt para ${job.name}: ${err}`);
+      });
+    }
   }
 
   async enqueue<TPayload>(
@@ -106,6 +130,13 @@ export class PostgresQueueEngine {
   ): Promise<string> {
     await this.initSchema();
 
+    if (options?.runAt !== undefined && options?.delaySeconds !== undefined) {
+      throw new JobScheduleError(
+        'CONFLICTING_SCHEDULE',
+        `Job "${typeof jobOrName === 'string' ? jobOrName : jobOrName.name}" cannot declare both runAt and delaySeconds.`
+      );
+    }
+
     const id = `job_${crypto.randomUUID().replace(/-/g, '')}`;
     const name = typeof jobOrName === 'string' ? jobOrName : jobOrName.name;
     const maxAttempts = typeof jobOrName === 'object' && jobOrName.retryLimit ? jobOrName.retryLimit : 3;
@@ -113,7 +144,7 @@ export class PostgresQueueEngine {
     const priority = options?.priority ?? 0;
     const delaySeconds = options?.delaySeconds ?? 0;
     const now = Date.now();
-    const runAt = now + delaySeconds * 1000;
+    const runAt = options?.runAt ?? now + delaySeconds * 1000;
     const payloadStr = JSON.stringify(payload);
 
     await this.db.query(
@@ -318,6 +349,23 @@ export class PostgresQueueEngine {
 
     await this.db.query(`DELETE FROM _synapse_jobs_dlq WHERE id = $1`, [dlqId]);
     return true;
+  }
+
+  /** SQLite QueueEngine-compatible alias for inspecting the DLQ. */
+  async getDeadLetterJobs(limit = 50): Promise<DlqRecord[]> {
+    return this.getDlqJobs(limit);
+  }
+
+  /** SQLite QueueEngine-compatible alias: retries the DLQ entry for a job id. */
+  async retryJob(jobId: string): Promise<boolean> {
+    await this.initSchema();
+    const rows = await this.db.query<{ id: string }>(`SELECT id FROM _synapse_jobs_dlq WHERE job_id = $1`, [jobId]);
+
+    if (rows.length === 0) {
+      return false;
+    }
+
+    return this.retryDlqJob(rows[0].id);
   }
 
   async close(): Promise<void> {

@@ -13,6 +13,7 @@ export interface SessionContext {
   readonly tenantId?: string;
   readonly email?: string;
   readonly roles: string[];
+  readonly permissions?: string[];
   readonly isAuthenticated: boolean;
   readonly token?: string;
   readonly metadata?: Record<string, unknown>;
@@ -21,6 +22,7 @@ export interface SessionContext {
 export function AnonymousSession(tenantId?: string): SessionContext {
   return {
     roles: [],
+    permissions: [],
     isAuthenticated: false,
     tenantId
   };
@@ -31,6 +33,7 @@ export function createSession(data: {
   tenantId?: string;
   email?: string;
   roles?: string[];
+  permissions?: string[];
   token?: string;
   metadata?: Record<string, unknown>;
 }): SessionContext {
@@ -39,6 +42,7 @@ export function createSession(data: {
     tenantId: data.tenantId,
     email: data.email,
     roles: data.roles || ['user'],
+    permissions: data.permissions || [],
     isAuthenticated: true,
     token: data.token,
     metadata: data.metadata || {}
@@ -53,18 +57,55 @@ export function hasAnyRole(session: SessionContext, roles: string[]): boolean {
   return session.isAuthenticated && roles.some((r) => session.roles.includes(r));
 }
 
+export function hasPermission(session: SessionContext, permission: string): boolean {
+  if (!session.isAuthenticated) return false;
+
+  const adminBypass = process.env.SYNAPSE_RBAC_ADMIN_BYPASS !== 'false';
+
+  if (adminBypass && (session.roles.includes('admin') || session.roles.includes('superadmin'))) {
+    return true;
+  }
+
+  return Boolean(session.permissions?.includes(permission));
+}
+
+export function hasAllPermissions(session: SessionContext, permissions: string[]): boolean {
+  return session.isAuthenticated && permissions.every((p) => hasPermission(session, p));
+}
+
 export type AuthCheckResult = Result<SessionContext, 'UNAUTHORIZED' | 'FORBIDDEN'>;
 
-export function requireAuth(session?: SessionContext, requiredRoles?: string[]): AuthCheckResult {
+export interface AuthRequirements {
+  roles?: string[];
+  permissions?: string[];
+}
+
+export function requireAuth(session?: SessionContext, requirements?: string[] | AuthRequirements): AuthCheckResult {
   if (!session?.isAuthenticated) {
     return Err('UNAUTHORIZED');
   }
 
-  if (requiredRoles && requiredRoles.length > 0) {
-    const authorized = hasAnyRole(session, requiredRoles);
-    if (!authorized) {
+  if (!requirements) {
+    return Ok(session);
+  }
+
+  if (Array.isArray(requirements)) {
+    if (requirements.length > 0 && !hasAnyRole(session, requirements)) {
       return Err('FORBIDDEN');
     }
+    return Ok(session);
+  }
+
+  if (requirements.roles && requirements.roles.length > 0 && !hasAnyRole(session, requirements.roles)) {
+    return Err('FORBIDDEN');
+  }
+
+  if (
+    requirements.permissions &&
+    requirements.permissions.length > 0 &&
+    !hasAllPermissions(session, requirements.permissions)
+  ) {
+    return Err('FORBIDDEN');
   }
 
   return Ok(session);

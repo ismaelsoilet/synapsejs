@@ -177,4 +177,99 @@ describe('DatabaseClient - Isomorphic Query Execution', () => {
     expect(mock.calls[0].sql).toContain('SELECT * FROM customers');
     expect(mock.calls[1].sql).toContain('INSERT INTO customers');
   });
+
+  test('compileSelect supports distinct, aggregations, groupBy and having', () => {
+    const { sql, params } = compileSelect('orders', {
+      distinct: true,
+      select: ['status'],
+      aggregations: [
+        { fn: 'COUNT', column: '*', as: 'total_orders' },
+        { fn: 'SUM', column: 'amount', as: 'total_amount' }
+      ],
+      where: { active: 1 },
+      groupBy: ['status'],
+      having: [{ column: 'total_amount', op: '>', value: 1000 }]
+    });
+
+    expect(sql).toContain(
+      'SELECT DISTINCT status, COUNT(*) AS "total_orders", SUM(amount) AS "total_amount" FROM orders'
+    );
+    expect(sql).toContain('WHERE active = $1');
+    expect(sql).toContain('GROUP BY status');
+    expect(sql).toContain('HAVING SUM(amount) > $2');
+    expect(sql).not.toContain('HAVING total_amount');
+    expect(params).toEqual([1, 1000]);
+  });
+
+  test('compileSelect accepts an explicit aggregate expression in having', () => {
+    const { sql, params } = compileSelect('orders', {
+      aggregations: [{ fn: 'SUM', column: 'amount', as: 'total_amount' }],
+      groupBy: 'status',
+      having: [{ fn: 'SUM', column: 'amount', op: '>', value: 500 }]
+    });
+
+    expect(sql).toContain('HAVING SUM(amount) > $1');
+    expect(params).toEqual([500]);
+  });
+
+  test('rejects a HAVING column that is neither grouped nor aggregated', () => {
+    expect(() =>
+      compileSelect('orders', {
+        aggregations: [{ fn: 'SUM', column: 'amount', as: 'total_amount' }],
+        groupBy: 'status',
+        having: [{ column: 'unmapped', op: '>', value: 1 }]
+      })
+    ).toThrow(/Invalid HAVING column/);
+  });
+
+  test('MockDatabaseClient.aggregate refuses aggregation it cannot model', async () => {
+    const mock = new MockDatabaseClient();
+
+    await expect(
+      mock.aggregate('orders', {
+        aggregations: [{ fn: 'COUNT', column: '*', as: 'total' }],
+        groupBy: 'status'
+      })
+    ).rejects.toThrow(/UNSUPPORTED_OPERATION/);
+  });
+
+  test('SqliteDatabaseClient supports count, exists and aggregate', async () => {
+    const db = new SqliteDatabaseClient(':memory:');
+    await db.query(`
+      CREATE TABLE products (
+        id TEXT PRIMARY KEY,
+        category TEXT NOT NULL,
+        price INTEGER NOT NULL
+      );
+    `);
+
+    await db.insert('products', { id: 'p_1', category: 'ELEC', price: 100 });
+    await db.insert('products', { id: 'p_2', category: 'ELEC', price: 200 });
+    await db.insert('products', { id: 'p_3', category: 'BOOK', price: 50 });
+
+    const totalCount = await db.count('products');
+    expect(totalCount).toBe(3);
+
+    const elecCount = await db.count('products', { category: 'ELEC' });
+    expect(elecCount).toBe(2);
+
+    const hasElec = await db.exists('products', { category: 'ELEC' });
+    expect(hasElec).toBe(true);
+
+    const hasToys = await db.exists('products', { category: 'TOYS' });
+    expect(hasToys).toBe(false);
+
+    const grouped = await db.aggregate<{ category: string; count: number }>('products', {
+      select: ['category'],
+      aggregations: [{ fn: 'COUNT', column: '*', as: 'count' }],
+      groupBy: 'category',
+      orderBy: { category: 'asc' }
+    });
+
+    expect(grouped.length).toBe(2);
+    expect(grouped[0].category).toBe('BOOK');
+    expect(Number(grouped[0].count)).toBe(1);
+    expect(grouped[1].category).toBe('ELEC');
+    expect(Number(grouped[1].count)).toBe(2);
+  });
 });

@@ -15,9 +15,12 @@ import {
   type DatabaseClient,
   type JobDefinition,
   type JobEnqueueOptions,
+  JobScheduleError,
+  jobPayloadMatchesSchema,
   type SessionContext,
   type StructuredLogger
 } from '../core';
+import { parseNextCronOccurrence } from '../core/cron-parser';
 
 export interface JobRecord {
   id: string;
@@ -28,6 +31,7 @@ export interface JobRecord {
   attempts: number;
   max_attempts: number;
   backoff_seconds: number;
+  cron?: string | null;
   run_at: number;
   created_at: number;
   updated_at: number;
@@ -88,6 +92,7 @@ export class QueueEngine {
         attempts INTEGER NOT NULL DEFAULT 0,
         max_attempts INTEGER NOT NULL DEFAULT 3,
         backoff_seconds INTEGER NOT NULL DEFAULT 5,
+        cron TEXT,
         run_at INTEGER NOT NULL,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
@@ -103,6 +108,11 @@ export class QueueEngine {
       // Column already exists
     }
     try {
+      this.db.run('ALTER TABLE _synapse_jobs ADD COLUMN cron TEXT;');
+    } catch {
+      // Column already exists
+    }
+    try {
       this.db.run('CREATE INDEX IF NOT EXISTS idx_synapse_jobs_stale ON _synapse_jobs (status, locked_at);');
     } catch {
       // Index already exists
@@ -114,13 +124,57 @@ export class QueueEngine {
    */
   registerJob<T>(job: JobDefinition<T>): void {
     this.registry.set(job.name, job as JobDefinition<unknown>);
+
+    if (job.cron && job.runAt !== undefined) {
+      throw new JobScheduleError(
+        'CONFLICTING_SCHEDULE',
+        `Job "${job.name}" declares both cron and runAt; choose one schedule.`
+      );
+    }
+
+    const initialPayload = job.cronPayload ? job.cronPayload() : ({} as T);
+
+    if (!jobPayloadMatchesSchema(job.schema, initialPayload)) {
+      throw new JobScheduleError(
+        'INVALID_CRON_PAYLOAD',
+        `Job "${job.name}" has a schema that rejects its initial cron payload.`
+      );
+    }
+
+    if (job.cron) {
+      const existing = this.db
+        .prepare(`SELECT id FROM _synapse_jobs WHERE name = ?1 AND status IN ('pending', 'running') LIMIT 1`)
+        .get(job.name);
+
+      if (!existing) {
+        try {
+          const nextDate = parseNextCronOccurrence(job.cron, new Date());
+          const delaySeconds = Math.max(0, Math.floor((nextDate.getTime() - Date.now()) / 1000));
+          void this.enqueue(job, initialPayload, { delaySeconds }).catch((err) => {
+            this.logger.error(`Falha ao registrar agendamento cron inicial para ${job.name}: ${err}`);
+          });
+        } catch (err) {
+          this.logger.error(`Falha ao registrar agendamento cron inicial para ${job.name}: ${err}`);
+        }
+      }
+    } else if (job.runAt !== undefined) {
+      const existing = this.db
+        .prepare(`SELECT id FROM _synapse_jobs WHERE name = ?1 AND status IN ('pending', 'running') LIMIT 1`)
+        .get(job.name);
+
+      if (!existing) {
+        void this.enqueue(job, initialPayload, { runAt: job.runAt }).catch((err) => {
+          this.logger.error(`Falha ao registrar agendamento runAt para ${job.name}: ${err}`);
+        });
+      }
+    }
   }
 
   /**
    * Enqueues a job for background processing.
    */
   async enqueue<TPayload>(
-    jobOrName: { name: string; retryLimit?: number; backoffSeconds?: number } | string,
+    jobOrName: { name: string; retryLimit?: number; backoffSeconds?: number; cron?: string } | string,
     payload: TPayload,
     options?: JobEnqueueOptions
   ): Promise<string> {
@@ -128,19 +182,25 @@ export class QueueEngine {
     const name = typeof jobOrName === 'string' ? jobOrName : jobOrName.name;
     const maxAttempts = typeof jobOrName === 'object' && jobOrName.retryLimit ? jobOrName.retryLimit : 3;
     const backoffSeconds = typeof jobOrName === 'object' && jobOrName.backoffSeconds ? jobOrName.backoffSeconds : 5;
+    const cron = typeof jobOrName === 'object' && jobOrName.cron ? jobOrName.cron : null;
+
+    if (options?.runAt !== undefined && options?.delaySeconds !== undefined) {
+      throw new JobScheduleError('CONFLICTING_SCHEDULE', `Job "${name}" cannot declare both runAt and delaySeconds.`);
+    }
+
     const priority = options?.priority ?? 0;
     const delaySeconds = options?.delaySeconds ?? 0;
     const now = Date.now();
-    const runAt = now + delaySeconds * 1000;
+    const runAt = options?.runAt ?? now + delaySeconds * 1000;
     const payloadStr = JSON.stringify(payload);
 
     const stmt = this.db.prepare(`
       INSERT INTO _synapse_jobs (
-        id, name, payload, status, priority, attempts, max_attempts, backoff_seconds, run_at, created_at, updated_at
-      ) VALUES (?1, ?2, ?3, 'pending', ?4, 0, ?5, ?6, ?7, ?8, ?8)
+        id, name, payload, status, priority, attempts, max_attempts, backoff_seconds, cron, run_at, created_at, updated_at
+      ) VALUES (?1, ?2, ?3, 'pending', ?4, 0, ?5, ?6, ?7, ?8, ?9, ?9)
     `);
 
-    stmt.run(id, name, payloadStr, priority, maxAttempts, backoffSeconds, runAt, now);
+    stmt.run(id, name, payloadStr, priority, maxAttempts, backoffSeconds, cron, runAt, now);
     return id;
   }
 
@@ -284,6 +344,26 @@ export class QueueEngine {
         WHERE id = ?2 AND (locked_at = ?3 OR locked_at IS NULL)
       `);
       completeStmt.run(now, job.id, job.locked_at ?? null);
+
+      // Reschedule recurring cron job if defined
+      if (jobDef.cron) {
+        try {
+          const nextDate = parseNextCronOccurrence(jobDef.cron, new Date(now));
+          const delaySeconds = Math.max(1, Math.floor((nextDate.getTime() - now) / 1000));
+          const nextPayload = jobDef.cronPayload ? jobDef.cronPayload() : parsedPayload;
+
+          if (!jobPayloadMatchesSchema(jobDef.schema, nextPayload)) {
+            this.logger.error(
+              `Payload da recorrência de ${jobDef.name} não satisfaz o schema; recorrência não agendada.`
+            );
+          } else {
+            await this.enqueue(jobDef, nextPayload, { delaySeconds });
+          }
+        } catch (cronErr) {
+          this.logger.error(`Falha ao reagendar job cron ${jobDef.name}: ${cronErr}`);
+        }
+      }
+
       return true;
     } catch (handlerErr: unknown) {
       const errorMsg = handlerErr instanceof Error ? handlerErr.message : String(handlerErr);
@@ -309,6 +389,28 @@ export class QueueEngine {
       }
       return true;
     }
+  }
+
+  /**
+   * Retrieves failed jobs from Dead Letter Queue for inspection.
+   */
+  getDeadLetterJobs(limit = 50): JobRecord[] {
+    return this.db
+      .prepare(`SELECT * FROM _synapse_jobs WHERE status = 'failed' ORDER BY updated_at DESC LIMIT ?1`)
+      .all(limit) as JobRecord[];
+  }
+
+  /**
+   * Resets a failed dead-letter job to pending for re-execution.
+   */
+  retryJob(id: string): boolean {
+    const stmt = this.db.prepare(`
+      UPDATE _synapse_jobs
+      SET status = 'pending', attempts = 0, locked_at = NULL, run_at = ?1, updated_at = ?1
+      WHERE id = ?2 AND status = 'failed'
+    `);
+    const res = stmt.run(Date.now(), id);
+    return Number(res.changes ?? 0) > 0;
   }
 
   /**

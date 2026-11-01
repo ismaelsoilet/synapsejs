@@ -426,6 +426,7 @@ export type ScaffoldErrorCode =
   | SlicesDirErrorCode
   | 'SLICE_EXISTS'
   | 'WRITE_FAILED'
+  | 'PARTIAL_WRITE'
   | 'INVALID_PATH_SEGMENT'
   | 'INVALID_FIELD_NAME';
 
@@ -440,6 +441,8 @@ export const SCAFFOLD_FAILURE_CODES: Record<ScaffoldErrorCode, string> = {
     'more than one application owns a slices directory; set SYNAPSE_ROOT or run inside the target application',
   SLICE_EXISTS: 'the target file already exists',
   WRITE_FAILED: 'the filesystem refused the write',
+  PARTIAL_WRITE:
+    'a domain scaffolding operation failed and one or more files could not be removed; candidates lists what remains',
   INVALID_PATH_SEGMENT:
     'a domain, slice name, shared-module name or project directory is not a single safe path segment',
   INVALID_FIELD_NAME: 'a field name or enum value in --fields is not a plain identifier'
@@ -682,6 +685,113 @@ export async function executeShared${pascalName}(
       candidates: [targetFile]
     });
   }
+}
+
+/**
+ * Scaffolds an entire modular domain directory with domain layout (_layout.tsx),
+ * an initial listing slice (listar-<domain>.slice.tsx), and shared module (src/shared/<domain>.ts).
+ */
+export function scaffoldDomain(
+  domain: string,
+  baseDir: string = process.cwd(),
+  fieldsSpec?: string
+): Result<string[], ScaffoldError> {
+  const domainRejection = segmentRejection('domain', domain, 'o domínio');
+  if (domainRejection) return Err(domainRejection);
+
+  const target = resolveScaffoldTarget(baseDir);
+  if (!target.ok) return Err(target.error);
+
+  const domainDir = path.join(target.value, domain);
+  const layoutFile = path.join(domainDir, '_layout.tsx');
+  const domainDirExisted = fs.existsSync(domainDir);
+  const createdFiles: string[] = [];
+
+  const fail = (error: ScaffoldError): Result<string[], ScaffoldError> => {
+    const cleanupFailures: string[] = [];
+
+    for (const file of [...createdFiles].reverse()) {
+      try {
+        fs.rmSync(file, { force: true });
+      } catch {
+        cleanupFailures.push(file);
+      }
+    }
+
+    if (!domainDirExisted) {
+      try {
+        fs.rmdirSync(domainDir);
+      } catch {
+        if (fs.existsSync(domainDir)) {
+          cleanupFailures.push(domainDir);
+        }
+      }
+    }
+
+    if (cleanupFailures.length > 0) {
+      return Err({
+        code: 'PARTIAL_WRITE',
+        message: `${error.code}: ${error.message}; não foi possível remover: ${cleanupFailures.join(', ')}`,
+        candidates: cleanupFailures
+      });
+    }
+
+    return Err(error);
+  };
+
+  try {
+    fs.mkdirSync(domainDir, { recursive: true });
+
+    // 1. Domain layout if not exists
+    if (!fs.existsSync(layoutFile)) {
+      const pascalDomain = toPascalCase(domain);
+      const layoutContent = `import React, { type ReactNode } from 'react';
+
+export default function ${pascalDomain}DomainLayout({ children }: { children: ReactNode; url?: string; session?: any }) {
+  return (
+    <div className="flex flex-col flex-1 w-full min-h-full">
+      <header className="border-b border-slate-800 bg-slate-900/60 backdrop-blur px-6 py-4 flex items-center justify-between">
+        <div>
+          <div className="text-xs uppercase tracking-wider text-cyan-400 font-semibold">Domínio</div>
+          <h2 className="text-xl font-bold text-slate-100 capitalize">${domain}</h2>
+        </div>
+        <nav className="flex gap-4 text-sm font-medium">
+          <a href="/${domain}/listar-${domain}" className="text-slate-300 hover:text-cyan-400 transition-colors">Listagem</a>
+        </nav>
+      </header>
+      <main className="flex-1 p-6 max-w-7xl w-full mx-auto">
+        {children}
+      </main>
+    </div>
+  );
+}
+`;
+      fs.writeFileSync(layoutFile, layoutContent, 'utf-8');
+      createdFiles.push(layoutFile);
+    }
+
+    // 2. Initial List Slice
+    const listSliceRes = scaffoldSlice(domain, `listar-${domain}`, baseDir, 'list', fieldsSpec);
+    if (!listSliceRes.ok) {
+      return fail(listSliceRes.error);
+    }
+    createdFiles.push(listSliceRes.value);
+
+    // 3. Shared module
+    const sharedRes = scaffoldShared(domain, baseDir);
+    if (!sharedRes.ok) {
+      return fail(sharedRes.error);
+    }
+    createdFiles.push(sharedRes.value);
+  } catch (err) {
+    return fail({
+      code: 'WRITE_FAILED',
+      message: err instanceof Error ? err.message : String(err),
+      candidates: [domainDir]
+    });
+  }
+
+  return Ok(createdFiles);
 }
 
 if (import.meta.main) {

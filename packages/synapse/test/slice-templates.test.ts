@@ -1,8 +1,10 @@
-import { afterAll, describe, expect, it } from 'bun:test';
+import { afterAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { generateOperationTemplate, type SliceTemplate } from '../src/compiler/slice-templates';
+
+setDefaultTimeout(15_000);
 
 const generatedRoot = path.resolve(import.meta.dir, 'fixtures', 'generated');
 

@@ -18,6 +18,8 @@ export interface SessionClaims {
   userId: string;
   roles: string[];
   tenantId?: string;
+  /** Fine-grained permissions carried by the signed token. */
+  permissions?: string[];
   /** Expiry, in seconds since the epoch. */
   exp: number;
 }
@@ -220,7 +222,7 @@ function constantTimeEquals(left: string, right: string): boolean {
 }
 
 export function signSessionToken(
-  claims: { userId: string; roles: string[]; tenantId?: string },
+  claims: { userId: string; roles: string[]; tenantId?: string; permissions?: string[] },
   secret: string,
   maxAgeSeconds = 86_400
 ): string {
@@ -229,6 +231,7 @@ export function signSessionToken(
       userId: claims.userId,
       roles: claims.roles,
       tenantId: claims.tenantId,
+      permissions: claims.permissions,
       exp: Math.floor(Date.now() / 1000) + maxAgeSeconds
     })
   );
@@ -267,6 +270,18 @@ export function verifySessionToken(
 
   if (claims.tenantId !== undefined && typeof claims.tenantId !== 'string') {
     return Err('INVALID_TOKEN');
+  }
+
+  if (claims.permissions !== undefined) {
+    if (
+      !Array.isArray(claims.permissions) ||
+      claims.permissions.length > 100 ||
+      claims.permissions.some(
+        (permission) => typeof permission !== 'string' || permission.length === 0 || permission.length > 100
+      )
+    ) {
+      return Err('INVALID_TOKEN');
+    }
   }
 
   if (claims.exp * 1000 < Date.now()) {

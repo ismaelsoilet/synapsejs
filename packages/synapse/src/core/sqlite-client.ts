@@ -166,6 +166,26 @@ export class SqliteDatabaseClient implements DatabaseClient {
     return rows.length;
   }
 
+  async count(table: string, where?: WhereCondition): Promise<number> {
+    const { sql, params } = compileSelect(table, {
+      aggregations: [{ fn: 'COUNT', column: '*', as: 'total' }],
+      where
+    });
+    const row = await this.queryOne<{ total: number | string }>(sql, params);
+    return row ? Number(row.total) : 0;
+  }
+
+  async exists(table: string, where: WhereCondition): Promise<boolean> {
+    const { sql, params } = compileSelect(table, { select: ['1'], where, limit: 1 });
+    const row = await this.queryOne<Record<string, unknown>>(sql, params);
+
+    return row !== null;
+  }
+
+  async aggregate<T = Record<string, unknown>>(table: string, options: QueryOptions): Promise<T[]> {
+    return this.findMany<T>(table, options);
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
     if (this.txDepth > 0) {
       // Reentrant transaction: use SQLite SAVEPOINT

@@ -24,7 +24,7 @@ packages/synapse/src/         framework source
   client/                     DataTable, DataForm, Button, Card, Badge, Pagination, useAction, useLoaderData, SynapseProvider
   compiler/                   slice-discovery, migration-runner, db-schema-generator, fields-parser, scaffolder, splitter, repo-map, standalone-builder
   runtime/server.ts           Bun.serve router + SSR shell + RPC dispatcher + SynapseProvider
-  mcp/server.ts               MCP stdio server (18 tools)
+  mcp/server.ts               MCP stdio server (19 tools)
 packages/synapse/bin/synapse.ts   the CLI (single entry point)
 packages/synapse/templates/starter/   the starter template that `synapse new` copies
 packages/synapse/test/        bun:test suite (+ fixtures/ for splitter, oracle and bench fixtures)
@@ -58,6 +58,7 @@ failures only, so a machine consumer can always parse stdout.
 | `synapse build --standalone` | `{"status":"PASS","operation":"BUILD_STANDALONE",...}` | compiles self-contained deployment package in `.synapse/standalone/` |
 | `synapse new-slice <domain> <name> --fields="..."` | `{"status":"PASS","operation":"SCAFFOLD_SLICE",...}` | scaffolds slice with TypeBox, DDL, Action, UI and PBT |
 | `synapse new-shared <name>` | `{"status":"PASS","operation":"SCAFFOLD_SHARED",...}` | scaffolds shared domain module in `src/shared/<name>.ts` with transactional pattern |
+| `synapse new-domain <domain> [--fields="..."]` | `{"status":"PASS","operation":"SCAFFOLD_DOMAIN",...}` | scaffolds a domain layout, an initial list slice and a shared module atomically |
 | `bun run test:slices` | `{"status":"PASS","totalCases":N,...}` | per-invariant results for the CRM example |
 | `bun run test:helpdesk` | same shape | per-invariant results for the help-desk slice app |
 | `bun run test:helpdesk-conventional` | exit 0 | the adoption app's own `bun test` suite |
@@ -65,7 +66,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run bench:concurrency` | JSON report | measures real throughput (req/s) and latency percentiles |
-| `bun run mcp` | stdio JSON-RPC | exposes 18 native AI tools via JSON-RPC 2.0 (11 Synapse + 7 Jev) |
+| `bun run mcp` | stdio JSON-RPC | exposes 19 native AI tools via JSON-RPC 2.0 (12 Synapse + 7 Jev) |
 | `synapse worker` | continuous JSON log | background queue worker (SQLite or PostgreSQL) |
 
 ### Per-process state (rate limiting, SSR cache, event hub)
@@ -268,25 +269,26 @@ partial and builds its SET clause from a column allowlist, `delete` checks exist
 suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
 contract, so the description cannot drift from behavior.
 
-The native MCP server (`bun run mcp`) exposes 18 tools for autonomous agents via JSON-RPC 2.0 over stdio:
+The native MCP server (`bun run mcp`) exposes 19 tools for autonomous agents via JSON-RPC 2.0 over stdio:
 1. `synapse_get_repo_map`: skeleton AST digest (< 3000 tokens).
 2. `synapse_get_db_schema`: centralized database schema catalog from slice DDLs.
 3. `synapse_check`: compiler diagnostics with exact JSON coordinates.
 4. `synapse_split`: compiles slices and runs compile and 0-leak gates.
 5. `synapse_run_pbt`: runs Fast-Check property oracles.
 6. `synapse_scaffold_slice`: scaffolds slices with `--fields` grammar and templates.
-7. `synapse_migrate`: applies DDL statements idempotently.
-8. `synapse_rollback`: transactionally rolls back migration statements matching down blocks.
-9. `synapse_contract`: slice authoring contract and HTTP transport semantics.
-10. `synapse_check_db_drift`: compares live database schema against slice DDLs.
-11. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
-12. `synapse_test_gate`: fast semantic gating and failure triage using Jev System One.
-13. `synapse_abort_check`: circular error trajectory and futile work loop detector.
-14. `synapse_verify_completion`: acceptance criteria verification oracle using Jev System One.
-15. `synapse_reasoning_effort`: dynamic Astra-Jev reasoning effort modulator.
-16. `synapse_triage_error`: classifies arbitrary runtime/test errors into env/transient/deep logic.
-17. `synapse_route_task`: semantically routes development tasks to optimal model tiers.
-18. `synapse_evaluate_nudge`: evaluates premature stop conditions and provides continuation nudges.
+7. `synapse_scaffold_domain`: scaffolds complete modular domain directory structure.
+8. `synapse_migrate`: applies DDL statements idempotently.
+9. `synapse_rollback`: transactionally rolls back migration statements matching down blocks.
+10. `synapse_contract`: slice authoring contract and HTTP transport semantics.
+11. `synapse_check_db_drift`: compares live database schema against slice DDLs.
+12. `synapse_diff_impact`: calculates blast radius and impacted slices for code and schema changes.
+13. `synapse_test_gate`: fast semantic gating and failure triage using Jev System One.
+14. `synapse_abort_check`: circular error trajectory and futile work loop detector.
+15. `synapse_verify_completion`: acceptance criteria verification oracle using Jev System One.
+16. `synapse_reasoning_effort`: dynamic Astra-Jev reasoning effort modulator.
+17. `synapse_triage_error`: classifies arbitrary runtime/test errors into env/transient/deep logic.
+18. `synapse_route_task`: semantically routes development tasks to optimal model tiers.
+19. `synapse_evaluate_nudge`: evaluates premature stop conditions and provides continuation nudges.
 
 **A slice never imports another slice.** `SLICE_IMPORTS_SLICE` fails the split when it happens,
 transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by
@@ -340,7 +342,8 @@ A server action referenced by a component contributes **only its wire signature*
   breaking behaviour changes of 1.9 — session secret required in production, identity headers behind
   an explicit opt-in, declared SSE topics, fail-closed WebSocket origin — plus the cookie defaults and
   the CDN opt-in. `RELEASE-CHECKLIST.md` holds the operational steps and
-  `docs/releases/1.9.0.md` the release text.
+  `docs/releases/1.9.0.md` the 1.9 release text. The 1.10 changes (cron OR, portable `HAVING`,
+  transactional `new-domain`, default-on error boundary) are in `docs/releases/1.10.0.md`.
 
 - **Adoption basis:** the project records **zero external adopters**. The feature table states the
   evidence for each rating; the fact that a capability is `stable` means a test fails when it breaks,
@@ -359,7 +362,7 @@ A server action referenced by a component contributes **only its wire signature*
 - Deliberately broken fixtures live in `packages/synapse/test/fixtures/` and are excluded from the
   project typecheck on purpose (they exercise the splitter's failure gates).
 - **The feature table is machine-derived.** `packages/synapse/src/project-status.ts` is the single
-  source for the version, the feature inventory (46 `stable`, 3 `experimental`, 1 `roadmap`), the
+  source for the version, the feature inventory (57 `stable`, 3 `experimental`, 1 `roadmap`), the
   adoption disclosure and the tool count; `synapse info` prints it and `bun run docs:check` fails
   when a documented number drifts from it. A capability is `stable` only with evidence that fails
   when it breaks, and `experimental` is used rather than softened prose when the evidence is a
@@ -367,7 +370,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens in the comparable `app` column (~11% reduction in feature context surface); the `total` columns cover different file sets per repository and must never be compared. Do not exaggerate token ratios.
-  - **Framework version is `1.9.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.10.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.
@@ -395,7 +398,7 @@ A server action referenced by a component contributes **only its wire signature*
   (>= 11.5.1; Node 22 ships npm 10).
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
-  of the build now). 69 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
+  of the build now). 67 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
   JSON-RPC payloads, the SQL boundary, test assertions) and `bun run docs:check` re-derives that
   number with the display limit lifted, so the documented count is the real total rather than the
   truncated one. The same gate fails on any lint **error**, and the historic 2 `noUnusedImports`
@@ -412,8 +415,8 @@ A server action referenced by a component contributes **only its wire signature*
 
 ```bash
 bun install
-bun run lint                        # Biome: 0 errors, 63 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (568 tests across 70 files)
+bun run lint                        # Biome: 0 errors, 67 accepted dynamic boundary warnings
+bun test packages/synapse/test      # framework suite (610 tests across 75 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map

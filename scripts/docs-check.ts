@@ -21,9 +21,9 @@ const DOCUMENTS = [
   'README.pt-BR.md',
   'packages/synapse/README.md',
   'RELEASE-CHECKLIST.md',
+  'CHANGELOG.md',
   'docs/migration-1.9.md',
-  'docs/migracao-1.9.pt-BR.md',
-  'docs/releases/1.9.0.md'
+  'docs/migracao-1.9.pt-BR.md'
 ];
 const JUNIT_PATH = path.join(root, '.synapse', 'junit-docs-check.xml');
 
@@ -49,8 +49,7 @@ async function runSuiteCounts(): Promise<{ tests: number; files: number }> {
     {
       cwd: root,
       stdout: 'pipe',
-      stderr: 'pipe',
-      env: { ...process.env, NODE_ENV: process.env.NODE_ENV ?? 'development' }
+      stderr: 'pipe'
     }
   );
 
@@ -92,8 +91,27 @@ function collectDocumentedNumbers(): DocNumber[] {
     }
 
     const lines = fs.readFileSync(file, 'utf-8').split('\n');
+    let start = 0;
+    let end = lines.length;
+
+    // The changelog is append-only history: only the current release section is a
+    // claim about this version. Older sections legitimately quote older counts.
+    if (document === 'CHANGELOG.md') {
+      const releaseHeadings = lines
+        .map((line, index) => ({ line, index }))
+        .filter(({ line }) => /^##\s+\[?\d+\.\d+\.\d+/.test(line));
+
+      if (releaseHeadings.length > 0) {
+        start = releaseHeadings[0].index;
+        end = releaseHeadings[1]?.index ?? lines.length;
+      }
+    }
 
     lines.forEach((line, index) => {
+      if (index < start || index >= end) {
+        return;
+      }
+
       const entry: DocNumber = { document, line: index + 1, text: line.trim() };
 
       // "N tests across M files" / "N testes em M arquivos" / "Ran N tests across M files"

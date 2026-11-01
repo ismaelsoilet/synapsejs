@@ -95,6 +95,26 @@ export class PostgresDatabaseClient implements DatabaseClient {
     return rows.length;
   }
 
+  async count(table: string, where?: WhereCondition): Promise<number> {
+    const { sql, params } = compileSelect(table, {
+      aggregations: [{ fn: 'COUNT', column: '*', as: 'total' }],
+      where
+    });
+    const row = await this.queryOne<{ total: number | string }>(sql, params);
+    return row ? Number(row.total) : 0;
+  }
+
+  async exists(table: string, where: WhereCondition): Promise<boolean> {
+    const { sql, params } = compileSelect(table, { select: ['1'], where, limit: 1 });
+    const row = await this.queryOne<Record<string, unknown>>(sql, params);
+
+    return row !== null;
+  }
+
+  async aggregate<T = Record<string, unknown>>(table: string, options: QueryOptions): Promise<T[]> {
+    return this.findMany<T>(table, options);
+  }
+
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {
     const res = await this.client.begin(async (sqlTx) => {
       const txClient: DatabaseClient = {
@@ -154,6 +174,23 @@ export class PostgresDatabaseClient implements DatabaseClient {
           const { sql, params } = compileDelete(table, where);
           const rows = await txClient.query(sql, params);
           return rows.length;
+        },
+        count: async (table: string, where?: WhereCondition) => {
+          const { sql, params } = compileSelect(table, {
+            aggregations: [{ fn: 'COUNT', column: '*', as: 'total' }],
+            where
+          });
+          const row = await txClient.queryOne<{ total: number | string }>(sql, params);
+          return row ? Number(row.total) : 0;
+        },
+        exists: async (table: string, where: WhereCondition) => {
+          const { sql, params } = compileSelect(table, { select: ['1'], where, limit: 1 });
+          const row = await txClient.queryOne<Record<string, unknown>>(sql, params);
+
+          return row !== null;
+        },
+        aggregate: async <U = Record<string, unknown>>(table: string, options: QueryOptions) => {
+          return txClient.findMany<U>(table, options);
         },
         transaction: async <U>(subOp: (nestedTx: DatabaseClient) => Promise<U>) => {
           return await subOp(txClient);

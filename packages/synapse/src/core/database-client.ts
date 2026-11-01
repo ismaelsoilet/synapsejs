@@ -100,6 +100,21 @@ export interface DatabaseClient {
   delete(table: string, where: WhereCondition): Promise<number>;
 
   /**
+   * Declarative row count with optional WHERE filter.
+   */
+  count(table: string, where?: WhereCondition): Promise<number>;
+
+  /**
+   * Declarative existence check returning true if at least one matching row exists.
+   */
+  exists(table: string, where: WhereCondition): Promise<boolean>;
+
+  /**
+   * Declarative aggregation and grouping query.
+   */
+  aggregate<T = Record<string, unknown>>(table: string, options: QueryOptions): Promise<T[]>;
+
+  /**
    * Execute command inside a database transaction boundary.
    */
   transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T>;
@@ -288,6 +303,26 @@ export class MockDatabaseClient implements DatabaseClient {
     this.tables.set(table, survivors);
 
     return removed;
+  }
+
+  async count(table: string, where?: WhereCondition): Promise<number> {
+    const rows = await this.findMany(table, { where });
+    return rows.length;
+  }
+
+  async exists(table: string, where: WhereCondition): Promise<boolean> {
+    const rows = await this.findMany(table, { where, limit: 1 });
+    return rows.length > 0;
+  }
+
+  async aggregate<T = Record<string, unknown>>(table: string, options: QueryOptions): Promise<T[]> {
+    if (options.aggregations?.length || options.groupBy || options.having) {
+      throw new Error(
+        'UNSUPPORTED_OPERATION: MockDatabaseClient.aggregate does not implement aggregations, grouping or HAVING; use a real database for that assertion'
+      );
+    }
+
+    return this.findMany<T>(table, options);
   }
 
   async transaction<T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> {

@@ -61,6 +61,29 @@ export function clientManifestPath(baseDir: string): string {
   return path.join(baseDir, '.synapse', 'client', 'manifest.json');
 }
 
+export async function buildCssBundle(baseDir: string): Promise<Result<{ path: string; bytes: number }, BuildError>> {
+  const clientDir = path.join(baseDir, '.synapse/client');
+  fs.mkdirSync(clientDir, { recursive: true });
+  const outPath = path.join(clientDir, 'synapse.css');
+
+  const sourceCssCandidates = [
+    path.join(baseDir, 'public/synapse.css'),
+    path.join(baseDir, 'src/styles/synapse.css'),
+    path.join(baseDir, 'src/styles/main.css')
+  ];
+
+  for (const src of sourceCssCandidates) {
+    if (fs.existsSync(src)) {
+      const content = fs.readFileSync(src, 'utf-8');
+      fs.writeFileSync(outPath, content, 'utf-8');
+      return Ok({ path: outPath, bytes: Buffer.byteLength(content, 'utf-8') });
+    }
+  }
+
+  // No source means no stylesheet: the framework does not impose a theme.
+  return Ok({ path: outPath, bytes: 0 });
+}
+
 export async function buildVendorBundle(
   baseDir: string,
   vendorPackages: string[] = []

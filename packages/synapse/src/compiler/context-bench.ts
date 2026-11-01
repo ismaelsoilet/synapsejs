@@ -22,6 +22,7 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import * as ts from 'typescript';
+import { assertCompilerApi } from './typescript-api';
 
 export const TOKENS_PER_BYTE_ESTIMATE = 0.25;
 
@@ -149,6 +150,7 @@ interface BenchConfig {
 }
 
 export function measureAppSurface(appRoot: string): AppSurface {
+  assertCompilerApi();
   const configPath = path.join(appRoot, 'bench.config.json');
   if (!fs.existsSync(configPath)) {
     throw new Error(`bench.config.json ausente em ${appRoot}`);

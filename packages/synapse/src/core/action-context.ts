@@ -21,6 +21,8 @@ export interface StructuredLogger {
 
 export interface JobEnqueueOptions {
   delaySeconds?: number;
+  /** Absolute execution timestamp in milliseconds. Mutually exclusive with delaySeconds. */
+  runAt?: number;
   priority?: number;
 }
 
@@ -221,6 +223,9 @@ export function createActionContext<TServices = Record<string, unknown>>(
     update: <T = unknown>(table: string, data: Record<string, unknown>, where: WhereCondition) =>
       db.update<T>(table, data, where),
     delete: (table: string, where: WhereCondition) => db.delete(table, where),
+    count: (table: string, where?: WhereCondition) => db.count(table, where),
+    exists: (table: string, where: WhereCondition) => db.exists(table, where),
+    aggregate: <T = Record<string, unknown>>(table: string, options: QueryOptions) => db.aggregate<T>(table, options),
     transaction: async <T>(operation: (tx: DatabaseClient) => Promise<T>): Promise<T> => {
       return db.transaction(async (txDb) => {
         // Create transactional ActionContext preserving services and context

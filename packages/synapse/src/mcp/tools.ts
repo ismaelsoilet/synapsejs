@@ -85,6 +85,27 @@ export const MCP_TOOLS: McpToolDefinition[] = [
     }
   },
   {
+    name: 'synapse_scaffold_domain',
+    description:
+      'Scaffold an entire modular domain directory with domain layout (_layout.tsx), initial list slice, and shared module (src/shared/<domain>.ts)',
+    inputSchema: {
+      type: 'object',
+      required: ['domain'],
+      properties: {
+        domain: {
+          type: 'string',
+          pattern: PATH_SEGMENT_PATTERN,
+          description: 'Domain name (e.g. billing, customers, orders)'
+        },
+        fields: {
+          type: 'string',
+          description:
+            'Optional initial fields grammar, e.g. "name:string,email:string,status:enum(ACTIVE|INACTIVE),price:number"'
+        }
+      }
+    }
+  },
+  {
     name: 'synapse_contract',
     description:
       'Return the machine contract: slice exports and suffixes, Result and HTTP semantics, session rules, addressing, SSR behavior and the gates to run',

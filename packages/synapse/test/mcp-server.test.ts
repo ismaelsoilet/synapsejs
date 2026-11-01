@@ -82,6 +82,7 @@ describe('SynapseMcpServer over stdio', () => {
       'synapse_rollback',
       'synapse_route_task',
       'synapse_run_pbt',
+      'synapse_scaffold_domain',
       'synapse_scaffold_slice',
       'synapse_split',
       'synapse_test_gate',
@@ -99,6 +100,34 @@ describe('SynapseMcpServer over stdio', () => {
     const contract = JSON.parse(responses[0].result.content[0].text);
     expect(contract.slice.exports.length).toBeGreaterThan(3);
     expect(contract.results.httpStatus.UNAUTHORIZED).toBe('401');
+  });
+
+  it('scaffolds a complete domain through the MCP tool', async () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices'), { recursive: true });
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'synapse_scaffold_domain',
+            arguments: { domain: 'faturamento', fields: 'descricao:string' }
+          }
+        }
+      ],
+      appDir
+    );
+
+    const body = JSON.parse(responses[0].result.content[0].text);
+    expect(body.status).toBe('PASS');
+    expect(body.createdFiles.length).toBe(3);
+
+    for (const file of body.createdFiles) {
+      expect(fs.existsSync(path.join(appDir, file))).toBe(true);
+    }
   });
 
   it('rejects unknown methods and unknown tools with JSON-RPC errors', async () => {

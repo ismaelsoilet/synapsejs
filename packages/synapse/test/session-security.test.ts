@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import { MockDatabaseClient } from '../src/core/database-client';
+import { exchangeOAuthCode, generateOAuthState, verifyOAuthState } from '../src/core/oauth-client';
+import { createSession, hasPermission } from '../src/core/session-context';
 import {
   clearSessionTokenRevocations,
   DEFAULT_REVOCATION_MAX_ENTRIES,
@@ -265,5 +267,204 @@ describe('Caller-supplied identity requires an explicit development opt-in', () 
 
     expect(session.isAuthenticated).toBe(true);
     expect(session.userId).toBe('dev-user');
+  });
+
+  it('enforces granular RBAC permissions in requireAuth', () => {
+    const { createSession, requireAuth, hasPermission } = require('../src/core/session-context');
+
+    const regularUser = createSession({
+      userId: 'u_1',
+      roles: ['user'],
+      permissions: ['orders:read']
+    });
+
+    const adminUser = createSession({
+      userId: 'u_2',
+      roles: ['admin']
+    });
+
+    expect(hasPermission(regularUser, 'orders:read')).toBe(true);
+    expect(hasPermission(regularUser, 'orders:write')).toBe(false);
+    expect(hasPermission(adminUser, 'orders:write')).toBe(true); // admin has all permissions
+
+    // Check with roles only
+    const resRole = requireAuth(regularUser, ['user']);
+    expect(resRole.ok).toBe(true);
+
+    const resForbiddenRole = requireAuth(regularUser, ['manager']);
+    expect(resForbiddenRole.ok).toBe(false);
+    expect(resForbiddenRole.error).toBe('FORBIDDEN');
+
+    // Check with permissions
+    const resPerm = requireAuth(regularUser, { permissions: ['orders:read'] });
+    expect(resPerm.ok).toBe(true);
+
+    const resForbiddenPerm = requireAuth(regularUser, { permissions: ['orders:write'] });
+    expect(resForbiddenPerm.ok).toBe(false);
+    expect(resForbiddenPerm.error).toBe('FORBIDDEN');
+
+    const resAdminPerm = requireAuth(adminUser, { permissions: ['orders:write', 'billing:delete'] });
+    expect(resAdminPerm.ok).toBe(true);
+  });
+
+  it('generates valid RFC 7636 PKCE challenges and builds authorization URLs', () => {
+    const { generatePkceChallenge, buildOAuthAuthorizationUrl } = require('../src/core/oauth-client');
+
+    const pkce = generatePkceChallenge();
+    expect(pkce.codeVerifier.length).toBeGreaterThanOrEqual(43);
+    expect(pkce.codeChallenge.length).toBeGreaterThan(0);
+    expect(pkce.codeChallengeMethod).toBe('S256');
+
+    const authUrl = buildOAuthAuthorizationUrl({
+      config: {
+        clientId: 'test-client-id',
+        authorizationUrl: 'https://auth.example.com/oauth/authorize',
+        tokenUrl: 'https://auth.example.com/oauth/token',
+        redirectUri: 'http://localhost:3000/callback',
+        scope: ['openid', 'email', 'profile']
+      },
+      state: 'xyz123',
+      codeChallenge: pkce.codeChallenge
+    });
+
+    expect(authUrl).toContain('client_id=test-client-id');
+    expect(authUrl).toContain('response_type=code');
+    expect(authUrl).toContain('code_challenge=' + encodeURIComponent(pkce.codeChallenge));
+    expect(authUrl).toContain('code_challenge_method=S256');
+    expect(authUrl).toContain('state=xyz123');
+  });
+});
+
+describe('signed token permissions', () => {
+  it('carries permissions through sign/verify and keeps legacy tokens valid', () => {
+    const token = signSessionToken({ userId: 'u_1', roles: ['sales'], permissions: ['orders:read'] }, 'secret', 3600);
+    const verified = verifySessionToken(token, 'secret');
+
+    expect(verified.ok).toBe(true);
+    if (verified.ok) {
+      expect(verified.value.permissions).toEqual(['orders:read']);
+    }
+
+    const legacy = signSessionToken({ userId: 'u_1', roles: ['sales'] }, 'secret', 3600);
+    const legacyVerified = verifySessionToken(legacy, 'secret');
+
+    expect(legacyVerified.ok).toBe(true);
+    if (legacyVerified.ok) {
+      expect(legacyVerified.value.permissions).toBeUndefined();
+    }
+  });
+
+  it('rejects malformed and oversized permission claims', () => {
+    const malformed = signSessionToken(
+      { userId: 'u_1', roles: ['user'], permissions: 'not-an-array' as unknown as string[] },
+      'secret',
+      3600
+    );
+    expect(verifySessionToken(malformed, 'secret').ok).toBe(false);
+
+    const oversized = signSessionToken(
+      {
+        userId: 'u_1',
+        roles: ['user'],
+        permissions: Array.from({ length: 101 }, (_, index) => `permission:${index}`)
+      },
+      'secret',
+      3600
+    );
+    expect(verifySessionToken(oversized, 'secret').ok).toBe(false);
+  });
+
+  it('makes the admin bypass configurable', () => {
+    const admin = createSession({ userId: 'admin_1', roles: ['admin'] });
+    const previous = process.env.SYNAPSE_RBAC_ADMIN_BYPASS;
+
+    try {
+      delete process.env.SYNAPSE_RBAC_ADMIN_BYPASS;
+      expect(hasPermission(admin, 'orders:write')).toBe(true);
+
+      process.env.SYNAPSE_RBAC_ADMIN_BYPASS = 'false';
+      expect(hasPermission(admin, 'orders:write')).toBe(false);
+    } finally {
+      if (previous === undefined) {
+        delete process.env.SYNAPSE_RBAC_ADMIN_BYPASS;
+      } else {
+        process.env.SYNAPSE_RBAC_ADMIN_BYPASS = previous;
+      }
+    }
+  });
+});
+
+describe('OAuth exchange and state', () => {
+  it('generates and verifies state in constant time', () => {
+    const state = generateOAuthState();
+
+    expect(state.length).toBeGreaterThan(20);
+    expect(verifyOAuthState(state, state)).toBe(true);
+    expect(verifyOAuthState(state, 'other')).toBe(false);
+    expect(verifyOAuthState(state, null)).toBe(false);
+  });
+
+  it('aborts a slow provider and returns NETWORK_ERROR', async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async () => {
+        await Bun.sleep(200);
+        return Response.json({ access_token: 'late' });
+      }
+    });
+
+    try {
+      const result = await exchangeOAuthCode({
+        config: {
+          clientId: 'client',
+          authorizationUrl: 'http://localhost/authorize',
+          tokenUrl: `http://localhost:${server.port}/token`,
+          redirectUri: 'http://localhost/callback',
+          scope: ['openid']
+        },
+        code: 'code',
+        timeoutMs: 20
+      });
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.error).toBe('NETWORK_ERROR');
+      }
+    } finally {
+      await server.stop(true);
+    }
+  });
+
+  it('exchanges a code against a local provider stub', async () => {
+    const server = Bun.serve({
+      port: 0,
+      fetch: async () =>
+        Response.json({
+          access_token: 'access-token',
+          token_type: 'Bearer',
+          expires_in: 3600
+        })
+    });
+
+    try {
+      const result = await exchangeOAuthCode({
+        config: {
+          clientId: 'client',
+          authorizationUrl: 'http://localhost/authorize',
+          tokenUrl: `http://localhost:${server.port}/token`,
+          redirectUri: 'http://localhost/callback',
+          scope: ['openid']
+        },
+        code: 'code'
+      });
+
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.accessToken).toBe('access-token');
+        expect(result.value.tokenType).toBe('Bearer');
+      }
+    } finally {
+      await server.stop(true);
+    }
   });
 });

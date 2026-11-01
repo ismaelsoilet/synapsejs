@@ -15,6 +15,7 @@
  *   synapse split      - Partition slices into shared/server/client modules (gated)
  *   synapse test       - Run all property-based testing (PBT) oracles
  *   synapse new-slice  - Scaffold a new atomic vertical slice
+ *   synapse new-domain - Scaffold a domain layout, list slice and shared module
  *   synapse info       - Machine metadata and framework metrics
  */
 
@@ -22,19 +23,20 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { runMachineVerifications } from '../src/compiler/agent-diagnostic-json';
 import { compressRepositoryAST } from '../src/compiler/ast-daemon-compressor';
-import { buildAllClientBundles } from '../src/compiler/client-bundler';
+import { buildAllClientBundles, buildCssBundle } from '../src/compiler/client-bundler';
 import { renderContractJson, renderContractMarkdown } from '../src/compiler/contract';
 import { generateDatabaseSchemaCatalog } from '../src/compiler/db-schema-generator';
 import { analyzeImpact } from '../src/compiler/impact-analyzer';
 import { rollbackSliceMigrations, runSliceMigrations } from '../src/compiler/migration-runner';
 import { analyzeOptionalItemCoverage, unionCoverage } from '../src/compiler/optional-coverage';
 import { runSliceOracles } from '../src/compiler/oracle-runner';
-import { scaffoldCrud, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
+import { scaffoldCrud, scaffoldDomain, scaffoldShared, scaffoldSlice } from '../src/compiler/scaffolder';
 import { checkSchemaDrift } from '../src/compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../src/compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 import { SLICE_TEMPLATES, type SliceTemplate } from '../src/compiler/slice-templates';
 import { buildStandalone } from '../src/compiler/standalone-builder';
+import { assertCompilerApi } from '../src/compiler/typescript-api';
 import { isInsideBase } from '../src/core/path-guard';
 import { SynapseMcpServer } from '../src/mcp/server';
 import { projectStatus } from '../src/project-status';
@@ -63,6 +65,7 @@ const KNOWN_FLAGS: Record<string, string[]> = {
   split: [],
   'new-slice': ['--template', '--fields'],
   'new-shared': [],
+  'new-domain': ['--fields'],
   build: ['--standalone'],
   contract: ['--markdown'],
   test: ['--gate'],
@@ -112,6 +115,24 @@ async function main() {
     process.exit(1);
   }
 
+  const compilerCommands = new Set(['check', 'split', 'skeleton', 'db-schema', 'impact', 'test', 'build']);
+
+  if (compilerCommands.has(command)) {
+    try {
+      assertCompilerApi();
+    } catch (error) {
+      process.stdout.write(
+        `${JSON.stringify({
+          status: 'FAIL',
+          operation: 'COMPILER_API_CHECK',
+          code: 'COMPILER_API_UNAVAILABLE',
+          message: error instanceof Error ? error.message : String(error)
+        })}\n`
+      );
+      process.exit(1);
+    }
+  }
+
   switch (command) {
     case 'dev': {
       const watch = process.argv.includes('--watch');
@@ -125,6 +146,7 @@ async function main() {
       }
 
       const port = parseInt(process.argv[3] || process.env.PORT || '3000', 10);
+      await buildCssBundle(root);
       const server = new SynapseServer(root, port);
       await server.discoverSlices();
       await server.start();
@@ -162,6 +184,7 @@ async function main() {
         );
       }
 
+      await buildCssBundle(root);
       const server = new SynapseServer(root, port);
       await server.discoverSlices();
       await server.start();
@@ -593,7 +616,56 @@ async function main() {
       break;
     }
 
+    case 'new-domain': {
+      const domain = process.argv[3];
+      if (!domain) {
+        process.stdout.write(
+          `${JSON.stringify({
+            status: 'ERROR',
+            message: 'Nome do domínio ausente. Uso: synapse new-domain <dominio> [--fields="..."]'
+          })}\n`
+        );
+        process.exit(1);
+      }
+
+      const root = process.env.SYNAPSE_ROOT || process.cwd();
+      const fields = process.argv.find((arg) => arg.startsWith('--fields='))?.slice('--fields='.length);
+      const created = scaffoldDomain(domain, root, fields);
+
+      if (!created.ok) {
+        process.stdout.write(
+          `${JSON.stringify(
+            {
+              status: 'ERROR',
+              operation: 'SCAFFOLD_DOMAIN',
+              code: created.error.code,
+              message: created.error.message
+            },
+            null,
+            2
+          )}\n`
+        );
+        process.exit(1);
+      }
+
+      process.stdout.write(
+        `${JSON.stringify(
+          {
+            status: 'PASS',
+            operation: 'SCAFFOLD_DOMAIN',
+            domain,
+            createdFiles: created.value.map((f) => path.relative(root, f))
+          },
+          null,
+          2
+        )}\n`
+      );
+      process.exit(0);
+      break;
+    }
+
     case 'build': {
+      await buildCssBundle(root);
       const isStandalone = process.argv.includes('--standalone');
 
       if (isStandalone) {

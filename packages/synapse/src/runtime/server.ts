@@ -15,6 +15,7 @@ import { renderToString } from 'react-dom/server';
 import { SynapseProvider } from '../client/context';
 import {
   buildClientBundle,
+  buildCssBundle,
   buildVendorBundle,
   type ClientManifest,
   freshBundleFrom,
@@ -119,21 +120,9 @@ export interface SliceLoadError {
   message: string;
 }
 
-/**
- * Domain error codes are the contract; the HTTP status is a transport detail
- * derived from them. Before this, every failure was 400, so a client could not
- * tell an expired session (401) from a missing row (404) or a duplicate (409).
- * Unknown codes keep 400: the domain, not the transport, decides.
- */
-const ERROR_STATUS: Array<{ pattern: RegExp; status: number }> = [
-  { pattern: /^UNAUTHORIZED$/, status: 401 },
-  { pattern: /^FORBIDDEN$/, status: 403 },
-  { pattern: /_NOT_FOUND$/, status: 404 },
-  { pattern: /^(DUPLICATE_|ALREADY_|CONFLICT)/, status: 409 },
-  { pattern: /^(INVALID_|MALFORMED)/, status: 422 },
-  { pattern: /^(NO_DATABASE|PERSISTENCE_FAILED)/, status: 500 },
-  { pattern: /_FAILED$/, status: 500 }
-];
+import { ERROR_STATUS, escapeHtml, httpStatusForError } from './security-headers';
+
+export { ERROR_STATUS, escapeHtml, httpStatusForError };
 
 const RATE_LIMITED_PREFIXES = [
   '/_synapse/rpc/',
@@ -157,8 +146,58 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
       const newRoot = doc.querySelector('#synapse-root');
       const curRoot = document.querySelector('#synapse-root');
       if (newRoot && curRoot) {
-        curRoot.innerHTML = newRoot.innerHTML;
-        document.title = doc.title;
+        const updateDom = function() {
+          var preserved = document.querySelectorAll('[data-synapse-preserve]');
+          var preservedMap = new Map();
+
+          preserved.forEach(function(el) {
+            var key = el.getAttribute('data-synapse-preserve') || el.id || el.getAttribute('name');
+            if (!key) return;
+            preservedMap.set(key, {
+              value: el.value,
+              checked: el.checked,
+              selectedIndex: el.selectedIndex,
+              scrollTop: el.scrollTop,
+              innerHTML: el.innerHTML,
+              focused: document.activeElement === el
+            });
+          });
+
+          curRoot.innerHTML = newRoot.innerHTML;
+          document.title = doc.title;
+
+          var findTarget = function(key) {
+            var candidates = document.querySelectorAll('[data-synapse-preserve], [id], [name]');
+            for (var i = 0; i < candidates.length; i++) {
+              var candidate = candidates[i];
+              var candidateKey =
+                candidate.getAttribute('data-synapse-preserve') || candidate.id || candidate.getAttribute('name');
+              if (candidateKey === key) return candidate;
+            }
+            return null;
+          };
+
+          preservedMap.forEach(function(state, key) {
+            var target = findTarget(key);
+            if (!target) return;
+
+            if (target.value !== undefined && state.value !== undefined) target.value = state.value;
+            if (target.checked !== undefined && state.checked !== undefined) target.checked = state.checked;
+            if (target.selectedIndex !== undefined && state.selectedIndex !== undefined) {
+              target.selectedIndex = state.selectedIndex;
+            }
+            if (state.scrollTop !== undefined) target.scrollTop = state.scrollTop;
+            if (target.value === undefined && state.innerHTML !== undefined) target.innerHTML = state.innerHTML;
+            if (state.focused && typeof target.focus === 'function') target.focus();
+          });
+        };
+
+        if (document.startViewTransition) {
+          await document.startViewTransition(updateDom).finished;
+        } else {
+          updateDom();
+        }
+
         var newPropsScript = doc.querySelector('script[data-synapse-props]');
         if (newPropsScript && newPropsScript.textContent) {
           try {
@@ -199,28 +238,6 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
     navigate(location.href, false);
   });
 })();`;
-
-export function httpStatusForError(error: unknown): number {
-  const code = typeof error === 'string' ? error : '';
-
-  for (const entry of ERROR_STATUS) {
-    if (entry.pattern.test(code)) {
-      return entry.status;
-    }
-  }
-
-  return 400;
-}
-
-/** Escapes special HTML characters to prevent Reflected/Stored XSS. */
-export function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
 
 /** Parses Cookie request header safely into key-value pairs. */
 export function parseCookies(header: string | null | undefined): Record<string, string> {
@@ -988,6 +1005,7 @@ export class SynapseServer {
             userId: verified.value.userId,
             tenantId: verified.value.tenantId,
             roles: verified.value.roles,
+            permissions: verified.value.permissions,
             token
           })
         : AnonymousSession();
@@ -1335,6 +1353,11 @@ export class SynapseServer {
 
     if (fs.existsSync(localCssPath)) {
       return '  <link rel="stylesheet" href="/synapse.css">';
+    }
+
+    const compiledCssPath = path.join(this.baseDir, '.synapse', 'client', 'synapse.css');
+    if (fs.existsSync(compiledCssPath)) {
+      return '  <link rel="stylesheet" href="/_synapse/client/synapse.css">';
     }
 
     const thirdParty = this.thirdPartyOrigins();
@@ -2536,13 +2559,19 @@ ${this.renderStylesheets()}
             if (!fs.existsSync(bundleFile) && bundleFilename === VENDOR_BUNDLE_NAME) {
               await buildVendorBundle(this.baseDir, this.config.compiler?.vendorPackages);
             }
+            if (!fs.existsSync(bundleFile) && bundleFilename === 'synapse.css') {
+              await buildCssBundle(this.baseDir);
+            }
             if (!fs.existsSync(bundleFile)) {
               this.logRequest(req, pathname, 404, startedAt);
               return new Response('Client bundle not found', { status: 404 });
             }
             this.logRequest(req, pathname, 200, startedAt, undefined, 'static');
+            const contentType = bundleFilename.endsWith('.css')
+              ? 'text/css; charset=utf-8'
+              : 'application/javascript; charset=utf-8';
             return new Response(Bun.file(bundleFile), {
-              headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+              headers: { 'Content-Type': contentType }
             });
           }
 

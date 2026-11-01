@@ -868,8 +868,8 @@ export async function ${names.actionName}(
   const input = payload as ${names.inputName};
   const email = input.email.trim().toLowerCase();
 
-  const rows = await db.query<{ id: string; password_hash: string; roles: string }>(
-    'SELECT id, password_hash, roles FROM users WHERE email = $1',
+  const rows = await db.query<{ id: string; password_hash: string; roles: string; permissions?: string }>(
+    'SELECT * FROM users WHERE email = $1',
     [email]
   );
   const user = rows[0];
@@ -884,10 +884,15 @@ export async function ${names.actionName}(
     .map((role) => role.trim())
     .filter((role) => role.length > 0);
 
+  const permissions = (user.permissions ?? '')
+    .split(',')
+    .map((permission) => permission.trim())
+    .filter((permission) => permission.length > 0);
+
   const expiresAt = Math.floor(Date.now() / 1000) + SESSION_MAX_AGE_SECONDS;
 
   return Ok({
-    token: signSessionToken({ userId: user.id, roles }, secret, SESSION_MAX_AGE_SECONDS),
+    token: signSessionToken({ userId: user.id, roles, permissions }, secret, SESSION_MAX_AGE_SECONDS),
     roles,
     expiresAt
   });
@@ -971,8 +976,8 @@ export const sliceTests = {
       run: async () => {
         process.env.SYNAPSE_SESSION_SECRET = 'segredo-de-teste';
         const hash = await Bun.password.hash('senha-com-oito');
-        const db = new MockDatabaseClient().onQuery(/SELECT id, password_hash, roles/, () => [
-          { id: 'user-1', password_hash: hash, roles: 'admin,billing' }
+        const db = new MockDatabaseClient().onQuery(/SELECT .* FROM users/, () => [
+          { id: 'user-1', password_hash: hash, roles: 'admin,billing', permissions: 'orders:read' }
         ]);
 
         const result = await ${names.actionName}({ email: '  Admin@Loja.com ', password: 'senha-com-oito' }, db);
@@ -985,7 +990,11 @@ export const sliceTests = {
         if (!verified.ok) {
           throw new Error(\`o servidor recusaria o token emitido: \${verified.error}\`);
         }
-        if (verified.value.userId !== 'user-1' || !verified.value.roles.includes('billing')) {
+        if (
+          verified.value.userId !== 'user-1' ||
+          !verified.value.roles.includes('billing') ||
+          !verified.value.permissions?.includes('orders:read')
+        ) {
           throw new Error(\`claims inesperadas: \${JSON.stringify(verified.value)}\`);
         }
         if (result.value.roles.join(',') !== 'admin,billing') {
@@ -998,7 +1007,7 @@ export const sliceTests = {
       run: async () => {
         process.env.SYNAPSE_SESSION_SECRET = 'segredo-de-teste';
         const hash = await Bun.password.hash('senha-com-oito');
-        const db = new MockDatabaseClient().onQuery(/SELECT id, password_hash, roles/, () => [
+        const db = new MockDatabaseClient().onQuery(/SELECT .* FROM users/, () => [
           { id: 'user-1', password_hash: hash, roles: 'user' }
         ]);
 
@@ -1013,7 +1022,7 @@ export const sliceTests = {
       name: 'usuário inexistente retorna INVALID_CREDENTIALS sem revelar que não existe',
       run: async () => {
         process.env.SYNAPSE_SESSION_SECRET = 'segredo-de-teste';
-        const db = new MockDatabaseClient().onQuery(/SELECT id, password_hash, roles/, () => []);
+        const db = new MockDatabaseClient().onQuery(/SELECT .* FROM users/, () => []);
 
         const result = await ${names.actionName}({ email: 'ninguem@b.com', password: 'senha-com-oito' }, db);
 

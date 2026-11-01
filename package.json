@@ -1,6 +1,6 @@
 {
   "name": "synapsejs-monorepo",
-  "version": "1.9.0",
+  "version": "1.10.0",
   "private": true,
   "description": "SynapseJS monorepo: the Bun-only slice framework, its reference app and its starter template",
   "license": "MIT",
@@ -68,6 +68,6 @@
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
     "happy-dom": "^20.14.5",
-    "typescript": "^5.8.2"
+    "typescript": "~5.9.3"
   }
 }
