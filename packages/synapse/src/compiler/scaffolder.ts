@@ -58,10 +58,9 @@ import {
   Ok,
   Err,
   MockDatabaseClient,
-  type SessionContext,
-  DataForm,
-  Card
+  type SessionContext
 } from 'synapsejs';
+import { DataForm, type FormField, Card } from 'synapsejs/client';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA JIT (TypeBox)
@@ -128,7 +127,7 @@ export interface ${pascal}TriggerProps {
   onSubmitAction?: (payload: unknown) => Promise<${outputTypeName}>;
 }
 
-const FORM_FIELDS = ${formFields};
+const FORM_FIELDS: FormField[] = ${formFields};
 
 export function ${triggerName}({ onSubmitAction }: ${pascal}TriggerProps) {
   const [feedback, setFeedback] = useState<string | null>(null);

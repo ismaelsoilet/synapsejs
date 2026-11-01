@@ -1,0 +1,110 @@
+[
+  {
+    "slicePath": "src/shared/inventory.ts",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "adjustInventoryStock"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/slices/_layout.tsx",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "RootLayout"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/slices/dashboard/overview.slice.tsx",
+    "exportedTypes": [
+      "OverviewInputSchema",
+      "OverviewInput",
+      "DashboardMetrics",
+      "OverviewOutput",
+      "OverviewViewProps"
+    ],
+    "exportedFunctions": [
+      "sliceMeta",
+      "overviewAction",
+      "OverviewLoader",
+      "OverviewTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/inventory/_layout.tsx",
+    "exportedTypes": [],
+    "exportedFunctions": [
+      "InventoryDomainLayout"
+    ],
+    "hasUI": false,
+    "hasPBT": false
+  },
+  {
+    "slicePath": "src/slices/inventory/create-item.slice.tsx",
+    "exportedTypes": [
+      "CreateItemInputSchema",
+      "CreateItemInput",
+      "sliceSchema",
+      "CreateItemOutput",
+      "CreateItemTriggerProps"
+    ],
+    "exportedFunctions": [
+      "createItemAction",
+      "CreateItemTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/inventory/delete-item.slice.tsx",
+    "exportedTypes": [
+      "DeleteItemInputSchema",
+      "DeleteItemInput",
+      "DeleteItemOutput",
+      "DeleteItemTriggerProps"
+    ],
+    "exportedFunctions": [
+      "deleteItemAction",
+      "DeleteItemTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/inventory/list-items.slice.tsx",
+    "exportedTypes": [
+      "ListItemsInputSchema",
+      "ListItemsInput",
+      "InventoryRow",
+      "ListItemsOutput",
+      "ListItemsViewProps"
+    ],
+    "exportedFunctions": [
+      "listItemsAction",
+      "ListItemsLoader",
+      "ListItemsTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  },
+  {
+    "slicePath": "src/slices/inventory/update-item.slice.tsx",
+    "exportedTypes": [
+      "UpdateItemInputSchema",
+      "UpdateItemInput",
+      "UpdateItemOutput",
+      "UpdateItemTriggerProps"
+    ],
+    "exportedFunctions": [
+      "updateItemAction",
+      "UpdateItemTrigger"
+    ],
+    "hasUI": true,
+    "hasPBT": true
+  }
+]

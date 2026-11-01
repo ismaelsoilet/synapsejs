@@ -39,6 +39,23 @@
         "typescript": "~5.9.3",
       },
     },
+    "examples/dashboard-showcase": {
+      "name": "dashboard-showcase",
+      "version": "0.1.0",
+      "dependencies": {
+        "@ismaelsoilet/synapsejs": "workspace:*",
+        "@sinclair/typebox": "^0.34.40",
+        "fast-check": "^3.23.2",
+        "react": "^19.0.0",
+        "react-dom": "^19.0.0",
+      },
+      "devDependencies": {
+        "@types/bun": "^1.4.2",
+        "@types/react": "^19.0.10",
+        "@types/react-dom": "^19.0.4",
+        "typescript": "~5.9.3",
+      },
+    },
     "examples/enterprise-crm": {
       "name": "enterprise-crm-example",
       "version": "0.1.0",
@@ -136,6 +153,8 @@
     "crm-app": ["crm-app@workspace:apps/crm"],
 
     "csstype": ["csstype@3.2.3", "", {}, "sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ=="],
+
+    "dashboard-showcase": ["dashboard-showcase@workspace:examples/dashboard-showcase"],
 
     "enterprise-crm-example": ["enterprise-crm-example@workspace:examples/enterprise-crm"],
 

@@ -1,0 +1,22 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "jsx": "react-jsx",
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "forceConsistentCasingInFileNames": true,
+    "types": ["bun"],
+    "paths": {
+      "synapsejs": ["./node_modules/@ismaelsoilet/synapsejs"],
+      "synapsejs/*": ["./node_modules/@ismaelsoilet/synapsejs/*"]
+    }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", ".codebase", ".synapse"]
+}
