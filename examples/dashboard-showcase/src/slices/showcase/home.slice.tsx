@@ -1,8 +1,8 @@
 import type { DatabaseClient, SliceLoaderContext } from 'synapsejs';
 import { MockDatabaseClient, projectStatus } from 'synapsejs';
-import { Badge, Button } from 'synapsejs/client';
+import { Badge } from 'synapsejs/client';
 import { getHomeCounts, type HomeCounts } from '../../shared/showcase';
-import { FeatureCard, PageHeader, Sparkline, StatCard } from '../../shared/ui';
+import { FeatureCard, LinkButton, PageHeader, Sparkline, StatCard } from '../../shared/ui';
 
 export interface HomeMetrics extends HomeCounts {
   inventoryValue: number;
@@ -97,15 +97,13 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
               <code className="rounded bg-slate-800 px-1.5 py-0.5 text-cyan-300">*.slice.tsx</code>.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <a href="/showcase/files">
-                <Button variant="primary">📎 Central de arquivos</Button>
-              </a>
-              <a href="/showcase/realtime">
-                <Button variant="secondary">⚡ Tempo real</Button>
-              </a>
-              <a href="/showcase/platform">
-                <Button variant="secondary">🧭 Catálogo de features</Button>
-              </a>
+              <LinkButton href="/showcase/files">📎 Central de arquivos</LinkButton>
+              <LinkButton href="/showcase/realtime" variant="secondary">
+                ⚡ Tempo real
+              </LinkButton>
+              <LinkButton href="/showcase/platform" variant="secondary">
+                🧭 Catálogo de features
+              </LinkButton>
             </div>
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-500">
               <span>● {platform.stable} capacidades stable</span>

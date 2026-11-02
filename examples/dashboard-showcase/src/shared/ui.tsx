@@ -128,6 +128,32 @@ export function EmptyState({
   );
 }
 
+export function LinkButton({
+  href,
+  children,
+  variant = 'primary',
+  className = ''
+}: {
+  href: string;
+  children: ReactNode;
+  variant?: 'primary' | 'secondary';
+  className?: string;
+}) {
+  const styles = {
+    primary: 'bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20 hover:bg-cyan-400',
+    secondary: 'border border-slate-600 bg-slate-800 text-slate-100 hover:bg-slate-700'
+  } as const;
+
+  return (
+    <a
+      href={href}
+      className={`inline-flex items-center justify-center rounded-md px-3.5 py-2 text-sm font-semibold transition-colors ${styles[variant]} ${className}`}
+    >
+      {children}
+    </a>
+  );
+}
+
 export function Sparkline({ values, color = '#22d3ee' }: { values: number[]; color?: string }) {
   const safe = values.length > 1 ? values : [0, 0];
   const max = Math.max(...safe, 1);

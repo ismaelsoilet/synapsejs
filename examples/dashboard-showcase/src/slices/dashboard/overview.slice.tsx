@@ -27,6 +27,7 @@ import {
   Tabs,
   useToast
 } from 'synapsejs/client';
+import { LinkButton } from '../../shared/ui';
 
 // ============================================================================
 // 1. DYNAMIC SEO & OPEN GRAPH (sliceMeta)
@@ -255,9 +256,7 @@ export function OverviewTrigger({
             </DropdownItem>
             <DropdownItem onClick={() => void purgeCache()}>🔄 Purgar Cache</DropdownItem>
           </DropdownMenu>
-          <a href="/inventory/create-item">
-            <Button variant="primary">➕ Novo Produto</Button>
-          </a>
+          <LinkButton href="/inventory/create-item">➕ Novo Produto</LinkButton>
         </div>
       </div>
 

@@ -76,39 +76,42 @@ function SessionMenu() {
     (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/home');
   };
 
-  if (!mounted || roles.length === 0) {
-    return (
-      <a href="/auth/login">
-        <Button variant="secondary">Entrar</Button>
-      </a>
-    );
-  }
-
   return (
-    <DropdownMenu
-      trigger={
-        <Button variant="secondary">
-          <span className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400" />
-          {roles[0]}
-        </Button>
-      }
-    >
-      <DropdownItem
-        onClick={() =>
-          (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/platform')
-        }
-      >
-        ◎ Ver plataforma
-      </DropdownItem>
-      <DropdownItem
-        onClick={() =>
-          (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/files')
-        }
-      >
-        ↥ Meus arquivos
-      </DropdownItem>
-      <DropdownItem onClick={logout}>⏻ Sair</DropdownItem>
-    </DropdownMenu>
+    <div className="flex items-center">
+      {!mounted || roles.length === 0 ? (
+        <a
+          href="/auth/login"
+          className="inline-flex items-center justify-center rounded-md border border-slate-600 bg-slate-800 px-3.5 py-2 text-sm font-semibold text-slate-100 transition-colors hover:bg-slate-700"
+        >
+          Entrar
+        </a>
+      ) : (
+        <DropdownMenu
+          trigger={
+            <Button variant="secondary">
+              <span className="mr-1 inline-block h-2 w-2 rounded-full bg-emerald-400" />
+              {roles[0]}
+            </Button>
+          }
+        >
+          <DropdownItem
+            onClick={() =>
+              (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/platform')
+            }
+          >
+            ◎ Ver plataforma
+          </DropdownItem>
+          <DropdownItem
+            onClick={() =>
+              (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/files')
+            }
+          >
+            ↥ Meus arquivos
+          </DropdownItem>
+          <DropdownItem onClick={logout}>⏻ Sair</DropdownItem>
+        </DropdownMenu>
+      )}
+    </div>
   );
 }
 

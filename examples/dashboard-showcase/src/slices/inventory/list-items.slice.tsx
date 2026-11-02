@@ -11,6 +11,7 @@ import {
   type SliceLoaderContext
 } from 'synapsejs';
 import { Badge, Button, Card, DataTable, Pagination } from 'synapsejs/client';
+import { LinkButton } from '../../shared/ui';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox)
@@ -212,9 +213,7 @@ export function ListItemsTrigger({
           <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}>
             ⬇ Exportar CSV
           </Button>
-          <a href="/inventory/create-item">
-            <Button variant="primary">➕ Novo Item</Button>
-          </a>
+          <LinkButton href="/inventory/create-item">➕ Novo Item</LinkButton>
         </div>
       </div>
 
