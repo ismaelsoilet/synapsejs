@@ -61,6 +61,20 @@ describe('client entry', () => {
 
     expect(source.indexOf('...props')).toBeLessThan(source.indexOf('onSubmitAction'));
   });
+
+  it('passes the current URL to the root and domain layouts', () => {
+    const source = clientEntrySource({
+      ...options,
+      rootLayoutPath: './root-layout',
+      domainLayoutPath: './domain-layout'
+    });
+
+    expect(source).toContain('__SYNAPSE_URL__');
+    expect(source).toContain('layoutProps');
+    expect(source).toContain('url: currentUrl');
+    expect(source).toContain('RootLayout');
+    expect(source).toContain('DomainLayout');
+  });
 });
 
 describe('serializeClientProps', () => {

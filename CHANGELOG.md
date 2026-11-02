@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.11.1 — Vendor bundle freshness, hydration URL sync and interactive client fixes
+
+- **Vendor bundle freshness.** `_vendor.js` is rebuilt when `client.ts`, `components.tsx` or the
+  application manifest is newer than the bundle, and it exports every client primitive (`Modal`,
+  `Drawer`, `Tabs`, `ToastProvider`, `useToast`, `SynapseProvider`, `useAction`, `rpcCall`, etc.).
+- **Hydration URL synchronization.** The SSR shell exposes `__SYNAPSE_URL__`; the generated client
+  entry passes the current URL to the root layout, domain layout and `SynapseProvider`, preventing
+  active-navlink hydration mismatches.
+- **Interactive client primitives.** `Modal` and `Drawer` carry explicit fixed-position styles;
+  `DropdownMenu` uses a `role="button"` wrapper (no nested `<button>`) with Enter/Space toggling.
+- **Showcase CSS is deterministic.** Tailwind is pinned to `3.4.19`; the generated showcase
+  stylesheet is reproducible and a new gate fails if a build changes it.
+- **MCP seed honesty.** `synapse_generate_seed` returns `FAIL` with `SEED_INSERT_FAILED` when no row
+  can be inserted, instead of reporting a false PASS.
+- **Regression coverage.** Vendor rebuild/exports, interactive Modal/Drawer/Dropdown/Tabs,
+  `useUpload` progress/abort/validation, client route params, real HTTP streaming, OAuth profile
+  normalization, and the new MCP `test_slice`/`generate_seed` tools.
+
 ## 1.11.0 — Accessible UI primitives, dynamic routes, streaming HTTP, multi-provider OAuth, and 23 MCP tools
 
 - **UI Primitives.** Accessible `<Modal>`, `<Drawer>`, `<Tabs>` (with `<TabList>`, `<Tab>`, `<TabPanel>`), `<DropdownMenu>` (with `<DropdownItem>`), and `<ToastProvider>` with `useToast()` hook, keyboard navigation (Escape, arrow keys), focus trapping, ARIA roles, and auto-injection in the SSR shell and client hydration.

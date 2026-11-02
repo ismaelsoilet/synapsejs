@@ -366,7 +366,7 @@ A server action referenced by a component contributes **only its wire signature*
 - Deliberately broken fixtures live in `packages/synapse/test/fixtures/` and are excluded from the
   project typecheck on purpose (they exercise the splitter's failure gates).
 - **The feature table is machine-derived.** `packages/synapse/src/project-status.ts` is the single
-  source for the version, the feature inventory (57 `stable`, 3 `experimental`, 1 `roadmap`), the
+  source for the version, the feature inventory (66 `stable`, 3 `experimental`, 1 `roadmap`), the
   adoption disclosure and the tool count; `synapse info` prints it and `bun run docs:check` fails
   when a documented number drifts from it. A capability is `stable` only with evidence that fails
   when it breaks, and `experimental` is used rather than softened prose when the evidence is a
@@ -374,7 +374,7 @@ A server action referenced by a component contributes **only its wire signature*
 - **Anti-Hype & Radical Candor (SureForge Protocol):**
   - **No fake or mock implementations in framework source (`packages/synapse/src/`).** Every adapter and engine shipped in the runtime must be functionally real, complete, and verified by tests. Cryptographic operations (e.g. AWS SigV4 in `storage.ts`) must compute real HMAC-SHA256 signatures, not mock tokens. Concurrency engines (e.g. `PostgresQueueEngine`) must enforce atomic locking, real dead-letter queues (`_synapse_jobs_dlq`), and visibility timeout recovery. Mocks are permitted ONLY as test doubles inside `test/`.
   - **No fabricated metrics or benchmarks.** Every number cited in documentation must be verifiable by running the associated benchmark script. `bun run bench` measures 1,832 vs 1,627 tokens in the comparable `app` column (~11% reduction in feature context surface); the `total` columns cover different file sets per repository and must never be compared. Do not exaggerate token ratios.
-  - **Framework version is `1.11.0`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
+  - **Framework version is `1.11.1`.** Public API contracts and machine types are frozen and verified by machine-types.test.ts. Release tagged via `.github/workflows/release.yml`.
   - **Always verify the consumer template.** Run both `bun run check` (monorepo) and `bun run check:template` (isolated consumer project in `packages/synapse/templates/starter`) to catch TS boundary differences (e.g., interface index signatures vs Record<string, any>).
 - Machine-readable JSON uses English field names; human-readable `message` strings are pt-BR. Keep it that way.
 - PT-BR appears in UI copy and console output. Code identifiers and JSON keys stay English.
@@ -402,7 +402,7 @@ A server action referenced by a component contributes **only its wire signature*
   (>= 11.5.1; Node 22 ships npm 10).
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
-  of the build now). 64 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
+  of the build now). 66 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
   JSON-RPC payloads, the SQL boundary, test assertions) and `bun run docs:check` re-derives that
   number with the display limit lifted, so the documented count is the real total rather than the
   truncated one. The same gate fails on any lint **error**, and the historic 2 `noUnusedImports`
@@ -419,8 +419,8 @@ A server action referenced by a component contributes **only its wire signature*
 
 ```bash
 bun install
-bun run lint                        # Biome: 0 errors, 64 accepted dynamic boundary warnings
-bun test packages/synapse/test      # framework suite (626 tests across 78 files)
+bun run lint                        # Biome: 0 errors, 66 accepted dynamic boundary warnings
+bun test packages/synapse/test      # framework suite (643 tests across 81 files)
 bun run check                       # whole monorepo typecheck
 bun run check:template              # the starter template typechecks as a consumer
 bun run skeleton                    # regenerate the repo map

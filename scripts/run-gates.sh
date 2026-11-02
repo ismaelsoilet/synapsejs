@@ -57,6 +57,7 @@ run "live end-to-end"              bun run test:e2e
 run "context-surface benchmark"    bun run bench
 run "concurrency benchmark"        bun run bench:concurrency
 run "repo map drift"               bash -c "bun --cwd examples/enterprise-crm skeleton >/dev/null && git diff --exit-code -- examples/enterprise-crm/.codebase .codebase"
+run "showcase css deterministic"   bash -c "bun --cwd examples/dashboard-showcase build:css >/dev/null && git diff --exit-code -- examples/dashboard-showcase/public/synapse.css"
 run "publish rehearsal"            bun run rehearse:publish
 
 # Negative cases: the repository's own rule is that nothing may report an empty success.

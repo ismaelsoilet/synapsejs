@@ -4,9 +4,11 @@ import * as path from 'path';
 import {
   buildAllClientBundles,
   buildClientBundle,
+  buildVendorBundle,
   clientManifestPath,
   freshBundleFrom,
-  readClientManifest
+  readClientManifest,
+  VENDOR_BUNDLE_NAME
 } from '../src/compiler/client-bundler';
 import { artifactDirectory, splitSlice, writeSplitArtifacts } from '../src/compiler/slice-splitter';
 
@@ -125,4 +127,38 @@ describe('synapse build', () => {
 
     fs.rmSync(emptyApp, { recursive: true, force: true });
   });
+
+  it('exports the client primitives from the vendor bundle', async () => {
+    const report = await buildAllClientBundles(fixtureApp);
+    expect(report.ok).toBe(true);
+
+    const vendorCode = fs.readFileSync(path.join(fixtureApp, '.synapse', 'client', VENDOR_BUNDLE_NAME), 'utf-8');
+    for (const primitive of ['Modal', 'Drawer', 'Tabs', 'ToastProvider', 'useToast', 'SynapseProvider', 'useAction']) {
+      expect(vendorCode).toContain(primitive);
+    }
+  }, 60000);
+
+  it('rebuilds a stale vendor bundle when the application manifest is newer', async () => {
+    const tempApp = fs.mkdtempSync(path.join(import.meta.dir, 'fixtures', 'vendor-stale-'));
+    const manifestPath = path.join(tempApp, 'package.json');
+    const vendorPath = path.join(tempApp, '.synapse', 'client', VENDOR_BUNDLE_NAME);
+    fs.writeFileSync(manifestPath, JSON.stringify({ name: 'vendor-stale', version: '0.0.0' }), 'utf-8');
+
+    try {
+      const first = await buildVendorBundle(tempApp);
+      expect(first.ok).toBe(true);
+
+      const before = fs.statSync(vendorPath).mtimeMs;
+      await Bun.sleep(20);
+
+      const future = new Date(Date.now() + 5000);
+      fs.utimesSync(manifestPath, future, future);
+
+      const second = await buildVendorBundle(tempApp);
+      expect(second.ok).toBe(true);
+      expect(fs.statSync(vendorPath).mtimeMs).toBeGreaterThan(before);
+    } finally {
+      fs.rmSync(tempApp, { recursive: true, force: true });
+    }
+  }, 60000);
 });

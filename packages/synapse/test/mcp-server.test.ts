@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { SqliteDatabaseClient } from '../src/core/sqlite-client';
 
 const CLI = path.resolve(import.meta.dir, '../bin/synapse.ts');
 
@@ -379,4 +380,99 @@ export function InvoicesView() { return null; }
     expect(payload.componentType).toBe('modal');
     expect(fs.existsSync(path.join(appDir, 'src', 'slices', 'dashboard', 'quick-stats-modal.tsx'))).toBe(true);
   });
+
+  it('runs one slice oracle via synapse_test_slice', async () => {
+    const appDir = path.join(sandbox, 'app-oracle');
+    const sliceDir = path.join(appDir, 'src', 'slices', 'reports');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'ping.slice.tsx'),
+      `export const sliceTests = {
+  description: 'ping invariants',
+  cases: [{ name: 'ping passes', run: async () => {} }]
+};
+`,
+      'utf-8'
+    );
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'synapse_test_slice', arguments: { targetSlice: 'reports/ping' } }
+        }
+      ],
+      appDir
+    );
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('PASS');
+    expect(payload.totalCases).toBe(1);
+    expect(payload.passedCases).toBe(1);
+  }, 30_000);
+
+  it('returns SLICE_NOT_FOUND when generate_seed targets a missing slice', async () => {
+    const appDir = path.join(sandbox, 'app-seed-missing');
+    const sliceDir = path.join(appDir, 'src', 'slices', 'reports');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'ping.slice.tsx'),
+      `export const sliceSchema = 'CREATE TABLE IF NOT EXISTS reports_ping (id TEXT PRIMARY KEY, name TEXT);';
+`,
+      'utf-8'
+    );
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'synapse_generate_seed', arguments: { targetSlice: 'missing/slice', count: 2 } }
+        }
+      ],
+      appDir
+    );
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('FAIL');
+    expect(payload.code).toBe('SLICE_NOT_FOUND');
+  }, 30_000);
+
+  it('does not report PASS when generate_seed cannot insert any row', async () => {
+    const appDir = path.join(sandbox, 'app-seed-incompatible');
+    const sliceDir = path.join(appDir, 'src', 'slices', 'reports');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.mkdirSync(path.join(appDir, '.synapse'), { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'ping.slice.tsx'),
+      `export const sliceSchema = 'CREATE TABLE IF NOT EXISTS reports_ping (id TEXT PRIMARY KEY, title TEXT NOT NULL);';
+export const sliceTests = { cases: [{ name: 'ok', run: async () => {} }] };
+`,
+      'utf-8'
+    );
+
+    const db = new SqliteDatabaseClient(path.join(appDir, '.synapse', 'synapse.sqlite'));
+    await db.query('CREATE TABLE reports_ping (id TEXT PRIMARY KEY, title TEXT NOT NULL)');
+    db.close();
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'synapse_generate_seed', arguments: { targetSlice: 'reports/ping', count: 2 } }
+        }
+      ],
+      appDir
+    );
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('FAIL');
+    expect(payload.code).toBe('SEED_INSERT_FAILED');
+    expect(payload.recordsInserted).toBe(0);
+  }, 30_000);
 });

@@ -649,6 +649,7 @@ export class SynapseMcpServer {
               const { getDatabase } = await import('../core/database-factory');
               const dbClient = getDatabase();
               const generatedRows: Record<string, unknown>[] = [];
+              let insertedCount = 0;
               for (let i = 1; i <= count; i++) {
                 const row = {
                   id: crypto.randomUUID(),
@@ -662,20 +663,24 @@ export class SynapseMcpServer {
                 generatedRows.push(row);
                 try {
                   await dbClient.insert(tableName, row);
+                  insertedCount++;
                 } catch {
                   try {
                     await dbClient.query(`INSERT INTO ${tableName} (id, name) VALUES ($1, $2)`, [row.id, row.name]);
+                    insertedCount++;
                   } catch {}
                 }
               }
               await dbClient.close?.();
               contentText = JSON.stringify(
                 {
-                  status: 'PASS',
+                  status: insertedCount > 0 ? 'PASS' : 'FAIL',
                   operation: 'GENERATE_SEED',
                   slice: targetSlice,
                   table: tableName,
+                  ...(insertedCount > 0 ? {} : { code: 'SEED_INSERT_FAILED' }),
                   recordsSynthesized: count,
+                  recordsInserted: insertedCount,
                   sample: generatedRows[0]
                 },
                 null,

@@ -336,6 +336,53 @@ export const FEATURE_STATUS: FeatureStatus[] = [
     evidence: 'bun test packages/synapse/test/compiler-api.test.ts'
   },
   {
+    feature: 'Accessible UI primitives (Modal, Drawer, Tabs, Dropdown, Toast)',
+    status: 'stable',
+    evidence:
+      'bun test packages/synapse/test/ui-primitives.test.tsx packages/synapse/test/ui-primitives-client.test.tsx'
+  },
+  {
+    feature: 'Isomorphic dynamic route parameters (useParams/useSearchParams)',
+    status: 'stable',
+    evidence:
+      'bun test packages/synapse/test/dynamic-routes.test.tsx packages/synapse/test/dynamic-routes-client.test.tsx'
+  },
+  {
+    feature: 'Streaming HTTP responses (ctx.stream, chunked transfer)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/streaming-oauth.test.ts'
+  },
+  {
+    feature: 'Client upload hook with progress and abort (useUpload)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/upload-hook.test.tsx'
+  },
+  {
+    feature: 'Multi-provider OAuth presets and profile normalization (Google/GitHub/Discord)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/streaming-oauth.test.ts'
+  },
+  {
+    feature: 'Native MCP server with 23 tools, including route/seed/slice/component tools',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/mcp-server.test.ts'
+  },
+  {
+    feature: 'Modal CRUD slice scaffolding (--template=modal-crud)',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/scaffolder.test.ts'
+  },
+  {
+    feature: 'Vendor bundle auto-rebuild and client-primitive exports',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/client-bundler.test.ts'
+  },
+  {
+    feature: 'Hydration URL synchronization and interactive modal/dropdown semantics',
+    status: 'stable',
+    evidence: 'bun test packages/synapse/test/client-entry.test.ts packages/synapse/test/ui-primitives-client.test.tsx'
+  },
+  {
     feature: 'Incremental diagnostics cache across processes',
     status: 'roadmap',
     evidence: 'removido na 0.4.0: medido mais lento que o check completo (2.5s vs 1.9s)'
