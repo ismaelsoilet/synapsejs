@@ -110,6 +110,7 @@ export {
 } from './core/session-cookie';
 // 5. Model Context Protocol (MCP) Server
 export { SynapseMcpServer } from './mcp/server';
+export { FEATURE_STATUS, type FeatureStatus, projectStatus } from './project-status';
 export * from './runtime/discovery-rules';
 // 4. Runtime, Queue & Zero-Wiring HTTP Server
 export {

@@ -1296,6 +1296,34 @@ export class SynapseServer {
   }
 
   /**
+   * Adapts Bun's raw ServerWebSocket to the slice-facing contract. Bun's `send`
+   * coerces a non-string value to "[object Object]", so object messages must be
+   * serialized here; the adapter is cached per socket so an `onOpen` handler that
+   * stores the socket in a Set sees the same object in `onMessage`/`onClose`.
+   */
+  private socketAdapter(ws: any): any {
+    if (ws.__synapseSocketAdapter) {
+      return ws.__synapseSocketAdapter;
+    }
+
+    const data = ws.data ?? {};
+    const adapter = {
+      id: String(data.id ?? ''),
+      sliceKey: String(data.sliceKey ?? ''),
+      data,
+      send: (message: unknown) => {
+        ws.send(typeof message === 'string' ? message : JSON.stringify(message));
+      },
+      close: (code?: number, reason?: string) => {
+        ws.close(code, reason);
+      }
+    };
+
+    ws.__synapseSocketAdapter = adapter;
+    return adapter;
+  }
+
+  /**
    * The origin check for a WebSocket upgrade, fail-closed: an allow-list must be
    * configured and must contain the request's origin (or the wildcard). An absent
    * origin and the opaque `null` origin are refused. The one carve-out is a loopback
@@ -1973,7 +2001,7 @@ ${this.renderStylesheets()}
           const socketDef = ws.data?.socketDef;
           if (socketDef?.onOpen) {
             try {
-              await socketDef.onOpen(ws);
+              await socketDef.onOpen(this.socketAdapter(ws));
             } catch (err) {
               console.error(`[SynapseServer] Erro no onOpen do WebSocket (${ws.data?.sliceKey}):`, err);
             }
@@ -1991,7 +2019,7 @@ ${this.renderStylesheets()}
                   // mantém texto puro
                 }
               }
-              await socketDef.onMessage(ws, parsed);
+              await socketDef.onMessage(this.socketAdapter(ws), parsed);
             } catch (err) {
               console.error(`[SynapseServer] Erro no onMessage do WebSocket (${ws.data?.sliceKey}):`, err);
             }
@@ -2005,7 +2033,7 @@ ${this.renderStylesheets()}
           const socketDef = ws.data?.socketDef;
           if (socketDef?.onClose) {
             try {
-              await socketDef.onClose(ws, code, reason);
+              await socketDef.onClose(this.socketAdapter(ws), code, reason);
             } catch (err) {
               console.error(`[SynapseServer] Erro no onClose do WebSocket (${ws.data?.sliceKey}):`, err);
             }

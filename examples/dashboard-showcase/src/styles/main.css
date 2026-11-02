@@ -9,3 +9,129 @@ html, body {
   margin: 0;
   padding: 0;
 }
+
+::selection {
+  background: rgb(34 211 238 / 0.28);
+  color: #f8fafc;
+}
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #334155 #020617;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*::-webkit-scrollbar-track {
+  background: #020617;
+}
+
+*::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: #334155;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@keyframes synapse-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes synapse-slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes synapse-float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-8px);
+  }
+}
+
+@keyframes synapse-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+@keyframes synapse-gradient-pan {
+  0%, 100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+}
+
+@keyframes synapse-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgb(34 211 238 / 0.35);
+  }
+  70% {
+    box-shadow: 0 0 0 10px rgb(34 211 238 / 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgb(34 211 238 / 0);
+  }
+}
+
+.animate-fade-up {
+  animation: synapse-fade-up 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-slide-in {
+  animation: synapse-slide-in 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.animate-float {
+  animation: synapse-float 6s ease-in-out infinite;
+}
+
+.animate-shimmer {
+  background-size: 200% 100%;
+  animation: synapse-shimmer 2.2s linear infinite;
+}
+
+.animate-gradient {
+  background-size: 200% 200%;
+  animation: synapse-gradient-pan 8s ease infinite;
+}
+
+.animate-pulse-ring {
+  animation: synapse-pulse-ring 2s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-slide-in,
+  .animate-float,
+  .animate-shimmer,
+  .animate-gradient,
+  .animate-pulse-ring {
+    animation: none !important;
+  }
+}

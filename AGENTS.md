@@ -402,7 +402,7 @@ A server action referenced by a component contributes **only its wire signature*
   (>= 11.5.1; Node 22 ships npm 10).
 - **Lint and format are enforced** (`bun run lint`, Biome pinned to `2.5.14` at the repo root — a
   floating `@latest` turned an unrelated release into a red gate mid-session, so the version is part
-  of the build now). 66 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
+  of the build now). 68 warnings are accepted (all dynamic boundaries: postgres.js options, MCP params,
   JSON-RPC payloads, the SQL boundary, test assertions) and `bun run docs:check` re-derives that
   number with the display limit lifted, so the documented count is the real total rather than the
   truncated one. The same gate fails on any lint **error**, and the historic 2 `noUnusedImports`

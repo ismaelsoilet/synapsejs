@@ -130,6 +130,27 @@ export function ListItemsTrigger({
 }: ListItemsViewProps) {
   const [searchTerm, setSearchTerm] = useState(query);
 
+  const exportCsv = () => {
+    if (rows.length === 0) return;
+    const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
+    const header = ['id', 'sku', 'name', 'category', 'price', 'stock', 'status', 'created_at'];
+    const lines = [
+      header.join(','),
+      ...rows.map((row) =>
+        header.map((column) => csvEscape((row as unknown as Record<string, unknown>)[column])).join(',')
+      )
+    ];
+    const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `inventory-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   if (loadError) {
     return (
       <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 font-mono text-sm shadow-lg">
@@ -187,9 +208,14 @@ export function ListItemsTrigger({
           </Button>
         </form>
 
-        <a href="/inventory/create-item">
-          <Button variant="primary">➕ Novo Item</Button>
-        </a>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}>
+            ⬇ Exportar CSV
+          </Button>
+          <a href="/inventory/create-item">
+            <Button variant="primary">➕ Novo Item</Button>
+          </a>
+        </div>
       </div>
 
       <DataTable data={rows} columns={columns} emptyMessage="Nenhum item cadastrado no inventário." />

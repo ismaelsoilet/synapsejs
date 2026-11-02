@@ -2,6 +2,7 @@ import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
 import { useState } from 'react';
 import {
+  type ActionContext,
   type DatabaseClient,
   defineCache,
   defineJob,
@@ -47,7 +48,8 @@ export function sliceMeta(data?: { metrics?: DashboardMetrics }) {
 // ============================================================================
 export const sliceCache = defineCache({
   ttlSeconds: 10,
-  staleWhileRevalidateSeconds: 30
+  staleWhileRevalidateSeconds: 30,
+  tags: ['dashboard-overview']
 });
 
 // ============================================================================
@@ -70,7 +72,8 @@ export const inventoryAuditJob = defineJob<{ initiatedBy: string }>({
 // ============================================================================
 export const OverviewInputSchema = Type.Object(
   {
-    refreshAudit: Type.Optional(Type.Boolean())
+    refreshAudit: Type.Optional(Type.Boolean()),
+    purgeCache: Type.Optional(Type.Boolean())
   },
   { additionalProperties: true }
 );
@@ -85,7 +88,7 @@ export interface DashboardMetrics {
 }
 
 export type OverviewOutput = Result<
-  { metrics: DashboardMetrics; auditEnqueued?: boolean },
+  { metrics: DashboardMetrics; auditEnqueued?: boolean; cacheInvalidated?: boolean },
   'INVALID_SCHEMA' | 'NO_DATABASE'
 >;
 
@@ -95,7 +98,8 @@ export type OverviewOutput = Result<
 export async function overviewAction(
   payload: unknown,
   db?: DatabaseClient,
-  _session?: SessionContext
+  session?: SessionContext,
+  ctx?: ActionContext
 ): Promise<OverviewOutput> {
   if (!db) {
     return Err('NO_DATABASE');
@@ -124,7 +128,23 @@ export async function overviewAction(
     categoriesCount: Number(catRow?.count ?? 0)
   };
 
-  return Ok({ metrics, auditEnqueued: Boolean(input.refreshAudit) });
+  let auditEnqueued = false;
+  if (input.refreshAudit && ctx?.enqueue) {
+    try {
+      await ctx.enqueue(inventoryAuditJob, { initiatedBy: session?.userId ?? 'anon' });
+      auditEnqueued = true;
+    } catch {
+      auditEnqueued = false;
+    }
+  }
+
+  let cacheInvalidated = false;
+  if (input.purgeCache && ctx?.invalidateCache) {
+    ctx.invalidateCache(['dashboard-overview']);
+    cacheInvalidated = true;
+  }
+
+  return Ok({ metrics, auditEnqueued, cacheInvalidated });
 }
 
 // ============================================================================
@@ -156,20 +176,36 @@ export interface OverviewViewProps {
   metrics?: DashboardMetrics;
   timestamp?: string;
   loadError?: string;
+  onSubmitAction?: (payload: unknown) => Promise<OverviewOutput>;
 }
 
 export function OverviewTrigger({
   metrics = { totalItems: 0, totalStock: 0, totalValue: 0, lowStockCount: 0, categoriesCount: 0 },
   timestamp = '',
-  loadError
+  loadError,
+  onSubmitAction
 }: OverviewViewProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const toast = useToast();
 
-  const handleQuickAction = (actionName: string) => {
-    toast.success(`Ação "${actionName}" executada com sucesso!`, 'Painel');
+  const enqueueAudit = async () => {
+    const result = await onSubmitAction?.({ refreshAudit: true });
+    if (result?.ok && result.value.auditEnqueued) {
+      toast.success('Auditoria enfileirada no worker.', 'Jobs');
+    } else {
+      toast.error('Não foi possível enfileirar a auditoria.', 'Jobs');
+    }
     setIsModalOpen(false);
+  };
+
+  const purgeCache = async () => {
+    const result = await onSubmitAction?.({ purgeCache: true });
+    if (result?.ok && result.value.cacheInvalidated) {
+      toast.success('Cache SSR do dashboard invalidado por tag.', 'Cache');
+    } else {
+      toast.error('O cache não pôde ser invalidado.', 'Cache');
+    }
   };
 
   if (loadError) {
@@ -208,12 +244,16 @@ export function OverviewTrigger({
             📜 Auditoria (Drawer)
           </Button>
           <DropdownMenu trigger={<Button variant="secondary">Opções ▾</Button>}>
-            <DropdownItem onClick={() => toast.info('Exportando relatório CSV...', 'Relatório')}>
-              📊 Exportar CSV
+            <DropdownItem
+              onClick={() =>
+                (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.(
+                  '/inventory/list-items'
+                )
+              }
+            >
+              📊 Abrir catálogo (CSV)
             </DropdownItem>
-            <DropdownItem onClick={() => toast.success('Cache SSR purgado com sucesso!', 'Cache')}>
-              🔄 Purgar Cache
-            </DropdownItem>
+            <DropdownItem onClick={() => void purgeCache()}>🔄 Purgar Cache</DropdownItem>
           </DropdownMenu>
           <a href="/inventory/create-item">
             <Button variant="primary">➕ Novo Produto</Button>
@@ -335,11 +375,11 @@ export function OverviewTrigger({
             <code className="text-cyan-400">useToast()</code> integrado.
           </p>
           <div className="grid grid-cols-2 gap-3 pt-2">
-            <Button variant="primary" onClick={() => handleQuickAction('Auditoria de Estoque')}>
+            <Button variant="primary" onClick={() => void enqueueAudit()}>
               🔍 Disparar Auditoria
             </Button>
-            <Button variant="secondary" onClick={() => handleQuickAction('Sincronizar Catálogo')}>
-              🔄 Sincronizar Catálogo
+            <Button variant="secondary" onClick={() => void purgeCache()}>
+              🔄 Invalidar Cache
             </Button>
           </div>
         </div>

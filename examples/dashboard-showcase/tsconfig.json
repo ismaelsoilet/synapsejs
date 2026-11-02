@@ -17,6 +17,6 @@
       "synapsejs/*": ["./node_modules/@ismaelsoilet/synapsejs/*"]
     }
   },
-  "include": ["src/**/*"],
+  "include": ["src/**/*", "synapse.config.ts"],
   "exclude": ["node_modules", ".codebase", ".synapse"]
 }

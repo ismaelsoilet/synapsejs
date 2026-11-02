@@ -83,10 +83,10 @@ export const sliceSchema = 'CREATE TABLE IF NOT EXISTS onda7_messages (id TEXT P
 
 export const sliceSocket = defineSocket<{ text: string }>({
   onOpen(ws) {
-    ws.send(JSON.stringify({ type: 'WELCOME', msg: 'Conectado à sala de chat' }));
+    ws.send({ type: 'WELCOME', msg: 'Conectado à sala de chat' });
   },
   onMessage(ws, message) {
-    ws.send(JSON.stringify({ type: 'ECHO', received: message }));
+    ws.send({ type: 'ECHO', received: message });
   },
   onClose(ws, code, reason) {
     // cleanup
