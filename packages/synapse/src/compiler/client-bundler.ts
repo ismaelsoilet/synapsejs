@@ -17,6 +17,7 @@ import * as path from 'path';
 import { Err, Ok, type Result } from '../core/machine-types';
 import { clientEntrySource } from '../runtime/client-entry';
 import { isComponent } from '../runtime/discovery-rules';
+import { SYNAPSE_VERSION } from '../version';
 import { findSliceFiles, resolveSlicesDir, type SlicesDirError } from './slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from './slice-splitter';
 
@@ -95,6 +96,7 @@ export async function buildVendorBundle(
   const extraExports = (vendorPackages || []).map((pkg) => `export * from '${pkg}';`).join('\n');
 
   const vendorEntryContent = [
+    `// SynapseJS Client Vendor Entry - Framework v${SYNAPSE_VERSION}`,
     `import React from 'react';`,
     `import * as ReactDOM from 'react-dom';`,
     `import * as ReactDOMClient from 'react-dom/client';`,
@@ -137,6 +139,30 @@ export async function buildVendorBundle(
     `  Children,`,
     `  startTransition`,
     `} = (React as unknown as Record<string, unknown>);`,
+    `const {`,
+    `  Badge,`,
+    `  Button,`,
+    `  Card,`,
+    `  DataForm,`,
+    `  DataTable,`,
+    `  Drawer,`,
+    `  DropdownItem,`,
+    `  DropdownMenu,`,
+    `  Modal,`,
+    `  Pagination,`,
+    `  Tab,`,
+    `  TabList,`,
+    `  TabPanel,`,
+    `  Tabs,`,
+    `  ToastProvider,`,
+    `  useToast,`,
+    `  SynapseProvider,`,
+    `  useAction,`,
+    `  useLoaderData,`,
+    `  useSubscription,`,
+    `  useWebSocket,`,
+    `  rpcCall`,
+    `} = (SynapseClient as unknown as Record<string, unknown>);`,
     `export {`,
     `  ReactDOM,`,
     `  ReactDOMClient,`,
@@ -169,7 +195,29 @@ export async function buildVendorBundle(
     `  memo,`,
     `  forwardRef,`,
     `  Children,`,
-    `  startTransition`,
+    `  startTransition,`,
+    `  Badge,`,
+    `  Button,`,
+    `  Card,`,
+    `  DataForm,`,
+    `  DataTable,`,
+    `  Drawer,`,
+    `  DropdownItem,`,
+    `  DropdownMenu,`,
+    `  Modal,`,
+    `  Pagination,`,
+    `  Tab,`,
+    `  TabList,`,
+    `  TabPanel,`,
+    `  Tabs,`,
+    `  ToastProvider,`,
+    `  useToast,`,
+    `  SynapseProvider,`,
+    `  useAction,`,
+    `  useLoaderData,`,
+    `  useSubscription,`,
+    `  useWebSocket,`,
+    `  rpcCall`,
     `};`,
     ``
   ].join('\n');
@@ -183,7 +231,28 @@ export async function buildVendorBundle(
   fs.mkdirSync(buildDir, { recursive: true });
   const vendorFile = path.join(buildDir, VENDOR_BUNDLE_NAME);
 
-  if (fs.existsSync(vendorFile) && existingEntry === vendorEntryContent) {
+  let isVendorStale = false;
+  if (fs.existsSync(vendorFile)) {
+    const vendorMtime = fs.statSync(vendorFile).mtimeMs;
+    try {
+      const localClientPath = path.resolve(__dirname, '../client.ts');
+      if (fs.existsSync(localClientPath) && fs.statSync(localClientPath).mtimeMs > vendorMtime) {
+        isVendorStale = true;
+      }
+      const localComponentsPath = path.resolve(__dirname, '../client/components.tsx');
+      if (fs.existsSync(localComponentsPath) && fs.statSync(localComponentsPath).mtimeMs > vendorMtime) {
+        isVendorStale = true;
+      }
+      const pkgJsonPath = path.join(baseDir, 'package.json');
+      if (fs.existsSync(pkgJsonPath) && fs.statSync(pkgJsonPath).mtimeMs > vendorMtime) {
+        isVendorStale = true;
+      }
+    } catch {
+      // ignore stat errors
+    }
+  }
+
+  if (fs.existsSync(vendorFile) && existingEntry === vendorEntryContent && !isVendorStale) {
     return Ok({
       sliceKey: '_vendor',
       url: VENDOR_BUNDLE_URL,

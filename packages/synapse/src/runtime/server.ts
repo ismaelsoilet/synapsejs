@@ -2749,7 +2749,7 @@ ${this.renderStylesheets()}
           if (pathname.startsWith('/_synapse/client/')) {
             const bundleFilename = path.basename(pathname);
             const bundleFile = path.join(this.baseDir, '.synapse/client', bundleFilename);
-            if (!fs.existsSync(bundleFile) && bundleFilename === VENDOR_BUNDLE_NAME) {
+            if (bundleFilename === VENDOR_BUNDLE_NAME) {
               await buildVendorBundle(this.baseDir, this.config.compiler?.vendorPackages);
             }
             if (!fs.existsSync(bundleFile) && bundleFilename === 'synapse.css') {
