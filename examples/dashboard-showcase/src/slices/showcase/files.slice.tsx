@@ -12,6 +12,7 @@ import {
   type SliceLoaderContext
 } from 'synapsejs';
 import { Button, useUpload } from 'synapsejs/client';
+import { Icon } from '../../shared/icons';
 import { toUploadKey } from '../../shared/showcase';
 import { EmptyState, formatBytes, formatDate, PageHeader } from '../../shared/ui';
 
@@ -259,8 +260,8 @@ export function FilesTrigger({
             dragging ? 'border-cyan-400 bg-cyan-400/10' : 'border-slate-700 bg-slate-900/40 hover:border-slate-600'
           }`}
         >
-          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-500/10 text-2xl">
-            📎
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-500/20 to-blue-500/10 text-cyan-300">
+            <Icon name="upload" className="h-6 w-6" />
           </div>
           <h2 className="mt-4 text-sm font-bold text-white">Arraste um arquivo ou escolha do disco</h2>
           <p className="mt-1 text-xs text-slate-400">
@@ -329,7 +330,7 @@ export function FilesTrigger({
         {items.length === 0 ? (
           <div className="mt-4">
             <EmptyState
-              icon="📂"
+              icon={<Icon name="folder" className="h-5 w-5" />}
               title="Nenhum arquivo ainda"
               description="Envie o primeiro arquivo para ver o fluxo completo de upload, registro e download."
             />
@@ -353,7 +354,10 @@ export function FilesTrigger({
                     </a>
                   ) : (
                     <div className="flex h-36 items-center justify-center bg-gradient-to-br from-slate-900 to-slate-950 text-4xl">
-                      {file.mime === 'application/pdf' ? '📕' : file.mime?.includes('json') ? '🧾' : '📄'}
+                      <Icon
+                        name={file.mime === 'application/pdf' ? 'file' : file.mime?.includes('json') ? 'code' : 'file'}
+                        className="h-7 w-7 text-slate-500"
+                      />
                     </div>
                   )}
                   <div className="p-3">

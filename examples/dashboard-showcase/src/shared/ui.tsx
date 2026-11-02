@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 
 export function PageHeader({
   eyebrow,
@@ -76,7 +76,7 @@ export function FeatureCard({
   tag
 }: {
   href: string;
-  icon: string;
+  icon: ReactNode;
   title: string;
   description: string;
   tag?: string;
@@ -111,7 +111,7 @@ export function EmptyState({
   description,
   action
 }: {
-  icon?: string;
+  icon?: ReactNode;
   title: string;
   description: string;
   action?: ReactNode;
@@ -186,6 +186,39 @@ export function Sparkline({ values, color = '#22d3ee' }: { values: number[]; col
       />
     </svg>
   );
+}
+
+export function AnimatedNumber({ value, className = '' }: { value: number; className?: string }) {
+  const [display, setDisplay] = useState(value);
+
+  useEffect(() => {
+    if (!Number.isFinite(value)) return;
+    if (document.documentElement.dataset.motion === 'off') {
+      setDisplay(value);
+      return;
+    }
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      setDisplay(value);
+      return;
+    }
+
+    let frame = 0;
+    const started = performance.now();
+    const from = 0;
+    const duration = 650;
+
+    const tick = (now: number) => {
+      const progress = Math.min(1, (now - started) / duration);
+      const eased = 1 - (1 - progress) ** 3;
+      setDisplay(from + (value - from) * eased);
+      if (progress < 1) frame = requestAnimationFrame(tick);
+    };
+
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [value]);
+
+  return <span className={className}>{Math.round(display).toLocaleString('pt-BR')}</span>;
 }
 
 export function formatBytes(bytes: number): string {

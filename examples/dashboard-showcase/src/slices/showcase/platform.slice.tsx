@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { projectStatus } from 'synapsejs';
 import { Badge } from 'synapsejs/client';
+import { Icon } from '../../shared/icons';
 import { PageHeader, StatCard } from '../../shared/ui';
 
 export type FeatureStatusRow = {
@@ -93,7 +94,7 @@ export function PlatformTrigger({
       <PageHeader
         eyebrow="Inventário do runtime"
         title="Tudo que o SynapseJS expõe"
-        description="A tabela de features é a fonte única do projeto: versão, maturidade, evidência de teste, ferramentas MCP e comandos. Nada aqui é uma lista de marketing separada do código."
+        description="Versão, maturidade e evidência de teste em um só lugar. Filtre o inventário e veja o comando que sustenta cada capacidade."
         actions={
           <div className="flex flex-wrap gap-2 text-[10px] font-mono">
             <a
@@ -117,17 +118,37 @@ export function PlatformTrigger({
       />
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <StatCard label="Versão" value={version} hint="manifest" icon="🏷️" tone="cyan" />
-        <StatCard label="Stable" value={counts.stable} hint="com teste que falha" icon="✅" tone="emerald" delay={40} />
+        <StatCard
+          label="Versão"
+          value={version}
+          hint="manifest"
+          icon={<Icon name="platform" className="h-4 w-4" />}
+          tone="cyan"
+        />
+        <StatCard
+          label="Stable"
+          value={counts.stable}
+          hint="com teste que falha"
+          icon={<Icon name="check" className="h-4 w-4" />}
+          tone="emerald"
+          delay={40}
+        />
         <StatCard
           label="Experimental"
           value={counts.experimental}
           hint="evidência limitada"
-          icon="🧪"
+          icon={<Icon name="code" className="h-4 w-4" />}
           tone="amber"
           delay={80}
         />
-        <StatCard label="Roadmap" value={counts.roadmap} hint="não shipped" icon="🗺️" tone="violet" delay={120} />
+        <StatCard
+          label="Roadmap"
+          value={counts.roadmap}
+          hint="não shipped"
+          icon={<Icon name="clock" className="h-4 w-4" />}
+          tone="violet"
+          delay={120}
+        />
       </div>
 
       <div className="grid gap-3 rounded-2xl border border-slate-800 bg-slate-900/60 p-4 sm:grid-cols-3">
@@ -226,7 +247,7 @@ export function PlatformTrigger({
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <h2 className="text-sm font-bold text-white">Comandos & transparência</h2>
+          <h2 className="text-sm font-bold text-white">Comandos</h2>
           <div className="mt-3 flex flex-wrap gap-1.5">
             {commands.map((command) => (
               <span
@@ -241,8 +262,7 @@ export function PlatformTrigger({
             {adoption}
           </div>
           <div className="mt-4 text-[10px] leading-relaxed text-slate-500">
-            Features com provedor externo aparecem como parte do contrato, mas só executam quando o serviço
-            correspondente está configurado. O showcase não inventa uma integração que não existe.
+            Integrações com provedores externos aparecem quando configuradas.
           </div>
         </div>
       </div>

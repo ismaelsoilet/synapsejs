@@ -11,6 +11,7 @@ import {
   type SliceLoaderContext
 } from 'synapsejs';
 import { Badge, Button, Card, DataTable, Pagination } from 'synapsejs/client';
+import { Icon } from '../../shared/icons';
 import { LinkButton } from '../../shared/ui';
 
 // ============================================================================
@@ -155,7 +156,7 @@ export function ListItemsTrigger({
   if (loadError) {
     return (
       <div className="p-4 rounded-xl border border-rose-800/80 bg-rose-950/40 text-rose-200 font-mono text-sm shadow-lg">
-        ❌ Falha ao carregar catálogo: {loadError}
+        Falha ao carregar catálogo: {loadError}
       </div>
     );
   }
@@ -211,9 +212,11 @@ export function ListItemsTrigger({
 
         <div className="flex gap-2">
           <Button variant="secondary" onClick={exportCsv} disabled={rows.length === 0}>
-            ⬇ Exportar CSV
+            <Icon name="download" className="mr-1.5 h-3.5 w-3.5" /> Exportar CSV
           </Button>
-          <LinkButton href="/inventory/create-item">➕ Novo Item</LinkButton>
+          <LinkButton href="/inventory/create-item">
+            <Icon name="plus" className="mr-1.5 h-3.5 w-3.5" /> Novo Item
+          </LinkButton>
         </div>
       </div>
 

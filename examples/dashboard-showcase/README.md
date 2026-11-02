@@ -1,4 +1,4 @@
-# Synapse Showcase ⚡
+# Synapse Showcase
 
 Aplicação de demonstração do **SynapseJS** — o framework Bun onde uma feature inteira
 (contrato TypeBox, DDL, server action, loader, UI React e oráculo) vive em um único
@@ -60,8 +60,22 @@ O login usa `Bun.password.verify` + `signSessionToken`; o token vira cookie
 | `/showcase/platform` | inventário completo de features + 23 MCP tools |
 | `/auth/login` | login assinado, contas demo e RBAC |
 
-O shell tem sidebar responsiva, command palette em **⌘K / Ctrl+K**, drawer mobile,
-sessão/login/logout, animações CSS e `prefers-reduced-motion`.
+O shell tem sidebar responsiva, command palette com atalho detectado pelo SO
+(**⌘ K** no macOS, **Ctrl K** no Windows/Linux), drawer mobile, sessão/login/logout
+e uma camada de microinterações.
+
+## Aparência e movimento
+
+O botão de aparência na topbar abre o painel de tema:
+
+- **Sistema**, **Claro** ou **Escuro**;
+- cinco paletas de destaque: ciano, violeta, esmeralda, âmbar e rosa;
+- animações ligadas/desligadas, com respeito a `prefers-reduced-motion`.
+
+As preferências ficam em `localStorage` (`showcase.theme`, `showcase.accent`,
+`showcase.motion`) e o boot em `public/theme-boot.js` aplica o tema antes do primeiro
+paint. A camada visual inclui ripple no clique, barra de progresso de navegação,
+entrada de páginas, animação de modais, contagem animada dos KPIs e transições de tema.
 
 ## O que é real nesta demo
 

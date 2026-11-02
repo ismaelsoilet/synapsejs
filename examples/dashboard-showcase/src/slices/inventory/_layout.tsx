@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Icon } from '../../shared/icons';
 
 export default function InventoryDomainLayout({
   children,
@@ -26,7 +27,7 @@ export default function InventoryDomainLayout({
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            📋 Todos os Itens
+            <Icon name="inventory" className="mr-1.5 h-3.5 w-3.5" /> Todos os Itens
           </a>
           <a
             href="/inventory/create-item"
@@ -36,7 +37,7 @@ export default function InventoryDomainLayout({
                 : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
-            ➕ Cadastrar Item
+            <Icon name="plus" className="mr-1.5 h-3.5 w-3.5" /> Cadastrar Item
           </a>
         </nav>
       </header>

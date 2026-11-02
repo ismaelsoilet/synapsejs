@@ -1,8 +1,9 @@
 import type { DatabaseClient, SliceLoaderContext } from 'synapsejs';
 import { MockDatabaseClient, projectStatus } from 'synapsejs';
 import { Badge } from 'synapsejs/client';
+import { Icon } from '../../shared/icons';
 import { getHomeCounts, type HomeCounts } from '../../shared/showcase';
-import { FeatureCard, LinkButton, PageHeader, Sparkline, StatCard } from '../../shared/ui';
+import { AnimatedNumber, FeatureCard, LinkButton, PageHeader, Sparkline, StatCard } from '../../shared/ui';
 
 export interface HomeMetrics extends HomeCounts {
   inventoryValue: number;
@@ -86,23 +87,25 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
               </span>
             </div>
             <h1 className="mt-5 max-w-3xl text-4xl font-black leading-[1.05] tracking-tight text-white md:text-6xl">
-              Um sistema inteiro,
+              Uma aplicação inteira,
               <span className="block bg-gradient-to-r from-cyan-300 via-sky-300 to-violet-300 bg-clip-text text-transparent">
-                em fatias vivas.
+                em fatias.
               </span>
             </h1>
             <p className="mt-4 max-w-2xl text-sm leading-relaxed text-slate-400 md:text-base">
-              Este app roda o SynapseJS de ponta a ponta: CRUD, upload/download, streaming HTTP, SSE, WebSocket, jobs em
-              background, cache SSR, RBAC, webhooks assinados e rotas dinâmicas — cada feature em um único{' '}
+              CRUD, arquivos, streaming, tempo real, jobs, cache, RBAC, webhooks e rotas dinâmicas no mesmo runtime.
+              Cada feature vive em um único{' '}
               <code className="rounded bg-slate-800 px-1.5 py-0.5 text-cyan-300">*.slice.tsx</code>.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
-              <LinkButton href="/showcase/files">📎 Central de arquivos</LinkButton>
+              <LinkButton href="/showcase/files">
+                <Icon name="files" className="mr-2 h-4 w-4" /> Central de arquivos
+              </LinkButton>
               <LinkButton href="/showcase/realtime" variant="secondary">
-                ⚡ Tempo real
+                <Icon name="realtime" className="mr-2 h-4 w-4" /> Tempo real
               </LinkButton>
               <LinkButton href="/showcase/platform" variant="secondary">
-                🧭 Catálogo de features
+                <Icon name="platform" className="mr-2 h-4 w-4" /> Catálogo de features
               </LinkButton>
             </div>
             <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-slate-500">
@@ -151,32 +154,32 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Inventário"
-          value={metrics.inventory}
+          value={<AnimatedNumber value={metrics.inventory} />}
           hint={`R$ ${metrics.inventoryValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })} em estoque`}
-          icon="📦"
+          icon={<Icon name="inventory" className="h-4 w-4" />}
           tone="cyan"
         />
         <StatCard
           label="Arquivos"
-          value={metrics.files}
+          value={<AnimatedNumber value={metrics.files} />}
           hint="uploads com download autenticado"
-          icon="📎"
+          icon={<Icon name="files" className="h-4 w-4" />}
           tone="emerald"
           delay={60}
         />
         <StatCard
           label="Eventos em tempo real"
-          value={metrics.feed}
+          value={<AnimatedNumber value={metrics.feed} />}
           hint="SSE + WebSocket no mesmo processo"
-          icon="⚡"
+          icon={<Icon name="realtime" className="h-4 w-4" />}
           tone="violet"
           delay={120}
         />
         <StatCard
           label="Alertas de estoque"
-          value={metrics.lowStock}
+          value={<AnimatedNumber value={metrics.lowStock} />}
           hint={metrics.lowStock > 0 ? 'reposição recomendada' : 'nenhum alerta crítico'}
-          icon="⚠️"
+          icon={<Icon name="zap" className="h-4 w-4" />}
           tone={metrics.lowStock > 0 ? 'amber' : 'emerald'}
           delay={180}
         />
@@ -185,69 +188,69 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
       <section>
         <PageHeader
           eyebrow="Explore o runtime"
-          title="Demos que exercitam o framework de verdade"
-          description="Cada cartão abre uma rota que usa a API real — sem mock de resultado no caminho de produção."
+          title="Rotas que usam a API real"
+          description="Cada cartão abre uma página funcional do framework, sem simulação no caminho principal."
         />
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <FeatureCard
             href="/inventory/list-items"
-            icon="📦"
+            icon={<Icon name="inventory" className="h-5 w-5" />}
             title="CRUD + Query Builder"
             description="Listagem paginada, filtros, validação TypeBox, update parcial com allowlist e RBAC."
             tag="SQLite"
           />
           <FeatureCard
             href="/showcase/files"
-            icon="📎"
+            icon={<Icon name="files" className="h-5 w-5" />}
             title="Upload & download"
             description="useUpload com progresso/abort, storage local, metadados no banco e rota de download autenticada."
             tag="multipart"
           />
           <FeatureCard
             href="/showcase/realtime"
-            icon="⚡"
+            icon={<Icon name="realtime" className="h-5 w-5" />}
             title="SSE + WebSocket"
             description="Tópico declarado, broadcast no action context e canal bidirecional com defineSocket."
             tag="duplex"
           />
           <FeatureCard
             href="/showcase/jobs"
-            icon="⚙️"
+            icon={<Icon name="jobs" className="h-5 w-5" />}
             title="Fila & worker"
             description="defineJob, enqueue, retry, cron e painel de status lendo o SQLite da fila."
             tag="background"
           />
           <FeatureCard
             href="/showcase/cache"
-            icon="🧊"
+            icon={<Icon name="cache" className="h-5 w-5" />}
             title="Cache SSR / ISR"
             description="defineCache com TTL, stale-while-revalidate e invalidação de tags pelo action context."
             tag="ISR"
           />
           <FeatureCard
             href="/showcase/stream"
-            icon="🌊"
+            icon={<Icon name="stream" className="h-5 w-5" />}
             title="Streaming HTTP"
             description="ctx.stream() entregando tokens em chunks reais, consumidos com ReadableStream no browser."
             tag="chunked"
           />
           <FeatureCard
             href="/showcase/webhooks"
-            icon="🔐"
+            icon={<Icon name="webhooks" className="h-5 w-5" />}
             title="Webhooks assinados"
             description="HMAC-SHA256, rawBody preservado, evento persistido e replay exibido no painel."
             tag="HMAC"
           />
           <FeatureCard
             href="/showcase/profile/demo-42"
-            icon="🪪"
+            icon={<Icon name="profile" className="h-5 w-5" />}
             title="Rotas dinâmicas"
             description="Loader e componente lendo params de /:domain/:name/:id, com hidratação isomórfica."
             tag="params"
           />
           <FeatureCard
             href="/showcase/platform"
-            icon="🧭"
+            icon={<Icon name="platform" className="h-5 w-5" />}
             title="Catálogo completo"
             description={`${platform.stable} features stable, ${platform.experimental} experimentais, ${platform.roadmap} roadmap e ${platform.tools} ferramentas MCP.`}
             tag="inventário"
@@ -258,42 +261,43 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
       <section className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm font-bold text-white">Checklist de um sistema completo</h2>
+            <h2 className="text-sm font-bold text-white">Nesta demo</h2>
             <span className="font-mono text-[10px] text-slate-500">runtime v{platform.version}</span>
           </div>
           <div className="mt-4 grid gap-2 sm:grid-cols-2">
             {[
-              ['Frontend SSR + hidratação', '✓'],
-              ['Design responsivo + animações', '✓'],
-              ['CRUD e validação de contrato', '✓'],
-              ['Upload, download e storage', '✓'],
-              ['SSE e WebSocket', '✓'],
-              ['Jobs, cron e retry', '✓'],
-              ['Cache SSR e invalidação', '✓'],
-              ['Auth assinada e RBAC', '✓'],
-              ['Webhooks com HMAC', '✓'],
-              ['Streaming HTTP', '✓'],
-              ['Rotas dinâmicas', '✓'],
-              ['Catálogo de features/MCP', '✓']
-            ].map(([label, check]) => (
+              ['Frontend SSR + hidratação'],
+              ['Design responsivo + animações'],
+              ['CRUD e validação de contrato'],
+              ['Upload, download e storage'],
+              ['SSE e WebSocket'],
+              ['Jobs, cron e retry'],
+              ['Cache SSR e invalidação'],
+              ['Auth assinada e RBAC'],
+              ['Webhooks com HMAC'],
+              ['Streaming HTTP'],
+              ['Rotas dinâmicas'],
+              ['Catálogo de features/MCP']
+            ].map(([label]) => (
               <div
                 key={label}
                 className="flex items-center justify-between rounded-lg border border-slate-800/80 bg-slate-950/40 px-3 py-2 text-[11px] text-slate-300"
               >
                 <span>{label}</span>
-                <span className="text-emerald-400">{check}</span>
+                <span className="text-emerald-400">
+                  <Icon name="check" className="h-3.5 w-3.5" />
+                </span>
               </div>
             ))}
           </div>
         </div>
 
         <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-violet-950/20 p-5">
-          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">Transparência</div>
-          <h2 className="mt-2 text-sm font-bold text-white">O que é real e o que é configuração</h2>
+          <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-violet-300">Escopo</div>
+          <h2 className="mt-2 text-sm font-bold text-white">O que está ativo nesta demo</h2>
           <p className="mt-2 text-xs leading-relaxed text-slate-400">
             Upload, download, SSE, WebSocket, jobs, cache, auth, webhook e streaming executam neste processo. OAuth
-            social, S3/Postgres e e-mail exigem credenciais/provedores externos e aparecem no catálogo com status e
-            evidência — não fingimos integrações que não estão configuradas.
+            social, S3/Postgres e e-mail aparecem no catálogo quando o provedor está configurado.
           </p>
           <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/50 p-3 font-mono text-[10px] leading-relaxed text-slate-500">
             {platform.adoption}

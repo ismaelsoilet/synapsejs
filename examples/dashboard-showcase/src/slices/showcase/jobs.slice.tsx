@@ -12,6 +12,7 @@ import {
   type SessionContext,
   type SliceLoaderContext
 } from 'synapsejs';
+import { Icon } from '../../shared/icons';
 import { getJobStats, type JobStats } from '../../shared/showcase';
 import { formatDate, PageHeader, StatCard } from '../../shared/ui';
 
@@ -186,15 +187,38 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
       />
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-        <StatCard label="Pendentes" value={stats.pending} icon="⏳" tone="amber" />
-        <StatCard label="Em execução" value={stats.running} icon="⚙️" tone="cyan" delay={40} />
-        <StatCard label="Concluídos" value={stats.completed} icon="✅" tone="emerald" delay={80} />
-        <StatCard label="Falharam" value={stats.failed} icon="⛔" tone="rose" delay={120} />
+        <StatCard
+          label="Pendentes"
+          value={stats.pending}
+          icon={<Icon name="clock" className="h-4 w-4" />}
+          tone="amber"
+        />
+        <StatCard
+          label="Em execução"
+          value={stats.running}
+          icon={<Icon name="jobs" className="h-4 w-4" />}
+          tone="cyan"
+          delay={40}
+        />
+        <StatCard
+          label="Concluídos"
+          value={stats.completed}
+          icon={<Icon name="check" className="h-4 w-4" />}
+          tone="emerald"
+          delay={80}
+        />
+        <StatCard
+          label="Falharam"
+          value={stats.failed}
+          icon={<Icon name="zap" className="h-4 w-4" />}
+          tone="rose"
+          delay={120}
+        />
         <StatCard
           label="DLQ (Postgres)"
           value={stats.deadLetter}
           hint="SQLite usa failed"
-          icon="☠️"
+          icon={<Icon name="layers" className="h-4 w-4" />}
           tone="violet"
           delay={160}
         />

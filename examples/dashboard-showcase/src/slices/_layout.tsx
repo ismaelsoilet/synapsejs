@@ -1,17 +1,56 @@
 import { type ReactNode, useEffect, useState } from 'react';
 import { Button, clearSession, currentRoles, Drawer, DropdownItem, DropdownMenu, Modal } from 'synapsejs/client';
+import { ClickRipple, NavigationProgress } from '../shared/effects';
+import { BrandMark, Icon } from '../shared/icons';
+import { AppearanceMenu } from '../shared/theme';
 
 const NAV_ITEMS = [
-  { href: '/showcase/home', match: '/showcase/home', label: 'Visão geral', icon: '◈', hint: 'hub' },
-  { href: '/inventory/list-items', match: '/inventory', label: 'Inventário', icon: '▦', hint: 'CRUD' },
-  { href: '/showcase/files', match: '/showcase/files', label: 'Arquivos', icon: '↥', hint: 'upload' },
-  { href: '/showcase/realtime', match: '/showcase/realtime', label: 'Tempo real', icon: '⌁', hint: 'SSE/WS' },
-  { href: '/showcase/jobs', match: '/showcase/jobs', label: 'Jobs', icon: '⟳', hint: 'queue' },
-  { href: '/showcase/cache', match: '/showcase/cache', label: 'Cache SSR', icon: '▤', hint: 'ISR' },
-  { href: '/showcase/stream', match: '/showcase/stream', label: 'Streaming', icon: '≈', hint: 'chunks' },
-  { href: '/showcase/webhooks', match: '/showcase/webhooks', label: 'Webhooks', icon: '⌘', hint: 'HMAC' },
-  { href: '/showcase/profile/demo-42', match: '/showcase/profile', label: 'Perfil', icon: '◉', hint: 'params' },
-  { href: '/showcase/platform', match: '/showcase/platform', label: 'Plataforma', icon: '◎', hint: 'features' }
+  { href: '/showcase/home', match: '/showcase/home', label: 'Visão geral', icon: <Icon name="home" />, hint: 'hub' },
+  {
+    href: '/inventory/list-items',
+    match: '/inventory',
+    label: 'Inventário',
+    icon: <Icon name="inventory" />,
+    hint: 'CRUD'
+  },
+  { href: '/showcase/files', match: '/showcase/files', label: 'Arquivos', icon: <Icon name="files" />, hint: 'upload' },
+  {
+    href: '/showcase/realtime',
+    match: '/showcase/realtime',
+    label: 'Tempo real',
+    icon: <Icon name="realtime" />,
+    hint: 'SSE/WS'
+  },
+  { href: '/showcase/jobs', match: '/showcase/jobs', label: 'Jobs', icon: <Icon name="jobs" />, hint: 'queue' },
+  { href: '/showcase/cache', match: '/showcase/cache', label: 'Cache', icon: <Icon name="cache" />, hint: 'ISR' },
+  {
+    href: '/showcase/stream',
+    match: '/showcase/stream',
+    label: 'Streaming',
+    icon: <Icon name="stream" />,
+    hint: 'chunks'
+  },
+  {
+    href: '/showcase/webhooks',
+    match: '/showcase/webhooks',
+    label: 'Webhooks',
+    icon: <Icon name="webhooks" />,
+    hint: 'HMAC'
+  },
+  {
+    href: '/showcase/profile/demo-42',
+    match: '/showcase/profile',
+    label: 'Perfil',
+    icon: <Icon name="profile" />,
+    hint: 'params'
+  },
+  {
+    href: '/showcase/platform',
+    match: '/showcase/platform',
+    label: 'Plataforma',
+    icon: <Icon name="platform" />,
+    hint: 'features'
+  }
 ];
 
 function isActive(url: string, match: string): boolean {
@@ -39,6 +78,7 @@ function NavLink({
     <a
       href={item.href}
       onClick={onNavigate}
+      aria-current={active ? 'page' : undefined}
       className={`group flex items-center gap-3 rounded-xl border px-3 py-2.5 text-xs font-semibold transition-all ${
         active
           ? 'border-cyan-400/25 bg-gradient-to-r from-cyan-400/15 to-transparent text-white shadow-lg shadow-cyan-950/30'
@@ -46,7 +86,7 @@ function NavLink({
       } ${compact ? 'py-2' : ''}`}
     >
       <span
-        className={`flex h-7 w-7 items-center justify-center rounded-lg border text-sm transition ${
+        className={`flex h-7 w-7 items-center justify-center rounded-lg border transition ${
           active
             ? 'border-cyan-300/30 bg-cyan-400/15 text-cyan-200'
             : 'border-slate-800 bg-slate-950/40 text-slate-500 group-hover:text-cyan-300'
@@ -99,16 +139,24 @@ function SessionMenu() {
               (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/platform')
             }
           >
-            ◎ Ver plataforma
+            <span className="flex items-center gap-2">
+              <Icon name="platform" className="h-3.5 w-3.5" /> Plataforma
+            </span>
           </DropdownItem>
           <DropdownItem
             onClick={() =>
               (globalThis as { location?: { assign?: (url: string) => void } }).location?.assign?.('/showcase/files')
             }
           >
-            ↥ Meus arquivos
+            <span className="flex items-center gap-2">
+              <Icon name="files" className="h-3.5 w-3.5" /> Meus arquivos
+            </span>
           </DropdownItem>
-          <DropdownItem onClick={logout}>⏻ Sair</DropdownItem>
+          <DropdownItem onClick={logout}>
+            <span className="flex items-center gap-2">
+              <Icon name="arrowRight" className="h-3.5 w-3.5" /> Sair
+            </span>
+          </DropdownItem>
         </DropdownMenu>
       )}
     </div>
@@ -119,6 +167,15 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [query, setQuery] = useState('');
+  const [shortcut, setShortcut] = useState('Ctrl K');
+
+  useEffect(() => {
+    const platform =
+      (navigator as Navigator & { userAgentData?: { platform?: string } }).userAgentData?.platform ||
+      navigator.platform ||
+      navigator.userAgent;
+    setShortcut(/mac|iphone|ipad/i.test(platform) ? '⌘ K' : 'Ctrl K');
+  }, []);
 
   useEffect(() => {
     const handleKey = (event: KeyboardEvent) => {
@@ -144,6 +201,10 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
 
   return (
     <div className="relative min-h-screen bg-slate-950 text-slate-100">
+      <script src="/theme-boot.js?v=1" />
+      <NavigationProgress />
+      <ClickRipple />
+
       <div className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
         <div className="absolute -left-40 top-0 h-[28rem] w-[28rem] rounded-full bg-cyan-500/10 blur-[120px]" />
         <div className="absolute right-0 top-1/3 h-[26rem] w-[26rem] rounded-full bg-violet-500/8 blur-[120px]" />
@@ -153,8 +214,8 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
 
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-72 flex-col border-r border-slate-800/80 bg-slate-950/85 backdrop-blur-xl lg:flex">
         <a href="/showcase/home" className="flex items-center gap-3 border-b border-slate-800/80 px-5 py-5">
-          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-lg font-black text-slate-950 shadow-lg shadow-cyan-500/20">
-            ⚡
+          <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-cyan-400 to-blue-600 text-slate-950 shadow-lg shadow-cyan-500/20">
+            <BrandMark className="h-5 w-5" />
           </span>
           <span>
             <span className="block text-sm font-black tracking-tight text-white">
@@ -165,7 +226,7 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
         </a>
 
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
-          <div className="px-3 pb-2 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-600">Workspace</div>
+          <div className="px-3 pb-2 text-[9px] font-bold uppercase tracking-[0.2em] text-slate-600">Navegação</div>
           {NAV_ITEMS.map((item) => (
             <NavLink key={item.href} item={item} url={url} />
           ))}
@@ -178,13 +239,13 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
             </div>
             <div className="mt-2 font-mono text-[10px] leading-relaxed text-slate-400">
-              SQLite WAL · SSE · WS
+              SQLite · SSE · WebSocket
               <br />
-              jobs · cache · storage
+              jobs · cache · arquivos
             </div>
           </div>
           <div className="mt-3 flex items-center justify-between px-1 text-[9px] text-slate-600">
-            <span>N = 1 slice</span>
+            <span>{NAV_ITEMS.length} rotas</span>
             <a href="/_synapse/api/health" target="_blank" rel="noreferrer" className="hover:text-cyan-400">
               health
             </a>
@@ -202,13 +263,13 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
                 className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-800 text-slate-300 lg:hidden"
                 aria-label="Abrir menu"
               >
-                ☰
+                <Icon name="menu" />
               </button>
               <div className="min-w-0">
                 <div className="text-[9px] font-bold uppercase tracking-[0.2em] text-slate-500">
-                  SynapseJS / {current?.hint ?? 'workspace'}
+                  Showcase / {current?.hint ?? 'workspace'}
                 </div>
-                <div className="truncate text-sm font-bold text-white">{current?.label ?? 'Showcase'}</div>
+                <div className="truncate text-sm font-bold text-white">{current?.label ?? 'Visão geral'}</div>
               </div>
             </div>
 
@@ -216,12 +277,13 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
               <button
                 type="button"
                 onClick={() => setPaletteOpen(true)}
+                aria-keyshortcuts="Meta+K Control+K"
                 className="hidden items-center gap-2 rounded-xl border border-slate-800 bg-slate-900/60 px-3 py-2 text-[10px] text-slate-400 transition hover:border-slate-700 hover:text-slate-200 sm:flex"
               >
-                <span>⌕</span>
-                <span>Buscar no showcase</span>
+                <Icon name="search" className="h-3.5 w-3.5" />
+                <span>Buscar</span>
                 <kbd className="rounded border border-slate-700 bg-slate-950 px-1.5 py-0.5 font-mono text-[9px] text-slate-500">
-                  ⌘K
+                  {shortcut}
                 </kbd>
               </button>
               <a
@@ -230,6 +292,7 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
               >
                 ● online
               </a>
+              <AppearanceMenu />
               <SessionMenu />
             </div>
           </div>
@@ -239,11 +302,13 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
           {children}
         </main>
 
-        <footer className="border-t border-slate-900 bg-slate-950/70 px-6 py-5 text-center text-[10px] text-slate-600">
-          SynapseJS v1.11.1 · machine-centric vertical slices · SSR + RSC-free hydration ·{' '}
-          <a href="/showcase/platform" className="text-slate-500 hover:text-cyan-400">
-            todas as features
-          </a>
+        <footer className="border-t border-slate-900 bg-slate-950/70 px-6 py-5">
+          <div className="mx-auto flex max-w-[1500px] flex-col items-center justify-between gap-2 text-[10px] text-slate-600 sm:flex-row">
+            <span>SynapseJS 1.11.1 · aplicação de demonstração</span>
+            <a href="/showcase/platform" className="text-slate-500 transition hover:text-cyan-400">
+              Catálogo de features
+            </a>
+          </div>
         </footer>
       </div>
 
@@ -263,11 +328,11 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
         </div>
       </Drawer>
 
-      <Modal isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} title="Comandos do showcase" size="lg">
+      <Modal isOpen={paletteOpen} onClose={() => setPaletteOpen(false)} title="Comandos" size="lg">
         <input
           value={query}
           onChange={(event) => setQuery(event.target.value)}
-          placeholder="Ir para… (inventário, upload, SSE, jobs, cache, plataforma)"
+          placeholder="Ir para inventário, arquivos, realtime, jobs, cache…"
           className="mb-4 w-full rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-400"
         />
         <div className="grid gap-2 sm:grid-cols-2">
@@ -278,7 +343,7 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
               onClick={() => setPaletteOpen(false)}
               className="flex items-center gap-3 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5 transition hover:border-cyan-400/30 hover:bg-slate-900"
             >
-              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-sm text-cyan-300">
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-cyan-300">
                 {item.icon}
               </span>
               <span className="min-w-0">
@@ -294,7 +359,7 @@ export default function RootLayout({ children, url = '/' }: { children: ReactNod
           ) : null}
         </div>
         <div className="mt-4 text-center font-mono text-[9px] text-slate-600">
-          ESC fecha · ⌘K/Ctrl+K abre · navegação sem reload pelo Turbo Morphing
+          ESC fecha · {shortcut} abre · navegação instantânea
         </div>
       </Modal>
     </div>

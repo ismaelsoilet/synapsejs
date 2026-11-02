@@ -12,6 +12,7 @@ import {
   type SessionContext,
   type SliceLoaderContext
 } from 'synapsejs';
+import { Icon } from '../../shared/icons';
 import { PageHeader, StatCard } from '../../shared/ui';
 
 export const CacheInputSchema = Type.Object(
@@ -117,16 +118,29 @@ export function CacheTrigger({
       />
 
       <div className="grid gap-4 sm:grid-cols-3">
-        <StatCard label="TTL" value={`${ttlSeconds}s`} hint="fresh window" icon="⏱️" tone="cyan" />
+        <StatCard
+          label="TTL"
+          value={`${ttlSeconds}s`}
+          hint="fresh window"
+          icon={<Icon name="clock" className="h-4 w-4" />}
+          tone="cyan"
+        />
         <StatCard
           label="SWR"
           value={`${staleWhileRevalidateSeconds}s`}
           hint="stale enquanto revalida"
-          icon="♻️"
+          icon={<Icon name="refresh" className="h-4 w-4" />}
           tone="emerald"
           delay={60}
         />
-        <StatCard label="Tag" value={tag} hint="invalidação por grupo" icon="🏷️" tone="violet" delay={120} />
+        <StatCard
+          label="Tag"
+          value={tag}
+          hint="invalidação por grupo"
+          icon={<Icon name="layers" className="h-4 w-4" />}
+          tone="violet"
+          delay={120}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
