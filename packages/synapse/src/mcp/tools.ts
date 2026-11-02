@@ -73,7 +73,7 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         },
         template: {
           type: 'string',
-          enum: ['create', 'list', 'update', 'delete', 'login', 'oauth-github', 'crud'],
+          enum: ['create', 'list', 'update', 'delete', 'login', 'oauth-github', 'crud', 'modal-crud'],
           description: 'Optional slice template shape (default: create)'
         },
         fields: {
@@ -249,6 +249,75 @@ export const MCP_TOOLS: McpToolDefinition[] = [
         transcriptTail: {
           type: 'string',
           description: 'Recent transcript steps or conversation history tail'
+        }
+      }
+    }
+  },
+  {
+    name: 'synapse_inspect_routes',
+    description:
+      'Inspect all active slice routes, dynamic path parameters, HTTP verbs, caching policies, and registered RPC endpoints as structured JSON for AI context',
+    inputSchema: {
+      type: 'object',
+      properties: {}
+    }
+  },
+  {
+    name: 'synapse_test_slice',
+    description:
+      'Execute Fast-Check Property-Based Testing (PBT) invariant test suite for one specific targeted slice without running the entire codebase',
+    inputSchema: {
+      type: 'object',
+      required: ['targetSlice'],
+      properties: {
+        targetSlice: {
+          type: 'string',
+          description: 'Name or key of the slice to run oracles for (e.g. overview, create-item, or inventory/create-item)'
+        }
+      }
+    }
+  },
+  {
+    name: 'synapse_generate_seed',
+    description:
+      'Synthesize realistic, valid TypeBox-compliant database seed records using Fast-Check arbitraries directly into the live SQLite/PostgreSQL database',
+    inputSchema: {
+      type: 'object',
+      required: ['targetSlice'],
+      properties: {
+        targetSlice: {
+          type: 'string',
+          description: 'Name or key of the slice whose table to seed (e.g. create-item or inventory/create-item)'
+        },
+        count: {
+          type: 'number',
+          description: 'Number of seed records to synthesize and insert (default: 5)'
+        }
+      }
+    }
+  },
+  {
+    name: 'synapse_scaffold_component',
+    description:
+      'Scaffold interactive client sub-components (with Modal, Drawer, Tabs or Dropdown) ready to be embedded or transcluded via SubSlice',
+    inputSchema: {
+      type: 'object',
+      required: ['domain', 'name', 'componentType'],
+      properties: {
+        domain: {
+          type: 'string',
+          pattern: PATH_SEGMENT_PATTERN,
+          description: 'Domain name (e.g. billing, inventory, settings)'
+        },
+        name: {
+          type: 'string',
+          pattern: PATH_SEGMENT_PATTERN,
+          description: 'Component name in kebab-case (e.g. item-details-modal)'
+        },
+        componentType: {
+          type: 'string',
+          enum: ['modal', 'drawer', 'tabs', 'dropdown'],
+          description: 'Interactive primitive type to scaffold'
         }
       }
     }

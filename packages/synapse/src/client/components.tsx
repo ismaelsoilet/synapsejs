@@ -1,4 +1,13 @@
-import React, { type ReactNode, useMemo, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode
+} from 'react';
 
 // ============================================================================
 // 1. BADGE COMPONENT
@@ -523,3 +532,429 @@ export function DataForm({
     </form>
   );
 }
+
+// ============================================================================
+// 7. MODAL / DIALOG COMPONENT (WAI-ARIA COMPLIANT)
+// ============================================================================
+export interface ModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: ReactNode;
+  description?: ReactNode;
+  size?: 'sm' | 'md' | 'lg' | 'xl' | 'full';
+  children?: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  closeOnBackdrop?: boolean;
+}
+
+export function Modal({
+  isOpen,
+  onClose,
+  title,
+  description,
+  size = 'md',
+  children,
+  footer,
+  className = '',
+  closeOnBackdrop = true
+}: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const sizeStyles = {
+    sm: 'max-w-sm',
+    md: 'max-w-lg',
+    lg: 'max-w-2xl',
+    xl: 'max-w-4xl',
+    full: 'max-w-[95vw] h-[90vh]'
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={closeOnBackdrop ? onClose : undefined}
+      aria-modal="true"
+      role="dialog"
+    >
+      <div
+        ref={dialogRef}
+        onClick={(e) => e.stopPropagation()}
+        className={`bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col w-full overflow-hidden transition-all duration-200 transform scale-100 ${sizeStyles[size]} ${className}`}
+      >
+        {(title || description) && (
+          <div className="flex items-start justify-between p-5 border-b border-slate-800">
+            <div>
+              {title && <h3 className="text-lg font-bold text-slate-100 tracking-tight">{title}</h3>}
+              {description && <p className="text-xs text-slate-400 mt-1">{description}</p>}
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Fechar diálogo"
+              className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-base font-mono leading-none"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">
+          {children}
+        </div>
+        {footer && (
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 8. DRAWER / SLIDE-OVER SHEET COMPONENT
+// ============================================================================
+export interface DrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  title?: ReactNode;
+  description?: ReactNode;
+  position?: 'left' | 'right';
+  size?: 'sm' | 'md' | 'lg' | 'full';
+  children?: ReactNode;
+  footer?: ReactNode;
+  className?: string;
+  closeOnBackdrop?: boolean;
+}
+
+export function Drawer({
+  isOpen,
+  onClose,
+  title,
+  description,
+  position = 'right',
+  size = 'md',
+  children,
+  footer,
+  className = '',
+  closeOnBackdrop = true
+}: DrawerProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
+  if (!isOpen) return null;
+
+  const sizeStyles = {
+    sm: 'max-w-sm',
+    md: 'max-w-md',
+    lg: 'max-w-2xl',
+    full: 'max-w-full'
+  };
+
+  const posStyles = {
+    right: 'inset-y-0 right-0',
+    left: 'inset-y-0 left-0'
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={closeOnBackdrop ? onClose : undefined}
+      aria-modal="true"
+      role="dialog"
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`fixed ${posStyles[position]} flex flex-col h-full w-full bg-slate-900 border-${position === 'right' ? 'l' : 'r'} border-slate-800 shadow-2xl overflow-hidden transition-transform duration-300 ${sizeStyles[size]} ${className}`}
+      >
+        <div className="flex items-start justify-between p-5 border-b border-slate-800">
+          <div>
+            {title && <h3 className="text-lg font-bold text-slate-100 tracking-tight">{title}</h3>}
+            {description && <p className="text-xs text-slate-400 mt-1">{description}</p>}
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar painel lateral"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors text-base font-mono leading-none"
+          >
+            ✕
+          </button>
+        </div>
+        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">
+          {children}
+        </div>
+        {footer && (
+          <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2">
+            {footer}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// 9. TABS ACCESSIBLE COMPONENT
+// ============================================================================
+interface TabsContextValue {
+  value: string;
+  setValue: (val: string) => void;
+}
+const TabsContext = createContext<TabsContextValue | null>(null);
+
+export interface TabsProps {
+  defaultValue?: string;
+  value?: string;
+  onValueChange?: (val: string) => void;
+  syncQueryParam?: string;
+  children?: ReactNode;
+  className?: string;
+}
+
+export function Tabs({
+  defaultValue = '',
+  value: controlledValue,
+  onValueChange,
+  syncQueryParam,
+  children,
+  className = ''
+}: TabsProps) {
+  const [internalValue, setInternalValue] = useState<string>(() => {
+    if (typeof window !== 'undefined' && syncQueryParam) {
+      const sp = new URLSearchParams(window.location.search);
+      const fromUrl = sp.get(syncQueryParam);
+      if (fromUrl) return fromUrl;
+    }
+    return defaultValue;
+  });
+
+  const activeValue = controlledValue !== undefined ? controlledValue : internalValue;
+
+  const handleValueChange = useCallback(
+    (newVal: string) => {
+      if (controlledValue === undefined) {
+        setInternalValue(newVal);
+      }
+      onValueChange?.(newVal);
+
+      if (typeof window !== 'undefined' && syncQueryParam) {
+        const url = new URL(window.location.href);
+        url.searchParams.set(syncQueryParam, newVal);
+        window.history.replaceState({}, '', url.toString());
+      }
+    },
+    [controlledValue, onValueChange, syncQueryParam]
+  );
+
+  return (
+    <TabsContext.Provider value={{ value: activeValue, setValue: handleValueChange }}>
+      <div className={`space-y-4 ${className}`}>{children}</div>
+    </TabsContext.Provider>
+  );
+}
+
+export interface TabListProps {
+  children?: ReactNode;
+  className?: string;
+}
+
+export function TabList({ children, className = '' }: TabListProps) {
+  return (
+    <div
+      role="tablist"
+      className={`flex items-center gap-1.5 p-1 bg-slate-900 border border-slate-800 rounded-xl overflow-x-auto ${className}`}
+    >
+      {children}
+    </div>
+  );
+}
+
+export interface TabProps {
+  value: string;
+  children?: ReactNode;
+  disabled?: boolean;
+  className?: string;
+}
+
+export function Tab({ value, children, disabled = false, className = '' }: TabProps) {
+  const ctx = useContext(TabsContext);
+  if (!ctx) throw new Error('<Tab> must be used within <Tabs>');
+
+  const isSelected = ctx.value === value;
+
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={isSelected}
+      disabled={disabled}
+      onClick={() => ctx.setValue(value)}
+      className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg transition-all duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 whitespace-nowrap ${
+        isSelected
+          ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-700/80 font-bold'
+          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
+      } ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+export interface TabPanelProps {
+  value: string;
+  children?: ReactNode;
+  className?: string;
+}
+
+export function TabPanel({ value, children, className = '' }: TabPanelProps) {
+  const ctx = useContext(TabsContext);
+  if (!ctx) throw new Error('<TabPanel> must be used within <Tabs>');
+
+  if (ctx.value !== value) return null;
+
+  return (
+    <div role="tabpanel" tabIndex={0} className={`focus:outline-none ${className}`}>
+      {children}
+    </div>
+  );
+}
+
+// ============================================================================
+// 10. DROPDOWN MENU ACCESSIBLE COMPONENT
+// ============================================================================
+export interface DropdownMenuProps {
+  trigger: ReactNode;
+  align?: 'left' | 'right';
+  children?: ReactNode;
+  className?: string;
+}
+
+export function DropdownMenu({
+  trigger,
+  align = 'right',
+  children,
+  className = ''
+}: DropdownMenuProps) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleClickOutside = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen]);
+
+  const alignStyles = {
+    left: 'left-0',
+    right: 'right-0'
+  };
+
+  return (
+    <div ref={containerRef} className={`relative inline-block text-left ${className}`}>
+      <div onClick={() => setIsOpen((prev) => !prev)}>{trigger}</div>
+      {isOpen && (
+        <div
+          role="menu"
+          aria-orientation="vertical"
+          className={`absolute ${alignStyles[align]} mt-2 w-52 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-1 z-50 animate-in fade-in duration-150`}
+        >
+          <div onClick={() => setIsOpen(false)}>{children}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export interface DropdownItemProps {
+  onClick?: () => void;
+  variant?: 'default' | 'danger';
+  icon?: ReactNode;
+  disabled?: boolean;
+  children?: ReactNode;
+  className?: string;
+}
+
+export function DropdownItem({
+  onClick,
+  variant = 'default',
+  icon,
+  disabled = false,
+  children,
+  className = ''
+}: DropdownItemProps) {
+  const variantStyles = {
+    default: 'text-slate-300 hover:text-white hover:bg-slate-800',
+    danger: 'text-rose-400 hover:text-rose-300 hover:bg-rose-950/50'
+  };
+
+  return (
+    <button
+      type="button"
+      role="menuitem"
+      disabled={disabled}
+      onClick={onClick}
+      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition-colors text-left cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${variantStyles[variant]} ${className}`}
+    >
+      {icon && <span className="shrink-0">{icon}</span>}
+      <span className="flex-1 truncate">{children}</span>
+    </button>
+  );
+}
+

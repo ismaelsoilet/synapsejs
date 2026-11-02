@@ -119,6 +119,14 @@ export interface ActionContext<TServices = Record<string, unknown>> extends Data
   /** Sets an HTTP response cookie (e.g. HttpOnly session token) */
   readonly setCookie: (name: string, value: string, options?: CookieOptions) => void;
 
+  /** Emits an HTTP chunked or SSE streaming response for real-time AI/LLM tokens */
+  readonly stream: (
+    generator:
+      | AsyncIterable<string | Uint8Array>
+      | (() => AsyncGenerator<string | Uint8Array>),
+    options?: { contentType?: string; status?: number; headers?: Record<string, string> }
+  ) => Response;
+
   /** Internal list of pending cookies to be set on the response */
   readonly _pendingCookies?: PendingCookie[];
 }
@@ -164,7 +172,7 @@ export function createActionContext<TServices = Record<string, unknown>>(
   const {
     db,
     session,
-    tenantId = session.tenantId,
+    tenantId = session?.tenantId,
     services = {} as TServices,
     logger = createDefaultLogger(),
     enqueue = async () => 'job_noop',
@@ -198,6 +206,45 @@ export function createActionContext<TServices = Record<string, unknown>>(
     pendingCookies.push({ name, value, options });
   };
 
+  const stream = (
+    generator:
+      | AsyncIterable<string | Uint8Array>
+      | (() => AsyncGenerator<string | Uint8Array>),
+    streamOptions?: { contentType?: string; status?: number; headers?: Record<string, string> }
+  ): Response => {
+    const iterable = typeof generator === 'function' ? generator() : generator;
+    const encoder = new TextEncoder();
+
+    const readable = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of iterable) {
+            if (typeof chunk === 'string') {
+              controller.enqueue(encoder.encode(chunk));
+            } else {
+              controller.enqueue(chunk);
+            }
+          }
+          controller.close();
+        } catch (err) {
+          controller.error(err);
+        }
+      }
+    });
+
+    const headers = new Headers({
+      'Content-Type': streamOptions?.contentType || 'text/plain; charset=utf-8',
+      'Transfer-Encoding': 'chunked',
+      'X-Content-Type-Options': 'nosniff',
+      ...(streamOptions?.headers || {})
+    });
+
+    return new Response(readable, {
+      status: streamOptions?.status || 200,
+      headers
+    });
+  };
+
   const context: ActionContext<TServices> = {
     // ActionContext properties
     db,
@@ -210,6 +257,7 @@ export function createActionContext<TServices = Record<string, unknown>>(
     broadcast,
     invalidateCache,
     setCookie,
+    stream,
     _pendingCookies: pendingCookies,
 
     // DatabaseClient proxy methods

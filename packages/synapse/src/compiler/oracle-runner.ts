@@ -156,6 +156,8 @@ export function oracleWrapperSource(importPath: string, sliceName: string): stri
 export interface OracleRunOptions {
   /** Injected by tests: runs a command and returns its exit code and output. */
   spawn?: (args: string[], cwd: string) => Promise<{ exitCode: number; output: string }>;
+  /** Optional target slice name or pattern to run tests exclusively for */
+  targetSlice?: string;
   /** Enable Jev System One semantic test triage on failures. Default: true */
   /**
    * Opt-in (default: disabled). The triage consults an external model provider when
@@ -196,7 +198,14 @@ export async function runSliceOracles(
   }
 
   const slicesDir = resolution.value.slicesDir;
-  const sliceFiles = findSliceFiles(slicesDir);
+  const allSliceFiles = findSliceFiles(slicesDir);
+  const targetSlice = options.targetSlice;
+  const sliceFiles = targetSlice
+    ? allSliceFiles.filter((f) => {
+        const name = path.basename(f, '.slice.tsx');
+        return name === targetSlice || f.includes(targetSlice);
+      })
+    : allSliceFiles;
   const oraclesDir = path.join(root, '.synapse', ORACLE_DIR_NAME);
   const reportPath = path.join(oraclesDir, 'report.xml');
 

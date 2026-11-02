@@ -131,9 +131,10 @@ bun run mcp     # JSON-RPC 2.0 over stdio
 ```
 
 Tools: `synapse_get_repo_map`, `synapse_get_db_schema`, `synapse_check`, `synapse_split`,
-`synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_migrate`, `synapse_rollback`, `synapse_contract`,
+`synapse_run_pbt`, `synapse_scaffold_slice`, `synapse_scaffold_domain`, `synapse_migrate`, `synapse_rollback`, `synapse_contract`,
 `synapse_check_db_drift`, `synapse_diff_impact`, `synapse_test_gate`, `synapse_abort_check`,
-`synapse_verify_completion`, `synapse_reasoning_effort`, `synapse_triage_error`, `synapse_route_task`, `synapse_evaluate_nudge`.
+`synapse_verify_completion`, `synapse_reasoning_effort`, `synapse_triage_error`, `synapse_route_task`, `synapse_evaluate_nudge`,
+`synapse_inspect_routes`, `synapse_test_slice`, `synapse_generate_seed`, `synapse_scaffold_component`.
 Slice-dependent tools fail with `NO_SLICES_DIR` (listing the paths they examined) instead of reporting an empty success.
 
 ## Write-surface containment

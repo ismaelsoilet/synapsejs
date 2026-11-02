@@ -5,6 +5,7 @@ import { SliceErrorBoundary, type SliceErrorBoundaryProps } from './error-bounda
 export interface SynapseContextValue {
   props: Record<string, unknown>;
   session?: SessionContext;
+  url?: string;
 }
 
 const SynapseContext = createContext<SynapseContextValue | null>(null);
@@ -12,6 +13,7 @@ const SynapseContext = createContext<SynapseContextValue | null>(null);
 export interface SynapseProviderProps {
   props?: Record<string, unknown>;
   session?: SessionContext;
+  url?: string;
   /** Defaults to true: a slice render error shows a fallback instead of a dead tree. */
   errorBoundary?: boolean;
   errorBoundaryFallback?: SliceErrorBoundaryProps['fallback'];
@@ -24,6 +26,7 @@ export interface SynapseProviderProps {
 export function SynapseProvider({
   props,
   session,
+  url,
   errorBoundary = true,
   errorBoundaryFallback,
   children
@@ -37,7 +40,8 @@ export function SynapseProvider({
 
   const value: SynapseContextValue = {
     props: clientProps,
-    session
+    session,
+    url
   };
 
   const content = errorBoundary ? (

@@ -75,17 +75,21 @@ describe('SynapseMcpServer over stdio', () => {
       'synapse_contract',
       'synapse_diff_impact',
       'synapse_evaluate_nudge',
+      'synapse_generate_seed',
       'synapse_get_db_schema',
       'synapse_get_repo_map',
+      'synapse_inspect_routes',
       'synapse_migrate',
       'synapse_reasoning_effort',
       'synapse_rollback',
       'synapse_route_task',
       'synapse_run_pbt',
+      'synapse_scaffold_component',
       'synapse_scaffold_domain',
       'synapse_scaffold_slice',
       'synapse_split',
       'synapse_test_gate',
+      'synapse_test_slice',
       'synapse_triage_error',
       'synapse_verify_completion'
     ]);
@@ -311,5 +315,68 @@ export async function createCustomerAction() { return { ok: true }; }
     expect(payload.target).toBe('customers');
     expect(Array.isArray(payload.impactedSlices)).toBe(true);
     expect(Array.isArray(payload.recommendedCommands)).toBe(true);
+  });
+
+  it('inspects routes and dynamic endpoints via synapse_inspect_routes tool', async () => {
+    const appDir = path.join(sandbox, 'app-routes');
+    const sliceDir = path.join(appDir, 'src', 'slices', 'billing');
+    fs.mkdirSync(sliceDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(sliceDir, 'invoices.slice.tsx'),
+      `export async function invoicesAction() { return { ok: true }; }
+export async function invoicesLoader() { return { rows: [] }; }
+export function InvoicesView() { return null; }
+`,
+      'utf-8'
+    );
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: { name: 'synapse_inspect_routes', arguments: {} }
+        }
+      ],
+      appDir
+    );
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('PASS');
+    expect(payload.operation).toBe('INSPECT_ROUTES');
+    expect(payload.totalRoutes).toBe(1);
+    expect(payload.routes[0].sliceKey).toBe('billing/invoices');
+    expect(payload.routes[0].routePath).toBe('/billing/invoices');
+    expect(payload.routes[0].dynamicPath).toBe('/billing/invoices/:id');
+    expect(payload.routes[0].hasAction).toBe(true);
+    expect(payload.routes[0].hasLoader).toBe(true);
+    expect(payload.routes[0].hasComponent).toBe(true);
+  });
+
+  it('scaffolds interactive client components via synapse_scaffold_component tool', async () => {
+    const appDir = path.join(sandbox, 'app-components');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'dashboard'), { recursive: true });
+
+    const { responses } = await runMcp(
+      [
+        {
+          jsonrpc: '2.0',
+          id: 1,
+          method: 'tools/call',
+          params: {
+            name: 'synapse_scaffold_component',
+            arguments: { domain: 'dashboard', name: 'quick-stats-modal', componentType: 'modal' }
+          }
+        }
+      ],
+      appDir
+    );
+
+    const payload = JSON.parse(responses[0].result.content[0].text);
+    expect(payload.status).toBe('PASS');
+    expect(payload.operation).toBe('SCAFFOLD_COMPONENT');
+    expect(payload.componentType).toBe('modal');
+    expect(fs.existsSync(path.join(appDir, 'src', 'slices', 'dashboard', 'quick-stats-modal.tsx'))).toBe(true);
   });
 });

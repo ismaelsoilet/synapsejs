@@ -15,7 +15,8 @@
     "test:gate": "synapse test --gate",
     "new-slice": "synapse new-slice",
     "split": "synapse split",
-    "build": "synapse build",
+    "build:css": "tailwindcss -o public/synapse.css --content \"src/**/*.{ts,tsx},../../packages/synapse/src/client/**/*.{ts,tsx}\" --minify",
+    "build": "bun run build:css && synapse build",
     "build:standalone": "synapse build --standalone",
     "start": "synapse start"
   },
@@ -30,6 +31,7 @@
     "@types/bun": "^1.4.2",
     "@types/react": "^19.0.10",
     "@types/react-dom": "^19.0.4",
+    "tailwindcss": "^3.4.17",
     "typescript": "~5.9.3"
   }
 }

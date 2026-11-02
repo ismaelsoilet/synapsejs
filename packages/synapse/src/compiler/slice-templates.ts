@@ -12,7 +12,15 @@
 
 import { generateTableColumnsCode, parseFields } from './fields-parser';
 
-export type SliceTemplate = 'create' | 'list' | 'update' | 'delete' | 'login' | 'oauth-github' | 'auth-2fa';
+export type SliceTemplate =
+  | 'create'
+  | 'list'
+  | 'update'
+  | 'delete'
+  | 'login'
+  | 'oauth-github'
+  | 'auth-2fa'
+  | 'modal-crud';
 export const SLICE_TEMPLATES: SliceTemplate[] = [
   'create',
   'list',
@@ -20,7 +28,8 @@ export const SLICE_TEMPLATES: SliceTemplate[] = [
   'delete',
   'login',
   'oauth-github',
-  'auth-2fa'
+  'auth-2fa',
+  'modal-crud'
 ];
 
 /** Paginação das listas geradas: o agente não escolhe esses números por conta. */
@@ -1519,6 +1528,208 @@ export const sliceTests = {
 `;
 }
 
+function modalCrudTemplate(names: TemplateNames, fieldsSpec?: string): string {
+  const fields = parseFields(fieldsSpec || 'name:string,description:string,status:enum(active|archived)');
+  const ddlColumns = generateTableColumnsCode(fields);
+  const tbProps = fields.map((f) => `  ${f.name}: Type.String()`).join(',\n');
+  const formFields = fields.map((f) => `{ name: '${f.name}', label: '${f.name}', type: 'text', required: true }`).join(', ');
+
+  return `import React, { useState } from 'react';
+import { Type, Static } from '@sinclair/typebox';
+import { Value } from '@sinclair/typebox/value';
+import * as fc from 'fast-check';
+import {
+  type DatabaseClient,
+  Err,
+  MockDatabaseClient,
+  Ok,
+  type Result,
+  type SessionContext,
+  requireAuth
+} from 'synapsejs';
+import {
+  Button,
+  Card,
+  DataForm,
+  DataTable,
+  Drawer,
+  type FormField,
+  Modal,
+  useToast
+} from 'synapsejs/client';
+
+// ============================================================================
+// 1. CONTRATO DE ENTRADA (TypeBox)
+// ============================================================================
+export const ${names.schemaName} = Type.Object({
+${tbProps}
+}, { additionalProperties: true });
+export type ${names.inputName} = Static<typeof ${names.schemaName}>;
+
+// ============================================================================
+// 2. DDL SCHEMA DECLARATIVO
+// ============================================================================
+export const sliceSchema = \`
+  -- up:
+  CREATE TABLE IF NOT EXISTS ${names.table} (
+    id TEXT PRIMARY KEY,
+${ddlColumns},
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+  -- down:
+  DROP TABLE IF EXISTS ${names.table};
+\`;
+
+// ============================================================================
+// 3. MODELAGEM DE DOMÍNIO
+// ============================================================================
+export interface ${names.pascal}Row {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export type ${names.outputName} = Result<
+  ${names.pascal}Row,
+  'INVALID_SCHEMA' | 'NO_DATABASE' | 'UNAUTHORIZED'
+>;
+
+// ============================================================================
+// 4. SERVER ACTION
+// ============================================================================
+export async function ${names.actionName}(
+  payload: unknown,
+  db?: DatabaseClient,
+  session?: SessionContext
+): Promise<${names.outputName}> {
+  if (!db) return Err('NO_DATABASE');
+  if (!Value.Check(${names.schemaName}, payload)) return Err('INVALID_SCHEMA');
+
+  const id = crypto.randomUUID();
+  const record: Record<string, unknown> = {
+    id,
+    ...(payload as Record<string, unknown>),
+    created_at: new Date().toISOString()
+  };
+
+  await db.insert('${names.table}', record);
+  return Ok(record as unknown as ${names.pascal}Row);
+}
+
+// ============================================================================
+// 5. SERVER LOADER (SSR)
+// ============================================================================
+export async function ${names.pascal}Loader(context: { db: DatabaseClient }) {
+  const rows = await context.db.findMany<${names.pascal}Row>('${names.table}', { limit: 50 });
+  return { rows };
+}
+
+// ============================================================================
+// 6. REACT UI — MODAL CRUD COM DRAWER E TOAST
+// ============================================================================
+const FORM_FIELDS: FormField[] = [${formFields}];
+
+export interface ${names.componentName}Props {
+  rows?: ${names.pascal}Row[];
+  onSubmitAction?: (payload: unknown) => Promise<${names.outputName}>;
+}
+
+export function ${names.componentName}({ rows = [], onSubmitAction }: ${names.componentName}Props) {
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState<${names.pascal}Row | null>(null);
+  const toast = useToast();
+
+  const handleCreate = async (formData: Record<string, unknown>) => {
+    if (!onSubmitAction) return;
+    const res = await onSubmitAction(formData);
+    if (res.ok) {
+      toast.success('Registro criado com sucesso!', '${names.pascal}');
+      setIsModalOpen(false);
+    } else {
+      toast.error('Erro ao salvar: ' + res.error);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-white tracking-tight">${names.pascal}</h2>
+          <p className="text-xs text-slate-400">Gerenciado com Modal e Drawer integrados</p>
+        </div>
+        <Button onClick={() => setIsModalOpen(true)}>➕ Novo Registro</Button>
+      </div>
+
+      <Card>
+        <DataTable
+          data={rows}
+          columns={[
+            { key: 'id', header: 'ID', render: (val) => <span className="font-mono text-xs">{String(val).slice(0, 8)}...</span> },
+            { key: 'name', header: 'Nome' },
+            {
+              key: 'actions',
+              header: 'Ações',
+              render: (_, row) => (
+                <Button size="sm" variant="secondary" onClick={() => setSelectedItem(row)}>
+                  Ver Detalhes
+                </Button>
+              )
+            }
+          ]}
+        />
+      </Card>
+
+      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Cadastrar ${names.pascal}">
+        <DataForm fields={FORM_FIELDS} onSubmit={handleCreate} submitLabel="Salvar" />
+      </Modal>
+
+      <Drawer
+        isOpen={Boolean(selectedItem)}
+        onClose={() => setSelectedItem(null)}
+        title="Detalhes do Registro"
+        position="right"
+      >
+        {selectedItem && (
+          <div className="space-y-4 text-xs font-mono">
+            <pre className="p-4 bg-slate-950 rounded-xl border border-slate-800 text-slate-300 overflow-x-auto">
+              {JSON.stringify(selectedItem, null, 2)}
+            </pre>
+          </div>
+        )}
+      </Drawer>
+    </div>
+  );
+}
+
+// ============================================================================
+// 7. ORÁCULO DE TESTES (PBT)
+// ============================================================================
+export const sliceTests = {
+  description: 'Garantias invariantes do ${names.pascal} Modal CRUD',
+  cases: [
+    {
+      name: 'payload inválido retorna INVALID_SCHEMA',
+      run: async () => {
+        const res = await ${names.actionName}({ invalidField: 123 }, new MockDatabaseClient());
+        if (res.ok || res.error !== 'INVALID_SCHEMA') {
+          throw new Error('Deveria recusar payload fora do schema');
+        }
+      }
+    },
+    {
+      name: 'sem conexão de banco retorna NO_DATABASE',
+      run: async () => {
+        const res = await ${names.actionName}({ name: 'Teste' });
+        if (res.ok || res.error !== 'NO_DATABASE') {
+          throw new Error('Deveria acusar NO_DATABASE');
+        }
+      }
+    }
+  ]
+};
+`;
+}
+
 export function generateOperationTemplate(
   domain: string,
   sliceName: string,
@@ -1540,6 +1751,8 @@ export function generateOperationTemplate(
       return oauthGithubTemplate(names);
     case 'auth-2fa':
       return auth2faTemplate(names);
+    case 'modal-crud':
+      return modalCrudTemplate(names, fieldsSpec);
     default:
       throw new Error(`Template desconhecido: ${template}`);
   }

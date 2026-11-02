@@ -181,3 +181,142 @@ export async function exchangeOAuthCode(
     clearTimeout(timeout);
   }
 }
+
+// ============================================================================
+// OAUTH PROVIDER PRESETS & UNIFIED USER PROFILE
+// ============================================================================
+export interface OAuthUserProfile {
+  id: string;
+  email?: string;
+  name?: string;
+  avatarUrl?: string;
+  provider: 'google' | 'github' | 'discord' | 'oidc';
+  raw: Record<string, unknown>;
+}
+
+export function googleOAuthPreset(options: {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}): OAuthProviderConfig {
+  return {
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationUrl: 'https://accounts.google.com/o/oauth2/v2/auth',
+    tokenUrl: 'https://oauth2.googleapis.com/token',
+    redirectUri: options.redirectUri,
+    scope: ['openid', 'email', 'profile']
+  };
+}
+
+export function githubOAuthPreset(options: {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}): OAuthProviderConfig {
+  return {
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationUrl: 'https://github.com/login/oauth/authorize',
+    tokenUrl: 'https://github.com/login/oauth/access_token',
+    redirectUri: options.redirectUri,
+    scope: ['read:user', 'user:email']
+  };
+}
+
+export function discordOAuthPreset(options: {
+  clientId: string;
+  clientSecret: string;
+  redirectUri: string;
+}): OAuthProviderConfig {
+  return {
+    clientId: options.clientId,
+    clientSecret: options.clientSecret,
+    authorizationUrl: 'https://discord.com/api/oauth2/authorize',
+    tokenUrl: 'https://discord.com/api/oauth2/token',
+    redirectUri: options.redirectUri,
+    scope: ['identify', 'email']
+  };
+}
+
+export async function fetchOAuthUserProfile(
+  provider: 'google' | 'github' | 'discord' | 'oidc',
+  accessToken: string,
+  userInfoUrl?: string
+): Promise<Result<OAuthUserProfile, 'FETCH_PROFILE_FAILED'>> {
+  const url =
+    userInfoUrl ||
+    (provider === 'google'
+      ? 'https://openidconnect.googleapis.com/v1/userinfo'
+      : provider === 'github'
+        ? 'https://api.github.com/user'
+        : provider === 'discord'
+          ? 'https://discord.com/api/users/@me'
+          : null);
+
+  if (!url) {
+    return Err('FETCH_PROFILE_FAILED');
+  }
+
+  try {
+    const res = await fetch(url, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: 'application/json',
+        'User-Agent': 'SynapseJS'
+      }
+    });
+
+    if (!res.ok) {
+      return Err('FETCH_PROFILE_FAILED');
+    }
+
+    const data = (await res.json()) as Record<string, unknown>;
+    let id = '';
+    let email: string | undefined;
+    let name: string | undefined;
+    let avatarUrl: string | undefined;
+
+    if (provider === 'google') {
+      id = String(data.sub || data.id || '');
+      email = typeof data.email === 'string' ? data.email : undefined;
+      name = typeof data.name === 'string' ? data.name : undefined;
+      avatarUrl = typeof data.picture === 'string' ? data.picture : undefined;
+    } else if (provider === 'github') {
+      id = String(data.id || '');
+      email = typeof data.email === 'string' ? data.email : undefined;
+      name = typeof data.name === 'string' ? data.name : typeof data.login === 'string' ? data.login : undefined;
+      avatarUrl = typeof data.avatar_url === 'string' ? data.avatar_url : undefined;
+    } else if (provider === 'discord') {
+      id = String(data.id || '');
+      email = typeof data.email === 'string' ? data.email : undefined;
+      name =
+        typeof data.global_name === 'string'
+          ? data.global_name
+          : typeof data.username === 'string'
+            ? data.username
+            : undefined;
+      avatarUrl = data.avatar ? `https://cdn.discordapp.com/avatars/${id}/${data.avatar}.png` : undefined;
+    } else {
+      id = String(data.sub || data.id || '');
+      email = typeof data.email === 'string' ? data.email : undefined;
+      name = typeof data.name === 'string' ? data.name : undefined;
+      avatarUrl = typeof data.picture === 'string' ? data.picture : undefined;
+    }
+
+    if (!id) {
+      return Err('FETCH_PROFILE_FAILED');
+    }
+
+    return Ok({
+      id,
+      email,
+      name,
+      avatarUrl,
+      provider,
+      raw: data
+    });
+  } catch {
+    return Err('FETCH_PROFILE_FAILED');
+  }
+}

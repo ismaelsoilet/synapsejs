@@ -13,6 +13,7 @@ import * as path from 'path';
 import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { SynapseProvider } from '../client/context';
+import { ToastProvider } from '../client/toast';
 import {
   buildClientBundle,
   buildCssBundle,
@@ -42,7 +43,18 @@ import {
   type SliceCacheConfig,
   type SliceSocketDefinition,
   type SynapseConfig,
-  serializeCookie
+  serializeCookie,
+  buildOAuthAuthorizationUrl,
+  discordOAuthPreset,
+  exchangeOAuthCode,
+  fetchOAuthUserProfile,
+  generateOAuthState,
+  generatePkceChallenge,
+  githubOAuthPreset,
+  googleOAuthPreset,
+  verifyOAuthState,
+  type OAuthProviderConfig,
+  signSessionToken
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { isSessionTokenRevoked, isSessionTokenRevokedInDb, verifySessionToken } from '../core/session-token';
@@ -1390,13 +1402,174 @@ export class SynapseServer {
   }
 
   /**
+   * Unified Social & Enterprise OAuth 2.0 Handler (RFC 7636 PKCE + Constant-Time State Verification)
+   */
+  private async handleOAuthRequest(
+    req: Request,
+    providerName: string,
+    isCallback: boolean,
+    url: URL,
+    startedAt: number
+  ): Promise<Response> {
+    const cors = this.corsHeaders(req);
+    const validProviders = ['google', 'github', 'discord'];
+
+    if (!validProviders.includes(providerName)) {
+      this.logRequest(req, url.pathname, 404, startedAt);
+      return Response.json(
+        { ok: false, error: `Provedor OAuth "${providerName}" não suportado. Aceitos: ${validProviders.join(', ')}` },
+        { status: 404, headers: cors ?? undefined }
+      );
+    }
+
+    const redirectUri = `${url.origin}/_synapse/auth/${providerName}/callback`;
+    const clientIdEnv = process.env[`${providerName.toUpperCase()}_CLIENT_ID`] || '';
+    const clientSecretEnv = process.env[`${providerName.toUpperCase()}_CLIENT_SECRET`] || '';
+
+    if (!clientIdEnv) {
+      this.logRequest(req, url.pathname, 500, startedAt);
+      return Response.json(
+        {
+          ok: false,
+          error: `Variável de ambiente ${providerName.toUpperCase()}_CLIENT_ID não configurada no servidor.`
+        },
+        { status: 500, headers: cors ?? undefined }
+      );
+    }
+
+    let config: OAuthProviderConfig;
+    if (providerName === 'google') {
+      config = googleOAuthPreset({ clientId: clientIdEnv, clientSecret: clientSecretEnv, redirectUri });
+    } else if (providerName === 'github') {
+      config = githubOAuthPreset({ clientId: clientIdEnv, clientSecret: clientSecretEnv, redirectUri });
+    } else {
+      config = discordOAuthPreset({ clientId: clientIdEnv, clientSecret: clientSecretEnv, redirectUri });
+    }
+
+    // 1. INICIAR FLUXO: GET /_synapse/auth/:provider
+    if (!isCallback) {
+      const pkce = generatePkceChallenge();
+      const state = generateOAuthState();
+      const authUrl = buildOAuthAuthorizationUrl({
+        config,
+        state,
+        codeChallenge: pkce.codeChallenge
+      });
+
+      const statePayload = JSON.stringify({ state, codeVerifier: pkce.codeVerifier, provider: providerName });
+      const stateCookie = serializeCookie('__synapse_oauth_state', statePayload, {
+        httpOnly: true,
+        secure: !url.hostname.includes('localhost') && !url.hostname.includes('127.0.0.1'),
+        sameSite: 'lax',
+        maxAge: 600,
+        path: '/'
+      });
+
+      this.logRequest(req, url.pathname, 302, startedAt);
+      return new Response(null, {
+        status: 302,
+        headers: {
+          Location: authUrl,
+          'Set-Cookie': stateCookie,
+          ...(cors ?? {})
+        }
+      });
+    }
+
+    // 2. CALLBACK: GET /_synapse/auth/:provider/callback
+    const code = url.searchParams.get('code');
+    const receivedState = url.searchParams.get('state');
+
+    const cookieHeader = req.headers.get('cookie') || '';
+    const match = cookieHeader.match(/__synapse_oauth_state=([^;]+)/);
+    let cookieStateData: { state: string; codeVerifier: string; provider: string } | null = null;
+
+    if (match) {
+      try {
+        cookieStateData = JSON.parse(decodeURIComponent(match[1]));
+      } catch {}
+    }
+
+    if (!code || !receivedState || !cookieStateData || !verifyOAuthState(cookieStateData.state, receivedState)) {
+      this.logRequest(req, url.pathname, 400, startedAt);
+      return Response.json(
+        { ok: false, error: 'INVALID_OAUTH_STATE', message: 'Parâmetro de estado OAuth inválido ou expirado.' },
+        { status: 400, headers: cors ?? undefined }
+      );
+    }
+
+    const exchangeRes = await exchangeOAuthCode({
+      config,
+      code,
+      codeVerifier: cookieStateData.codeVerifier,
+      timeoutMs: 10_000
+    });
+
+    if (!exchangeRes.ok) {
+      this.logRequest(req, url.pathname, 502, startedAt);
+      return Response.json(
+        { ok: false, error: 'OAUTH_EXCHANGE_FAILED', message: 'Falha ao trocar código de autorização por token.' },
+        { status: 502, headers: cors ?? undefined }
+      );
+    }
+
+    const profileRes = await fetchOAuthUserProfile(
+      providerName as 'google' | 'github' | 'discord',
+      exchangeRes.value.accessToken
+    );
+
+    if (!profileRes.ok) {
+      this.logRequest(req, url.pathname, 502, startedAt);
+      return Response.json(
+        { ok: false, error: 'OAUTH_PROFILE_FAILED', message: 'Falha ao recuperar perfil do usuário no provedor.' },
+        { status: 502, headers: cors ?? undefined }
+      );
+    }
+
+    const profile = profileRes.value;
+    const secret = process.env.SYNAPSE_SESSION_SECRET || 'dev_secret_insecure_change_in_production';
+    const sessionToken = signSessionToken(
+      {
+        userId: `${providerName}:${profile.id}`,
+        roles: ['user'],
+        permissions: ['read', 'write']
+      },
+      secret
+    );
+
+    const sessionCookieHeader = serializeCookie(SESSION_COOKIE, sessionToken, {
+      httpOnly: true,
+      secure: !url.hostname.includes('localhost') && !url.hostname.includes('127.0.0.1'),
+      sameSite: 'lax',
+      maxAge: 86400,
+      path: '/'
+    });
+    const clearStateCookie = serializeCookie('__synapse_oauth_state', '', {
+      httpOnly: true,
+      maxAge: 0,
+      path: '/'
+    });
+
+    this.logRequest(req, url.pathname, 302, startedAt);
+    return new Response(null, {
+      status: 302,
+      headers: {
+        Location: '/',
+        'Set-Cookie': `${sessionCookieHeader}, ${clearStateCookie}`,
+        ...(cors ?? {})
+      }
+    });
+  }
+
+  /**
    * Renders the slice SSR component tree and packages the complete HTML shell
    */
   private async renderSliceHtml(
     slice: DiscoveredSlice,
     req: Request,
     url: URL,
-    matchedLocale?: string
+    matchedLocale?: string,
+    routeParams: Record<string, string> = {}
   ): Promise<{
     html: string;
     dataProps: Record<string, unknown>;
@@ -1406,9 +1579,11 @@ export class SynapseServer {
   }> {
     const session = await this.requestSession(req);
     const actionCtx = this.createActionContext(slice.key, session);
-    const params = Object.fromEntries(url.searchParams.entries());
+    const searchParams = Object.fromEntries(url.searchParams.entries());
+    const params = { ...searchParams, ...routeParams };
     const dataProps: Record<string, unknown> = {
       ...params,
+      __synapse_params: routeParams,
       ...(matchedLocale ? { locale: matchedLocale } : {})
     };
     let loaderError: string | null = null;
@@ -1472,7 +1647,8 @@ export class SynapseServer {
         const treeWithLayout = this.layoutComponent
           ? React.createElement(this.layoutComponent, { session, url: url.toString() }, treeWithDomainLayout)
           : treeWithDomainLayout;
-        const rootEl = React.createElement(SynapseProvider, { props: dataProps, session }, treeWithLayout);
+        const treeWithToast = React.createElement(ToastProvider, null, treeWithLayout);
+        const rootEl = React.createElement(SynapseProvider, { props: dataProps, session, url: url.toString() }, treeWithToast);
         contentHtml = renderToString(rootEl);
       } catch (e: any) {
         hasError = true;
@@ -1497,7 +1673,8 @@ export class SynapseServer {
       clientUrl,
       meta,
       matchedLocale || 'pt-BR',
-      hasCustomLayout
+      hasCustomLayout,
+      routeParams
     );
 
     return { html, dataProps, meta, hasError, error: renderError || undefined };
@@ -1514,7 +1691,8 @@ export class SynapseServer {
     clientUrl: string | null,
     meta?: SliceMetadata,
     locale = 'pt-BR',
-    hasLayout = false
+    hasLayout = false,
+    routeParams: Record<string, string> = {}
   ): string {
     const safeTitle = escapeHtml(title);
     const safeSliceName = escapeHtml(sliceName);
@@ -1582,7 +1760,7 @@ ${importMapScript}
   <div id="synapse-root" class="min-h-full flex-1 flex flex-col">${contentHtml}</div>
 
   <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}');</script>
+  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)};</script>
   ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
   <script type="module" src="/_synapse/turbo-router.js"></script>
@@ -1639,7 +1817,7 @@ ${importMapScript}
 
     <!-- Props de hidratacao e a entrada de cliente gerada -->
     <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}');</script>
+    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)};</script>
     ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
     <!-- Turbo Morphing SPA Navigation (<1.5kb, Zero Dependencies) -->
@@ -2064,6 +2242,17 @@ ${this.renderStylesheets()}
               ssrRenderCount: this.metrics.ssrRenderCount,
               staticFileCount: this.metrics.staticFileCount
             });
+          }
+
+          // Unified Social & Enterprise OAuth 2.0 Dispatcher: /_synapse/auth/:provider and /_synapse/auth/:provider/callback
+          if (pathname.startsWith('/_synapse/auth/')) {
+            const authPath = pathname.slice('/_synapse/auth/'.length);
+            const isCallback = authPath.endsWith('/callback');
+            const providerName = isCallback
+              ? authPath.slice(0, -'/callback'.length).toLowerCase()
+              : authPath.toLowerCase();
+
+            return await this.handleOAuthRequest(req, providerName, isCallback, url, startedAt);
           }
 
           // 3. RPC Actions Dispatcher (POST /_synapse/rpc/:sliceName)
@@ -2575,9 +2764,10 @@ ${this.renderStylesheets()}
             });
           }
 
-          // 5. UI Route Dispatcher (GET /:domain/:sliceName with optional i18n locale prefix)
+          // 5. UI Route Dispatcher (GET /:domain/:sliceName with optional i18n locale prefix or dynamic path segments)
           let resolvedSlice: DiscoveredSlice | undefined;
           let matchedLocale: string | undefined;
+          let routeParams: Record<string, string> = {};
 
           for (const slice of this.slices.values()) {
             if (pathname === slice.routePath) {
@@ -2588,14 +2778,27 @@ ${this.renderStylesheets()}
 
           if (!resolvedSlice && !pathname.startsWith('/_synapse/')) {
             const localeMatch = pathname.match(I18N_LOCALE_REGEX);
+            const strippedPath = localeMatch ? pathname.replace(I18N_LOCALE_REGEX, '/') : pathname;
             if (localeMatch) {
-              const strippedPath = pathname.replace(I18N_LOCALE_REGEX, '/');
-              for (const slice of this.slices.values()) {
-                if (strippedPath === slice.routePath) {
-                  resolvedSlice = slice;
-                  matchedLocale = localeMatch[1];
-                  break;
+              matchedLocale = localeMatch[1];
+            }
+
+            for (const slice of this.slices.values()) {
+              if (strippedPath === slice.routePath) {
+                resolvedSlice = slice;
+                break;
+              }
+              // Suporte a segmentos dinâmicos de rota: /:domain/:sliceName/:param...
+              if (strippedPath.startsWith(`${slice.routePath}/`)) {
+                resolvedSlice = slice;
+                const remainingSegments = strippedPath.slice(slice.routePath.length + 1).split('/').filter(Boolean);
+                if (remainingSegments.length > 0) {
+                  routeParams.id = remainingSegments[0];
+                  for (let i = 0; i < remainingSegments.length; i++) {
+                    routeParams[`param${i + 1}`] = remainingSegments[i];
+                  }
                 }
+                break;
               }
             }
           }
@@ -2640,7 +2843,7 @@ ${this.renderStylesheets()}
                     this.revalidatingKeys.add(cacheKey);
                     (async () => {
                       try {
-                        const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale);
+                        const fresh = await this.renderSliceHtml(slice, req, url, matchedLocale, routeParams);
                         if (!fresh.hasError) {
                           const ttl = cacheConfig.ttlSeconds;
                           const swr = cacheConfig.staleWhileRevalidateSeconds ?? 0;
@@ -2672,7 +2875,7 @@ ${this.renderStylesheets()}
               }
             }
 
-            const { html, hasError } = await this.renderSliceHtml(slice, req, url, matchedLocale);
+            const { html, hasError } = await this.renderSliceHtml(slice, req, url, matchedLocale, routeParams);
 
             if (hasError) {
               this.logRequest(req, pathname, 500, startedAt, session, 'ssr');

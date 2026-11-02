@@ -23,13 +23,37 @@ export {
   type DataFormProps,
   DataTable,
   type DataTableProps,
+  Drawer,
+  type DrawerProps,
+  DropdownItem,
+  type DropdownItemProps,
+  DropdownMenu,
+  type DropdownMenuProps,
   expandNestedObject,
   type FormField,
   getNestedProperty,
+  Modal,
+  type ModalProps,
   Pagination,
   type PaginationProps,
-  setNestedProperty
+  setNestedProperty,
+  Tab,
+  type TabProps,
+  TabList,
+  type TabListProps,
+  TabPanel,
+  type TabPanelProps,
+  Tabs,
+  type TabsProps
 } from './client/components';
+export {
+  ToastProvider,
+  type ToastProviderProps,
+  useToast,
+  type ToastItem,
+  type ToastType,
+  type ToastContextValue
+} from './client/toast';
 // Context & SSR data isolation
 export {
   type SynapseContextValue,
@@ -43,15 +67,22 @@ export {
   SliceErrorBoundary,
   type SliceErrorBoundaryProps
 } from './client/error-boundary';
-// Reactive Action & Realtime Subscription Hooks
+// Reactive Action, Routing & Realtime Subscription Hooks
 export {
   type UseActionOptions,
   type UseActionResult,
   type UseSubscriptionOptions,
   type UseSubscriptionResult,
   useAction,
+  useParams,
+  useSearchParams,
   useSubscription
 } from './client/hooks';
+export {
+  type UseUploadOptions,
+  type UseUploadResult,
+  useUpload
+} from './client/upload';
 export {
   createTranslator,
   type TranslateFn,

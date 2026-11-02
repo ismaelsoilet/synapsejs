@@ -66,7 +66,7 @@ failures only, so a machine consumer can always parse stdout.
 | `bun run test:e2e` | exit 0 | live HTTP/SSR/RPC/RBAC integration |
 | `bun run bench` | markdown table / `--json` | context surface per feature, both apps |
 | `bun run bench:concurrency` | JSON report | measures real throughput (req/s) and latency percentiles |
-| `bun run mcp` | stdio JSON-RPC | exposes 19 native AI tools via JSON-RPC 2.0 (12 Synapse + 7 Jev) |
+| `bun run mcp` | stdio JSON-RPC | exposes 23 native AI tools via JSON-RPC 2.0 (16 Synapse + 7 Jev) |
 | `synapse worker` | continuous JSON log | background queue worker (SQLite or PostgreSQL) |
 
 ### Per-process state (rate limiting, SSR cache, event hub)
@@ -269,7 +269,7 @@ partial and builds its SET clause from a column allowlist, `delete` checks exist
 suffix rules live in `runtime/discovery-rules.ts`, read by the runtime, the splitter and the
 contract, so the description cannot drift from behavior.
 
-The native MCP server (`bun run mcp`) exposes 19 tools for autonomous agents via JSON-RPC 2.0 over stdio:
+The native MCP server (`bun run mcp`) exposes 23 tools for autonomous agents via JSON-RPC 2.0 over stdio:
 1. `synapse_get_repo_map`: skeleton AST digest (< 3000 tokens).
 2. `synapse_get_db_schema`: centralized database schema catalog from slice DDLs.
 3. `synapse_check`: compiler diagnostics with exact JSON coordinates.
@@ -289,6 +289,10 @@ The native MCP server (`bun run mcp`) exposes 19 tools for autonomous agents via
 17. `synapse_triage_error`: classifies arbitrary runtime/test errors into env/transient/deep logic.
 18. `synapse_route_task`: semantically routes development tasks to optimal model tiers.
 19. `synapse_evaluate_nudge`: evaluates premature stop conditions and provides continuation nudges.
+20. `synapse_inspect_routes`: inspects discovered routes and dynamic URL patterns (`/:domain/:name/:id`).
+21. `synapse_test_slice`: runs slice test invariants and reports per-case verdicts.
+22. `synapse_generate_seed`: generates deterministic seed scripts from slice input schemas.
+23. `synapse_scaffold_component`: scaffolds interactive client components (modal, drawer, tabs, dropdown).
 
 **A slice never imports another slice.** `SLICE_IMPORTS_SLICE` fails the split when it happens,
 transitively, and points at `src/shared/`: a plain module that receives the `DatabaseClient` by

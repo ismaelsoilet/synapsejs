@@ -147,6 +147,25 @@ describe('scaffoldSlice', () => {
       expect(content).toContain('sliceTests');
     }
   });
+
+  it('scaffolds modal-crud slice with Modal UI and complete actions', () => {
+    const appDir = path.join(sandbox, 'app');
+    fs.mkdirSync(path.join(appDir, 'src', 'slices', 'crm'), { recursive: true });
+
+    const created = scaffoldSlice('crm', 'lead-manager', appDir, 'modal-crud', 'title:string,email:string');
+    expect(created.ok).toBe(true);
+
+    if (created.ok) {
+      const content = fs.readFileSync(created.value, 'utf-8');
+      expect(content).toContain('LeadManagerInputSchema');
+      expect(content).toContain('leadManagerAction');
+      expect(content).toContain('LeadManagerLoader');
+      expect(content).toContain('Modal');
+      expect(content).toContain('useToast');
+      expect(content).toContain('DataTable');
+      expect(content).toContain('sliceTests');
+    }
+  });
 });
 
 describe('scaffoldSlice containment', () => {

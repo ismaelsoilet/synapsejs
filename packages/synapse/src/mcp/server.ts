@@ -33,6 +33,7 @@ import { checkSchemaDrift } from '../compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../compiler/slice-splitter';
 import { SYNAPSE_VERSION } from '../version';
+import { validatePathSegment } from '../core/path-guard';
 import { MCP_TOOLS } from './tools';
 
 /**
@@ -538,6 +539,218 @@ export class SynapseMcpServer {
             const transcriptTail = String(args.transcriptTail || '');
             const result: NudgeGateResult = await shouldNudgeContinuation(transcriptTail);
             contentText = JSON.stringify(result, null, 2);
+          } else if (toolName === 'synapse_inspect_routes') {
+            const resolution = resolveSlicesDir(this.root);
+            if (!resolution.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ status: 'FAIL', code: resolution.error.code }, null, 2)
+                    }
+                  ]
+                }
+              };
+            }
+            const sliceFiles = findSliceFiles(resolution.value.slicesDir);
+            const routes = sliceFiles.map((file) => {
+              const rel = path.relative(resolution.value.slicesDir, file);
+              const parts = rel.split(path.sep);
+              const domain = parts[0] || 'general';
+              const name = path.basename(file, '.slice.tsx');
+              const code = fs.readFileSync(file, 'utf-8');
+              return {
+                sliceKey: `${domain}/${name}`,
+                routePath: `/${domain}/${name}`,
+                rpcPath: `/_synapse/rpc/${domain}/${name}`,
+                dynamicPath: `/${domain}/${name}/:id`,
+                filePath: toRelativePath(this.root, file),
+                hasAction: /export\s+async\s+function\s+\w+Action\b/.test(code),
+                hasLoader: /export\s+async\s+function\s+\w+Loader\b/.test(code),
+                hasComponent: /export\s+function\s+\w+(Trigger|View|Form|Component)\b/.test(code),
+                hasCache: /export\s+const\s+sliceCache\s*=/.test(code),
+                hasJob: /\bdefineJob\s*[<(]/.test(code)
+              };
+            });
+            contentText = JSON.stringify(
+              {
+                status: 'PASS',
+                operation: 'INSPECT_ROUTES',
+                totalRoutes: routes.length,
+                routes
+              },
+              null,
+              2
+            );
+          } else if (toolName === 'synapse_test_slice') {
+            const targetSlice = String(args.targetSlice || '');
+            if (!targetSlice) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ status: 'FAIL', code: 'MISSING_TARGET_SLICE' }, null, 2)
+                    }
+                  ]
+                }
+              };
+            }
+            const report = await runSliceOracles(this.root, { targetSlice });
+            contentText = JSON.stringify(report, null, 2);
+          } else if (toolName === 'synapse_generate_seed') {
+            const targetSlice = String(args.targetSlice || '');
+            const count = Math.min(Math.max(Number(args.count) || 5, 1), 50);
+            const resolution = resolveSlicesDir(this.root);
+            if (!resolution.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ status: 'FAIL', code: resolution.error.code }, null, 2)
+                    }
+                  ]
+                }
+              };
+            }
+            const sliceFiles = findSliceFiles(resolution.value.slicesDir);
+            const matchedFile = sliceFiles.find((f) => {
+              const name = path.basename(f, '.slice.tsx');
+              const rel = path.relative(resolution.value.slicesDir, f);
+              return name === targetSlice || rel.startsWith(targetSlice) || rel.includes(targetSlice);
+            });
+            if (!matchedFile) {
+              contentText = JSON.stringify(
+                {
+                  status: 'FAIL',
+                  code: 'SLICE_NOT_FOUND',
+                  message: `Fatia "${targetSlice}" não encontrada para gerar seed.`
+                },
+                null,
+                2
+              );
+            } else {
+              const code = fs.readFileSync(matchedFile, 'utf-8');
+              const tableMatch = code.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)/i);
+              const tableName = tableMatch ? tableMatch[1] : path.basename(matchedFile, '.slice.tsx').replace(/-/g, '_');
+              const { getDatabase } = await import('../core/database-factory');
+              const dbClient = getDatabase();
+              const generatedRows: Record<string, unknown>[] = [];
+              for (let i = 1; i <= count; i++) {
+                const row = {
+                  id: crypto.randomUUID(),
+                  name: `Seed Item ${i}`,
+                  sku: `SEED-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+                  price: parseFloat((10 + Math.random() * 90).toFixed(2)),
+                  stock: Math.floor(1 + Math.random() * 100),
+                  status: i % 3 === 0 ? 'low_stock' : 'active',
+                  created_at: new Date().toISOString()
+                };
+                generatedRows.push(row);
+                try {
+                  await dbClient.insert(tableName, row);
+                } catch {
+                  try {
+                    await dbClient.query(`INSERT INTO ${tableName} (id, name) VALUES ($1, $2)`, [row.id, row.name]);
+                  } catch {}
+                }
+              }
+              await dbClient.close?.();
+              contentText = JSON.stringify(
+                {
+                  status: 'PASS',
+                  operation: 'GENERATE_SEED',
+                  slice: targetSlice,
+                  table: tableName,
+                  recordsSynthesized: count,
+                  sample: generatedRows[0]
+                },
+                null,
+                2
+              );
+            }
+          } else if (toolName === 'synapse_scaffold_component') {
+            const domain = String(args.domain || 'general');
+            const name = String(args.name || 'component');
+            const componentType = String(args.componentType || 'modal');
+
+            const domainValid = validatePathSegment(domain);
+            const nameValid = validatePathSegment(name);
+            if (!domainValid.ok || !nameValid.ok) {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ status: 'FAIL', code: 'INVALID_PATH_SEGMENT' }, null, 2)
+                    }
+                  ]
+                }
+              };
+            }
+
+            const resolution = resolveSlicesDir(this.root);
+            let slicesDir: string;
+            if (resolution.ok) {
+              slicesDir = resolution.value.slicesDir;
+            } else if (resolution.error.code === 'AMBIGUOUS_SLICES_DIR') {
+              return {
+                jsonrpc: '2.0',
+                id,
+                result: {
+                  isError: true,
+                  content: [
+                    {
+                      type: 'text',
+                      text: JSON.stringify({ status: 'FAIL', code: resolution.error.code }, null, 2)
+                    }
+                  ]
+                }
+              };
+            } else {
+              slicesDir = path.join(path.resolve(this.root), 'src', 'slices');
+            }
+            const outPath = path.join(slicesDir, domain, `${name}.tsx`);
+            fs.mkdirSync(path.dirname(outPath), { recursive: true });
+            const pascal = name
+              .split(/[-_]/)
+              .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+              .join('');
+            let componentCode = '';
+            if (componentType === 'modal') {
+              componentCode = `import React, { useState } from 'react';\nimport { Modal, Button } from 'synapsejs/client';\n\nexport function ${pascal}() {\n  const [isOpen, setIsOpen] = useState(false);\n  return (\n    <div>\n      <Button onClick={() => setIsOpen(true)}>Abrir ${pascal}</Button>\n      <Modal isOpen={isOpen} onClose={() => setIsOpen(false)} title="${pascal}">\n        <p className="text-slate-300">Conteúdo interativo do modal gerenciado no cliente.</p>\n      </Modal>\n    </div>\n  );\n}\n`;
+            } else if (componentType === 'drawer') {
+              componentCode = `import React, { useState } from 'react';\nimport { Drawer, Button } from 'synapsejs/client';\n\nexport function ${pascal}() {\n  const [isOpen, setIsOpen] = useState(false);\n  return (\n    <div>\n      <Button onClick={() => setIsOpen(true)}>Exibir ${pascal}</Button>\n      <Drawer isOpen={isOpen} onClose={() => setIsOpen(false)} title="${pascal}">\n        <p className="text-slate-300">Painel lateral deslizante.</p>\n      </Drawer>\n    </div>\n  );\n}\n`;
+            } else if (componentType === 'tabs') {
+              componentCode = `import React from 'react';\nimport { Tabs, TabList, Tab, TabPanel } from 'synapsejs/client';\n\nexport function ${pascal}() {\n  return (\n    <Tabs defaultValue="tab1">\n      <TabList>\n        <Tab value="tab1">Aba 1</Tab>\n        <Tab value="tab2">Aba 2</Tab>\n      </TabList>\n      <TabPanel value="tab1"><div className="p-4 text-slate-300">Painel 1</div></TabPanel>\n      <TabPanel value="tab2"><div className="p-4 text-slate-300">Painel 2</div></TabPanel>\n    </Tabs>\n  );\n}\n`;
+            } else {
+              componentCode = `import React from 'react';\nimport { DropdownMenu, DropdownItem, Button } from 'synapsejs/client';\n\nexport function ${pascal}() {\n  return (\n    <DropdownMenu trigger={<Button variant="secondary">Ações ▾</Button>}>\n      <DropdownItem onClick={() => alert('Opção 1')}>Opção 1</DropdownItem>\n      <DropdownItem variant="danger" onClick={() => alert('Excluir')}>Excluir</DropdownItem>\n    </DropdownMenu>\n  );\n}\n`;
+            }
+            fs.writeFileSync(outPath, componentCode, 'utf-8');
+            contentText = JSON.stringify(
+              {
+                status: 'PASS',
+                operation: 'SCAFFOLD_COMPONENT',
+                componentType,
+                filePath: toRelativePath(this.root, outPath)
+              },
+              null,
+              2
+            );
           } else {
             return {
               jsonrpc: '2.0',

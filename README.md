@@ -108,7 +108,7 @@ The CLI instantly generates:
 |---|---|
 | **⚡ High-Throughput Engine** | Built directly on native **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). `bun run bench:concurrency` measures a static-JSON baseline, a real server-rendered page and a real RPC write arm on your machine — the script prints the numbers and states what it does not measure. |
 | **🛡️ AST Isolation & Leak Gates** | Type-checker reachability partitions slices into `shared.tsx`, `server.ts`, and `client.tsx`. Automated compiler verification gates detect and block SQL, secrets, server modules, or Bun globals from reaching the browser bundle. |
-| **🤖 Native MCP Server (19 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`) exposing 19 native tools (12 Synapse architectural tools + 7 Jev System One reflex triage tools). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🤖 Native MCP Server (23 Tools)** | First-class **Model Context Protocol** server (`bun run mcp`) exposing 23 native tools (16 Synapse architectural tools + 7 Jev System One reflex triage tools). AI agents inspect codebase skeletons (<3k tokens), detect schema drift, calculate blast radius impact, run tests via standard JSON-RPC, and invoke semantic gates (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 System 1 + System 2 Symbiosis** | Native integration with [Jev System One](https://github.com/ismaelsoilet/jev-harness) non-autoregressive decision harness. Triages test failures in 70-300ms (<500µs local), halts circular refactoring doom loops, and dynamically modulates reasoning effort (Astra-Jev). |
 | **🔄 Realtime WebSockets & SSE** | Native Server-Sent Events (`GET /_synapse/sse/:topic*`) + full-duplex WebSockets (`defineSocket`, `useWebSocket`) with automatic 15s heartbeats, client hook `useSubscription`, and multi-instance PostgreSQL `LISTEN/NOTIFY` pub/sub. |
 | **🗄️ Declarative Schema & Rollbacks** | SQL migrations live in slices. Tracked statement-by-statement with SHA-256 idempotency. Supports bidirectional `-- up:` / `-- down:` demarcations and transactional rollbacks (`synapse rollback`). |
@@ -426,15 +426,23 @@ bun run mcp
 | `synapse_split` | System 2 | Runs AST splitter and asserts 0-leak client/server verification gates. |
 | `synapse_run_pbt` | System 2 | Executes Fast-Check property-based tests across slices and reports broken invariants. |
 | `synapse_scaffold_slice` | System 2 | Scaffolds slices using templates and the `--fields` grammar. |
+| `synapse_scaffold_domain` | System 2 | Scaffolds complete modular domain directory structure. |
 | `synapse_migrate` | System 2 | Applies declarative DDL migrations idempotently to SQLite or PostgreSQL. |
 | `synapse_rollback` | System 2 | Transactionally rolls back migration statements matching down blocks. |
 | `synapse_contract` | System 2 | Returns the framework authoring contract, HTTP semantics, and discovery rules. |
 | `synapse_check_db_drift` | System 2 | Inspects live database against slice DDLs for missing/orphan tables and columns. |
 | `synapse_diff_impact` | System 2 | Computes cross-slice blast radius for code, schema, and shared module changes. |
+| `synapse_inspect_routes` | System 2 | Inspects all discovered routes, HTTP methods, actions, loaders, and dynamic slug segments. |
+| `synapse_test_slice` | System 2 | Executes isolated slice tests and property oracles reporting per-case status. |
+| `synapse_generate_seed` | System 2 | Generates deterministic seed data scripts from slice TypeBox input schemas. |
+| `synapse_scaffold_component` | System 2 | Scaffolds accessible interactive client components (`modal`, `drawer`, `tabs`, `dropdown`). |
 | `synapse_test_gate` | **System 1 (Jev)** | Executes PBT oracles and immediately triages failures with non-autoregressive gating to prevent LLM token waste. |
 | `synapse_abort_check` | **System 1 (Jev)** | Evaluates proposed plans and error history to detect circular refactoring loops and doomed trajectories. |
 | `synapse_verify_completion` | **System 1 (Jev)** | Adversarially verifies slice implementation and test outputs against acceptance criteria before committing. |
 | `synapse_reasoning_effort` | **System 1 (Jev)** | Dynamically modulates agent reasoning effort (Astra-Jev) to low/medium/high to conserve tokens during mechanical tasks. |
+| `synapse_triage_error` | **System 1 (Jev)** | Classifies arbitrary runtime/test errors into environment, transient, or deep logic bugs. |
+| `synapse_route_task` | **System 1 (Jev)** | Semantically routes development tasks to optimal model tiers (fast, pro, reasoning). |
+| `synapse_evaluate_nudge` | **System 1 (Jev)** | Evaluates premature stop conditions and provides continuation nudges. |
 
 ---
 

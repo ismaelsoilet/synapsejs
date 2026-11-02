@@ -45,7 +45,7 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     `// [SYNAPSE-JS GENERATED CLIENT ENTRY] hydrates the slice in the browser`,
     `import React from 'react';`,
     `import { hydrateRoot } from 'react-dom/client';`,
-    `import { rpcCall, SynapseProvider } from 'synapsejs/client';`,
+    `import { rpcCall, SynapseProvider, ToastProvider } from 'synapsejs/client';`,
     ...layoutImports,
     `import { ${options.componentName} } from ${JSON.stringify(options.clientModulePath)};`,
     ``,
@@ -81,12 +81,12 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     lines.push(`    const treeWithLayout = ${treeExpr};`);
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
-    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, treeWithLayout)`);
+    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, treeWithLayout))`);
     lines.push(`    );`);
   } else {
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
-    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, sliceElement)`);
+    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, sliceElement))`);
     lines.push(`    );`);
   }
 
