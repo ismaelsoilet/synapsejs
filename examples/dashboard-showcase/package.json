@@ -15,7 +15,7 @@
     "test:gate": "synapse test --gate",
     "new-slice": "synapse new-slice",
     "split": "synapse split",
-    "build:css": "tailwindcss -o public/synapse.css --content \"src/**/*.{ts,tsx},../../packages/synapse/src/client/**/*.{ts,tsx}\" --minify",
+    "build:css": "tailwindcss -i src/styles/main.css -o public/synapse.css --content \"src/**/*.{ts,tsx},../../packages/synapse/src/client/**/*.{ts,tsx}\" --minify",
     "build": "bun run build:css && synapse build",
     "build:standalone": "synapse build --standalone",
     "start": "synapse start"

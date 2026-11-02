@@ -218,6 +218,7 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
         }
         if (push) history.pushState({}, '', href);
         window.dispatchEvent(new CustomEvent('synapse:morphed', { detail: { url: href } }));
+        window.__SYNAPSE_URL__ = href;
         var newClientScript = doc.querySelector('script[data-synapse-client]');
         if (newClientScript && newClientScript.src) {
           import(newClientScript.src).then(function(mod) {
@@ -1678,7 +1679,8 @@ export class SynapseServer {
       meta,
       matchedLocale || 'pt-BR',
       hasCustomLayout,
-      routeParams
+      routeParams,
+      url.toString()
     );
 
     return { html, dataProps, meta, hasError, error: renderError || undefined };
@@ -1696,7 +1698,8 @@ export class SynapseServer {
     meta?: SliceMetadata,
     locale = 'pt-BR',
     hasLayout = false,
-    routeParams: Record<string, string> = {}
+    routeParams: Record<string, string> = {},
+    currentUrl = '/'
   ): string {
     const safeTitle = escapeHtml(title);
     const safeSliceName = escapeHtml(sliceName);
@@ -1764,7 +1767,7 @@ ${importMapScript}
   <div id="synapse-root" class="min-h-full flex-1 flex flex-col">${contentHtml}</div>
 
   <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)};</script>
+  <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)}; globalThis.__SYNAPSE_URL__ = ${JSON.stringify(currentUrl)};</script>
   ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
   <script type="module" src="/_synapse/turbo-router.js"></script>
@@ -1821,7 +1824,7 @@ ${importMapScript}
 
     <!-- Props de hidratacao e a entrada de cliente gerada -->
     <script data-synapse-props id="__SYNAPSE_PROPS_DATA__" type="application/json">${propsJson}</script>
-    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)};</script>
+    <script>globalThis.__SYNAPSE_PROPS__ = JSON.parse((document.querySelector('script[data-synapse-props][id="__SYNAPSE_PROPS_DATA__"]') || {}).textContent || '{}'); globalThis.__SYNAPSE_ROUTE_PARAMS__ = ${JSON.stringify(routeParams)}; globalThis.__SYNAPSE_URL__ = ${JSON.stringify(currentUrl)};</script>
     ${clientUrl ? `<script data-synapse-client type="module" src="${clientUrl}"></script>` : '<!-- sem componente hidratavel -->'}
 
     <!-- Turbo Morphing SPA Navigation (<1.5kb, Zero Dependencies) -->

@@ -52,6 +52,7 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     `export function hydrate() {`,
     `  const scope = globalThis as unknown as Record<string, unknown>;`,
     `  const props = (scope[${JSON.stringify(CLIENT_PROPS_GLOBAL)}] ?? {}) as Record<string, unknown>;`,
+    `  const currentUrl = (scope.__SYNAPSE_URL__ as string) || (typeof window !== 'undefined' ? window.location.href : '/');`,
     `  const root = document.getElementById(${JSON.stringify(rootId)});`,
     `  if (root) {`,
     `    const sliceElement = React.createElement(${options.componentName}, {`,
@@ -71,25 +72,26 @@ export function clientEntrySource(options: ClientEntryOptions): string {
         `    const RootLayout = (RootLayoutModule as any).default || (RootLayoutModule as any).Layout || null;`
       );
     }
+    lines.push(`    const layoutProps = { ...props, url: currentUrl };`);
     let treeExpr = 'sliceElement';
     if (options.domainLayoutPath) {
-      treeExpr = `(typeof DomainLayout === 'function' ? React.createElement(DomainLayout, { ...props }, ${treeExpr}) : ${treeExpr})`;
+      treeExpr = `(typeof DomainLayout === 'function' ? React.createElement(DomainLayout, layoutProps, ${treeExpr}) : ${treeExpr})`;
     }
     if (options.rootLayoutPath) {
-      treeExpr = `(typeof RootLayout === 'function' ? React.createElement(RootLayout, { ...props }, ${treeExpr}) : ${treeExpr})`;
+      treeExpr = `(typeof RootLayout === 'function' ? React.createElement(RootLayout, layoutProps, ${treeExpr}) : ${treeExpr})`;
     }
     lines.push(`    const treeWithLayout = ${treeExpr};`);
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
     lines.push(
-      `      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, treeWithLayout))`
+      `      React.createElement(SynapseProvider, { props, session: props.session as any, url: currentUrl }, React.createElement(ToastProvider, null, treeWithLayout))`
     );
     lines.push(`    );`);
   } else {
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
     lines.push(
-      `      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, sliceElement))`
+      `      React.createElement(SynapseProvider, { props, session: props.session as any, url: currentUrl }, React.createElement(ToastProvider, null, sliceElement))`
     );
     lines.push(`    );`);
   }
