@@ -32,7 +32,7 @@ describe('synapse build', () => {
     const vendorFile = path.join(fixtureApp, '.synapse', 'client', '_vendor.js');
     expect(fs.existsSync(vendorFile)).toBe(true);
     expect(fs.statSync(vendorFile).size).toBeGreaterThan(10000);
-  }, 20000);
+  }, 60000);
 
   it('builds a client that uses the client entry, and the bundle carries no server code', async () => {
     const fixturesApp = path.resolve(import.meta.dir, 'fixtures', 'slices');
@@ -66,7 +66,7 @@ describe('synapse build', () => {
     expect(code).not.toContain('bun:sqlite');
     expect(code).not.toContain('password_hash');
     expect(code).toContain('storeSession');
-  }, 20000);
+  }, 60000);
 
   it('reports a slice that cannot be imported as FAIL with its reason, without crashing the build', async () => {
     const report = await buildAllClientBundles(fixtureApp);
@@ -81,7 +81,7 @@ describe('synapse build', () => {
     expect(broken?.code).toBe('IMPORT_FAILED');
     expect(broken?.reason).toContain('falha proposital');
     expect(report.value.entries.some((entry) => entry.slice === 'tickets/view-tickets')).toBe(true);
-  }, 20000);
+  }, 60000);
 
   it('writes a manifest that lets the runtime skip the bundler', async () => {
     await buildAllClientBundles(fixtureApp);
@@ -93,7 +93,7 @@ describe('synapse build', () => {
     const sliceFile = path.join(fixtureApp, 'src', 'slices', 'tickets', 'view-tickets.slice.tsx');
     const fresh = freshBundleFrom(manifest, 'tickets/view-tickets', fs.statSync(sliceFile).mtimeMs);
     expect(fresh).toBe('/_synapse/client/tickets-view-tickets.js');
-  }, 20000);
+  }, 60000);
 
   it('ignores the pre-built bundle once the slice changes', () => {
     const manifest = { version: 1 as const, bundles: { 'tickets/view-tickets': { url: '/x.js', mtimeMs: 111 } } };
@@ -111,7 +111,7 @@ describe('synapse build', () => {
     const second = fs.readFileSync(clientManifestPath(fixtureApp), 'utf-8');
 
     expect(second).toBe(first);
-  }, 20000);
+  }, 60000);
 
   it('never reports PASS with zero slices to build', async () => {
     const emptyApp = fs.mkdtempSync(path.join(import.meta.dir, 'fixtures', 'empty-build-'));

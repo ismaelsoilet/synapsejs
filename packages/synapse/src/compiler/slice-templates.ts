@@ -1532,7 +1532,9 @@ function modalCrudTemplate(names: TemplateNames, fieldsSpec?: string): string {
   const fields = parseFields(fieldsSpec || 'name:string,description:string,status:enum(active|archived)');
   const ddlColumns = generateTableColumnsCode(fields);
   const tbProps = fields.map((f) => `  ${f.name}: Type.String()`).join(',\n');
-  const formFields = fields.map((f) => `{ name: '${f.name}', label: '${f.name}', type: 'text', required: true }`).join(', ');
+  const formFields = fields
+    .map((f) => `{ name: '${f.name}', label: '${f.name}', type: 'text', required: true }`)
+    .join(', ');
 
   return `import React, { useState } from 'react';
 import { Type, Static } from '@sinclair/typebox';

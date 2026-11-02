@@ -12,8 +12,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge" alt="License: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-610%20Passing-emerald?style=for-the-badge&logo=checkmarx" alt="Test suite"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-19%20Native%20Tools%20(12+7)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 19 Native Tools"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Tests-626%20Passing-emerald?style=for-the-badge&logo=checkmarx" alt="Test suite"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/MCP%20Server-23%20Native%20Tools%20(16+7)-purple?style=for-the-badge&logo=anthropic" alt="MCP Server: 23 Native Tools"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/System%201-Jev%20Harness%20Active-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Validation-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
@@ -354,7 +354,7 @@ SynapseJS pairs natively with **[Jev System One](https://github.com/ismaelsoilet
 │ • Local heuristics (< 500µs)       │  │ • Vertical slices (*.slice.tsx)│
 │ • Non-autoregressive test-gate     │  │ • Fast-Check PBT oracles       │
 │ • Circular loop abort-check        │  │ • Zero-Leak AST Splitter       │
-│ • Astra-Jev reasoning modulation   │  │ • Native MCP Server (19 tools) │
+│ • Astra-Jev reasoning modulation   │  │ • Native MCP Server (23 tools) │
 │ • Zero-token waste on env failures │  │ • Slices DDL & auto migrations │
 └────────────────────────────────────┘  └────────────────────────────────┘
 ```
@@ -396,7 +396,7 @@ When no remote Jev endpoint or API key is configured, Jev-Harness seamlessly fal
 
 SynapseJS is the first framework built from day one to be consumed and operated by **autonomous AI agents** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **19 native MCP tools** over stdio JSON-RPC 2.0:
+Instead of forcing an LLM to blindly grep thousands of files, SynapseJS exposes **23 native MCP tools** over stdio JSON-RPC 2.0:
 
 ```bash
 bun run mcp
@@ -416,7 +416,7 @@ bun run mcp
 }
 ```
 
-### The 19 Native MCP Tools
+### The 23 Native MCP Tools
 
 | MCP Tool | Domain | Capability |
 |---|---|---|
@@ -487,9 +487,9 @@ comparable** — the quoted reduction is the `app` column (1,832 → 1,627 token
 
 ### 3. Test Suite Pass Rate
 ```text
-Result: 600 pass / 10 skip / 0 fail
-2874 expect() calls
-Ran 610 tests across 75 files.
+Result: 616 pass / 10 skip / 0 fail
+2947 expect() calls
+Ran 626 tests across 78 files.
 ```
 
 ---
@@ -519,7 +519,7 @@ synapse new-slice <domain> <name>   # Scaffolds vertical slice (templates: creat
 synapse new-shared <name>           # Scaffolds shared domain module in src/shared/<name>.ts with transaction pattern
 synapse new-domain <domain>         # Scaffolds domain layout + list slice + shared module (--fields="...")
 synapse skeleton                    # Regenerates .codebase/repo-map.d.ts & .codebase/db-schema.d.ts
-synapse mcp                         # Starts native Model Context Protocol stdio server (19 tools incl. Jev System One)
+synapse mcp                         # Starts native Model Context Protocol stdio server (23 tools incl. Jev System One)
 synapse build [--standalone]        # Pre-builds client micro-bundles or standalone release
 synapse worker                      # Starts continuous background jobs queue worker
 synapse contract [--markdown]       # Emits framework authoring contract specifications

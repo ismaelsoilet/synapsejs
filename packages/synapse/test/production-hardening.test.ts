@@ -6,7 +6,6 @@ import {
   BoundedLruCache,
   createActionContext,
   normalizeCacheKey,
-  type SliceCacheConfig,
   serializeCookie
 } from '../src/core';
 import { isPrivateOrReservedIp, validateExternalUrl } from '../src/runtime/network-guard';

@@ -1,23 +1,27 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import type React from 'react';
+import { useState } from 'react';
 import {
+  createSession,
   type DatabaseClient,
   Err,
   MockDatabaseClient,
   Ok,
   type Result,
-  type SessionContext,
-  createSession,
-  requireAuth
+  requireAuth,
+  type SessionContext
 } from 'synapsejs';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox)
 // ============================================================================
-export const DeleteItemInputSchema = Type.Object({
-  id: Type.String({ minLength: 1 })
-}, { additionalProperties: true });
+export const DeleteItemInputSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 })
+  },
+  { additionalProperties: true }
+);
 export type DeleteItemInput = Static<typeof DeleteItemInputSchema>;
 
 // ============================================================================

@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.11.0 — Accessible UI primitives, dynamic routes, streaming HTTP, multi-provider OAuth, and 23 MCP tools
+
+- **UI Primitives.** Accessible `<Modal>`, `<Drawer>`, `<Tabs>` (with `<TabList>`, `<Tab>`, `<TabPanel>`), `<DropdownMenu>` (with `<DropdownItem>`), and `<ToastProvider>` with `useToast()` hook, keyboard navigation (Escape, arrow keys), focus trapping, ARIA roles, and auto-injection in the SSR shell and client hydration.
+- **Dynamic URL Routing.** Isomorphic `useParams<T>()` and `useSearchParams()` supporting `/:domain/:name/:id` dynamic route segment matching in both SSR and browser client navigation.
+- **Streaming HTTP & Chunked Responses.** ActionContext `ctx.stream()` returning `Transfer-Encoding: chunked` streams for real-time LLM token streaming and large datasets.
+- **Client File Uploads.** `useUpload()` client hook supporting progress tracking, cancellation via AbortController, and streaming upload protection.
+- **Multi-Provider OAuth.** Built-in presets for Google, GitHub, and Discord OAuth with profile fetchers, PKCE state verification, and unified `/_synapse/auth/:provider` endpoints.
+- **Expanded MCP Server (23 Native Tools).** Added `synapse_inspect_routes`, `synapse_test_slice`, `synapse_generate_seed`, and `synapse_scaffold_component` for autonomous AI agents, reaching 23 native MCP tools.
+- **CLI Scaffolder.** Added `--template=modal-crud` for instant modal/drawer slice generation.
+
 ## 1.10.0 — Scheduled jobs, portable aggregation, RBAC permissions and UI integration
 
 - **Query engine.** `aggregate`, `count` and `exists` are available on every client. `GROUP BY`,

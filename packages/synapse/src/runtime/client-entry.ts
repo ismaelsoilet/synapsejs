@@ -81,12 +81,16 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     lines.push(`    const treeWithLayout = ${treeExpr};`);
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
-    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, treeWithLayout))`);
+    lines.push(
+      `      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, treeWithLayout))`
+    );
     lines.push(`    );`);
   } else {
     lines.push(`    hydrateRoot(`);
     lines.push(`      root,`);
-    lines.push(`      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, sliceElement))`);
+    lines.push(
+      `      React.createElement(SynapseProvider, { props, session: props.session as any }, React.createElement(ToastProvider, null, sliceElement))`
+    );
     lines.push(`    );`);
   }
 

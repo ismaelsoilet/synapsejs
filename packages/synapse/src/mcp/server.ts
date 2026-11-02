@@ -32,8 +32,8 @@ import { type SliceTemplate, scaffoldCrud, scaffoldDomain, scaffoldSlice } from 
 import { checkSchemaDrift } from '../compiler/schema-drift';
 import { findSliceFiles, resolveSlicesDir } from '../compiler/slice-discovery';
 import { artifactDirectory, splitSlice, verifySplit, writeSplitArtifacts } from '../compiler/slice-splitter';
-import { SYNAPSE_VERSION } from '../version';
 import { validatePathSegment } from '../core/path-guard';
+import { SYNAPSE_VERSION } from '../version';
 import { MCP_TOOLS } from './tools';
 
 /**
@@ -643,7 +643,9 @@ export class SynapseMcpServer {
             } else {
               const code = fs.readFileSync(matchedFile, 'utf-8');
               const tableMatch = code.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_]+)/i);
-              const tableName = tableMatch ? tableMatch[1] : path.basename(matchedFile, '.slice.tsx').replace(/-/g, '_');
+              const tableName = tableMatch
+                ? tableMatch[1]
+                : path.basename(matchedFile, '.slice.tsx').replace(/-/g, '_');
               const { getDatabase } = await import('../core/database-factory');
               const dbClient = getDatabase();
               const generatedRows: Record<string, unknown>[] = [];

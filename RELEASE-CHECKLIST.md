@@ -1,9 +1,9 @@
-# Release checklist — 1.10.0
+# Release checklist — 1.11.0
 
-Estado desta release: **código, documentação e gates locais prontos no commit 1.10.0; faltam a
+Estado desta release: **código, documentação e gates locais prontos no commit 1.11.0; faltam a
 confirmação dos required checks no GitHub, a CI de PostgreSQL/Docker e a tag.** Os gates de
 PostgreSQL, Docker e branch protection são de CI/operador e estão marcados como tal na tabela.
-A tag `v1.10.0` é o gatilho do workflow de publicação (`.github/workflows/release.yml`), então ela é a
+A tag `v1.11.0` é o gatilho do workflow de publicação (`.github/workflows/release.yml`), então ela é a
 decisão explícita do operador — nada publica por push em `main`.
 
 ## Rodando todos os gates
@@ -20,11 +20,11 @@ neste repositório: ler a saída em vez do código). Os resultados abaixo vieram
 
 | Gate | Comando | Resultado |
 |---|---|---|
-| Suíte do framework | `bun test packages/synapse/test` | **610 testes, 0 falhas**, 10 skipped (Postgres sem engine local) |
+| Suíte do framework | `bun test packages/synapse/test` | **626 testes, 0 falhas**, 10 skipped (Postgres sem engine local) |
 | Typecheck do monorepo | `bun run check` | 0 erros |
 | Template como consumidor | `bun run check:template` | 0 erros |
-| Lint | `bun run lint` | 0 erros, 67 warnings de fronteira aceitos |
-| Deriva de documentação | `bun run docs:check` | PASS — 610 testes / 75 arquivos / 19 tools / v1.10.0, tabela de features 57-3-1 |
+| Lint | `bun run lint` | 0 erros, 64 warnings de fronteira aceitos |
+| Deriva de documentação | `bun run docs:check` | PASS — 626 testes / 78 arquivos / 23 tools / v1.11.0, tabela de features 57-3-1 |
 | Cobertura | `bun run coverage:check` | PASS — 62,55% funções / 75,16% linhas (pisos 55/70) |
 | Splitter, dois gates, três apps | `bun run split` | 0 diagnósticos, 0 vazamentos |
 | Oráculos das fatias | `bun run test:slices` · `test:crm` · `test:helpdesk` · `test:helpdesk-conventional` | 24/24 · 18/18 · 9/9 · 6/6 |
@@ -45,7 +45,7 @@ Números de teste mudam com o tempo: quem mantém os documentos alinhados é o g
 1. Confirmar no GitHub que os required checks incluem o job `test`, `postgres-parity` e
    `publish-rehearsal` (branch protection é configuração de hospedagem, não um arquivo do repositório;
    registre a confirmação no release-evidence).
-2. `git tag v1.10.0 && git push origin v1.10.0` — a versão da tag **precisa** ser igual a
+2. `git tag v1.11.0 && git push origin v1.11.0` — a versão da tag **precisa** ser igual a
    `packages/synapse/package.json` (o workflow verifica e aborta se não for).
 3. O workflow roda a suíte, os splits, os oráculos, `test:all`, `docs:check` e o ensaio de publicação;
    qualquer falha aborta o publish.
@@ -54,12 +54,12 @@ Números de teste mudam com o tempo: quem mantém os documentos alinhados é o g
    token de npm configurado, então o npm troca a identidade do GitHub por uma credencial efêmera e
    assina a proveniência. O job instala um npm **pinado** (`npm@12.2.0`) porque Node 22 traz o npm 10,
    que não fala OIDC — foi exatamente isso que fez o primeiro run da v1.9.0 falhar com `ENEEDAUTH`.
-5. Criar o GitHub Release com o texto de `docs/releases/1.10.0.md`.
+5. Criar o GitHub Release com o texto de `docs/releases/1.11.0.md`.
 
 ## Depois de publicar
 
 - [ ] Conferir a versão no registro (`npm view @ismaelsoilet/synapsejs version`).
-- [ ] Conferir que `bunx synapsejs new <app>` instala a 1.10.0 e sobe (`bun run dev`).
+- [ ] Conferir que `bunx synapsejs new <app>` instala a 1.11.0 e sobe (`bun run dev`).
 - [ ] Avisar quem está na 1.8 apontando para `docs/migration-1.9.md` (ou `docs/migracao-1.9.pt-BR.md`).
 
 ## O que esta release NÃO resolve (dito antes de perguntarem)

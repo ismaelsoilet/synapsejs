@@ -121,9 +121,7 @@ export interface ActionContext<TServices = Record<string, unknown>> extends Data
 
   /** Emits an HTTP chunked or SSE streaming response for real-time AI/LLM tokens */
   readonly stream: (
-    generator:
-      | AsyncIterable<string | Uint8Array>
-      | (() => AsyncGenerator<string | Uint8Array>),
+    generator: AsyncIterable<string | Uint8Array> | (() => AsyncGenerator<string | Uint8Array>),
     options?: { contentType?: string; status?: number; headers?: Record<string, string> }
   ) => Response;
 
@@ -207,9 +205,7 @@ export function createActionContext<TServices = Record<string, unknown>>(
   };
 
   const stream = (
-    generator:
-      | AsyncIterable<string | Uint8Array>
-      | (() => AsyncGenerator<string | Uint8Array>),
+    generator: AsyncIterable<string | Uint8Array> | (() => AsyncGenerator<string | Uint8Array>),
     streamOptions?: { contentType?: string; status?: number; headers?: Record<string, string> }
   ): Response => {
     const iterable = typeof generator === 'function' ? generator() : generator;

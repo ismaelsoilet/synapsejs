@@ -38,22 +38,14 @@ export {
   type PaginationProps,
   setNestedProperty,
   Tab,
-  type TabProps,
   TabList,
   type TabListProps,
   TabPanel,
   type TabPanelProps,
+  type TabProps,
   Tabs,
   type TabsProps
 } from './client/components';
-export {
-  ToastProvider,
-  type ToastProviderProps,
-  useToast,
-  type ToastItem,
-  type ToastType,
-  type ToastContextValue
-} from './client/toast';
 // Context & SSR data isolation
 export {
   type SynapseContextValue,
@@ -79,11 +71,6 @@ export {
   useSubscription
 } from './client/hooks';
 export {
-  type UseUploadOptions,
-  type UseUploadResult,
-  useUpload
-} from './client/upload';
-export {
   createTranslator,
   type TranslateFn,
   type TranslationDictionary
@@ -95,6 +82,19 @@ export {
   type SliceOutletProviderProps
 } from './client/outlet';
 export { SubSlice, type SubSliceProps } from './client/sub-slice';
+export {
+  type ToastContextValue,
+  type ToastItem,
+  ToastProvider,
+  type ToastProviderProps,
+  type ToastType,
+  useToast
+} from './client/toast';
+export {
+  type UseUploadOptions,
+  type UseUploadResult,
+  useUpload
+} from './client/upload';
 export {
   type UseWebSocketOptions,
   type UseWebSocketResult,

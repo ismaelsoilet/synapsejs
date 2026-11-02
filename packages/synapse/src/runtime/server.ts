@@ -29,14 +29,23 @@ import {
   type ActionContext,
   AnonymousSession,
   BoundedLruCache,
+  buildOAuthAuthorizationUrl,
   createActionContext,
   createDefaultLogger,
   createSession,
   type DatabaseClient,
+  discordOAuthPreset,
+  exchangeOAuthCode,
+  fetchOAuthUserProfile,
+  generateOAuthState,
+  generatePkceChallenge,
   getDatabase,
+  githubOAuthPreset,
+  googleOAuthPreset,
   hasAnyRole,
   loadSynapseConfig,
   normalizeCacheKey,
+  type OAuthProviderConfig,
   optimizeImage,
   resetDatabaseInstance,
   type SessionContext,
@@ -44,17 +53,8 @@ import {
   type SliceSocketDefinition,
   type SynapseConfig,
   serializeCookie,
-  buildOAuthAuthorizationUrl,
-  discordOAuthPreset,
-  exchangeOAuthCode,
-  fetchOAuthUserProfile,
-  generateOAuthState,
-  generatePkceChallenge,
-  githubOAuthPreset,
-  googleOAuthPreset,
-  verifyOAuthState,
-  type OAuthProviderConfig,
-  signSessionToken
+  signSessionToken,
+  verifyOAuthState
 } from '../core/index';
 import { ROLES_COOKIE, SESSION_COOKIE } from '../core/session-cookie';
 import { isSessionTokenRevoked, isSessionTokenRevokedInDb, verifySessionToken } from '../core/session-token';
@@ -1648,7 +1648,11 @@ export class SynapseServer {
           ? React.createElement(this.layoutComponent, { session, url: url.toString() }, treeWithDomainLayout)
           : treeWithDomainLayout;
         const treeWithToast = React.createElement(ToastProvider, null, treeWithLayout);
-        const rootEl = React.createElement(SynapseProvider, { props: dataProps, session, url: url.toString() }, treeWithToast);
+        const rootEl = React.createElement(
+          SynapseProvider,
+          { props: dataProps, session, url: url.toString() },
+          treeWithToast
+        );
         contentHtml = renderToString(rootEl);
       } catch (e: any) {
         hasError = true;
@@ -2767,7 +2771,7 @@ ${this.renderStylesheets()}
           // 5. UI Route Dispatcher (GET /:domain/:sliceName with optional i18n locale prefix or dynamic path segments)
           let resolvedSlice: DiscoveredSlice | undefined;
           let matchedLocale: string | undefined;
-          let routeParams: Record<string, string> = {};
+          const routeParams: Record<string, string> = {};
 
           for (const slice of this.slices.values()) {
             if (pathname === slice.routePath) {
@@ -2791,7 +2795,10 @@ ${this.renderStylesheets()}
               // Suporte a segmentos dinâmicos de rota: /:domain/:sliceName/:param...
               if (strippedPath.startsWith(`${slice.routePath}/`)) {
                 resolvedSlice = slice;
-                const remainingSegments = strippedPath.slice(slice.routePath.length + 1).split('/').filter(Boolean);
+                const remainingSegments = strippedPath
+                  .slice(slice.routePath.length + 1)
+                  .split('/')
+                  .filter(Boolean);
                 if (remainingSegments.length > 0) {
                   routeParams.id = remainingSegments[0];
                   for (let i = 0; i < remainingSegments.length; i++) {

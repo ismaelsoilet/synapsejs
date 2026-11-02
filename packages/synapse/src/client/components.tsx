@@ -1,12 +1,12 @@
 import React, {
   createContext,
+  type ReactNode,
   useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
-  useState,
-  type ReactNode
+  useState
 } from 'react';
 
 // ============================================================================
@@ -595,12 +595,18 @@ export function Modal({
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={closeOnBackdrop ? onClose : undefined}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
       aria-modal="true"
       role="dialog"
+      tabIndex={-1}
     >
       <div
         ref={dialogRef}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        role="document"
         className={`bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl flex flex-col w-full overflow-hidden transition-all duration-200 transform scale-100 ${sizeStyles[size]} ${className}`}
       >
         {(title || description) && (
@@ -619,9 +625,7 @@ export function Modal({
             </button>
           </div>
         )}
-        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">
-          {children}
-        </div>
+        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">{children}</div>
         {footer && (
           <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2">
             {footer}
@@ -660,6 +664,8 @@ export function Drawer({
   className = '',
   closeOnBackdrop = true
 }: DrawerProps) {
+  const drawerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!isOpen) return;
 
@@ -698,11 +704,18 @@ export function Drawer({
     <div
       className="fixed inset-0 z-50 flex bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={closeOnBackdrop ? onClose : undefined}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onClose();
+      }}
       aria-modal="true"
       role="dialog"
+      tabIndex={-1}
     >
       <div
+        ref={drawerRef}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        role="document"
         className={`fixed ${posStyles[position]} flex flex-col h-full w-full bg-slate-900 border-${position === 'right' ? 'l' : 'r'} border-slate-800 shadow-2xl overflow-hidden transition-transform duration-300 ${sizeStyles[size]} ${className}`}
       >
         <div className="flex items-start justify-between p-5 border-b border-slate-800">
@@ -719,9 +732,7 @@ export function Drawer({
             ✕
           </button>
         </div>
-        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">
-          {children}
-        </div>
+        <div className="p-5 overflow-y-auto flex-1 text-slate-200 text-sm leading-relaxed">{children}</div>
         {footer && (
           <div className="p-4 border-t border-slate-800 bg-slate-950/40 flex items-center justify-end gap-2">
             {footer}
@@ -852,7 +863,7 @@ export function TabPanel({ value, children, className = '' }: TabPanelProps) {
   if (ctx.value !== value) return null;
 
   return (
-    <div role="tabpanel" tabIndex={0} className={`focus:outline-none ${className}`}>
+    <div role="tabpanel" className={`focus:outline-none ${className}`}>
       {children}
     </div>
   );
@@ -868,12 +879,7 @@ export interface DropdownMenuProps {
   className?: string;
 }
 
-export function DropdownMenu({
-  trigger,
-  align = 'right',
-  children,
-  className = ''
-}: DropdownMenuProps) {
+export function DropdownMenu({ trigger, align = 'right', children, className = '' }: DropdownMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -908,14 +914,21 @@ export function DropdownMenu({
 
   return (
     <div ref={containerRef} className={`relative inline-block text-left ${className}`}>
-      <div onClick={() => setIsOpen((prev) => !prev)}>{trigger}</div>
+      <button
+        type="button"
+        onClick={() => setIsOpen((prev) => !prev)}
+        className="text-left bg-transparent border-0 p-0 m-0 cursor-pointer w-auto"
+      >
+        {trigger}
+      </button>
       {isOpen && (
         <div
           role="menu"
           aria-orientation="vertical"
+          tabIndex={-1}
           className={`absolute ${alignStyles[align]} mt-2 w-52 rounded-xl bg-slate-900 border border-slate-800 shadow-2xl p-1 z-50 animate-in fade-in duration-150`}
         >
-          <div onClick={() => setIsOpen(false)}>{children}</div>
+          {children}
         </div>
       )}
     </div>
@@ -957,4 +970,3 @@ export function DropdownItem({
     </button>
   );
 }
-

@@ -1,5 +1,5 @@
 import type { DatabaseClient, Result } from 'synapsejs';
-import { Ok, Err } from 'synapsejs';
+import { Err, Ok } from 'synapsejs';
 
 /**
  * Módulo de Negócio Compartilhado para o Domínio Inventory.
@@ -11,7 +11,9 @@ export async function adjustInventoryStock(
   itemId: string,
   delta: number,
   _reason = 'manual_adjustment'
-): Promise<Result<{ id: string; oldStock: number; newStock: number }, 'NO_DATABASE' | 'NOT_FOUND' | 'INSUFFICIENT_STOCK'>> {
+): Promise<
+  Result<{ id: string; oldStock: number; newStock: number }, 'NO_DATABASE' | 'NOT_FOUND' | 'INSUFFICIENT_STOCK'>
+> {
   if (!db) {
     return Err('NO_DATABASE');
   }
@@ -32,10 +34,7 @@ export async function adjustInventoryStock(
     }
 
     const newStatus = newStock <= 5 ? 'low_stock' : 'active';
-    await tx.query(
-      'UPDATE inventory SET stock = $1, status = $2 WHERE id = $3',
-      [newStock, newStatus, itemId]
-    );
+    await tx.query('UPDATE inventory SET stock = $1, status = $2 WHERE id = $3', [newStock, newStatus, itemId]);
 
     return Ok({ id: itemId, oldStock: Number(item.stock), newStock });
   });

@@ -1,27 +1,31 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import type React from 'react';
+import { useState } from 'react';
 import {
+  createSession,
   type DatabaseClient,
   Err,
   MockDatabaseClient,
   Ok,
   type Result,
-  type SessionContext,
-  createSession,
-  requireAuth
+  requireAuth,
+  type SessionContext
 } from 'synapsejs';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox) — todos os campos editáveis são opcionais
 // ============================================================================
-export const UpdateItemInputSchema = Type.Object({
-  id: Type.String({ minLength: 1 }),
-  name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
-  price: Type.Optional(Type.Number({ minimum: 0 })),
-  stock: Type.Optional(Type.Number({ minimum: 0 })),
-  status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('low_stock'), Type.Literal('archived')]))
-}, { additionalProperties: true });
+export const UpdateItemInputSchema = Type.Object(
+  {
+    id: Type.String({ minLength: 1 }),
+    name: Type.Optional(Type.String({ minLength: 1, maxLength: 255 })),
+    price: Type.Optional(Type.Number({ minimum: 0 })),
+    stock: Type.Optional(Type.Number({ minimum: 0 })),
+    status: Type.Optional(Type.Union([Type.Literal('active'), Type.Literal('low_stock'), Type.Literal('archived')]))
+  },
+  { additionalProperties: true }
+);
 export type UpdateItemInput = Static<typeof UpdateItemInputSchema>;
 
 // ============================================================================

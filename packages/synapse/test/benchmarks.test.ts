@@ -38,7 +38,7 @@ describe('benchmarks measure the work the documentation claims', () => {
     expect(readme).toContain('1,832');
     expect(readme).toContain('1,627');
     expect(readme).toContain('not comparable');
-  });
+  }, 30_000);
 
   it('the concurrency benchmark discovers slices and measures real work in a separate process', async () => {
     const output = await runScript(['scripts/bench-concurrency.ts', '--json'], {

@@ -1,12 +1,4 @@
-import React, {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  type ReactNode
-} from 'react';
+import { createContext, type ReactNode, useCallback, useContext, useEffect, useRef, useState } from 'react';
 
 // ============================================================================
 // TOAST NOTIFICATION TYPES
@@ -44,11 +36,7 @@ export interface ToastProviderProps {
   maxToasts?: number;
 }
 
-export function ToastProvider({
-  children,
-  position = 'bottom-right',
-  maxToasts = 5
-}: ToastProviderProps) {
+export function ToastProvider({ children, position = 'bottom-right', maxToasts = 5 }: ToastProviderProps) {
   const [toasts, setToasts] = useState<ToastItem[]>([]);
   const timersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
@@ -71,7 +59,7 @@ export function ToastProvider({
 
   const toast = useCallback(
     (options: Omit<ToastItem, 'id'>): string => {
-      const id = 'toast_' + Math.random().toString(36).substring(2, 9);
+      const id = `toast_${Math.random().toString(36).substring(2, 9)}`;
       const duration = options.durationMs ?? 4000;
       const newItem: ToastItem = { ...options, id };
 
@@ -165,7 +153,9 @@ export function ToastProvider({
               role="alert"
               className={`pointer-events-auto flex items-start gap-3 p-4 rounded-xl border backdrop-blur-md shadow-2xl transition-all duration-200 transform translate-y-0 text-xs w-full ${conf.bg} ${conf.border}`}
             >
-              <span className={`h-5 w-5 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${conf.text} bg-slate-900/60 border ${conf.border}`}>
+              <span
+                className={`h-5 w-5 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${conf.text} bg-slate-900/60 border ${conf.border}`}
+              >
                 {conf.icon}
               </span>
               <div className="flex-1 min-w-0">

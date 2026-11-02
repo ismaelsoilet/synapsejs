@@ -27,7 +27,7 @@ const args = process.argv.slice(2);
 const dryRun = args.includes('--dry-run');
 const asJson = args.includes('--json');
 const fileArg = args.find((arg) => !arg.startsWith('--'));
-const file = fileArg ? path.resolve(root, fileArg) : path.join(root, 'release-evidence', '1.10.0.md');
+const file = fileArg ? path.resolve(root, fileArg) : path.join(root, 'release-evidence', '1.11.0.md');
 
 function run(command: string): { exitCode: number; stdout: string } {
   const result = Bun.spawnSync(['bash', '-lc', command], {

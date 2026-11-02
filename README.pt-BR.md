@@ -12,8 +12,8 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-610%20Passando-emerald?style=for-the-badge&logo=checkmarx" alt="Suíte de testes"></a>
-  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-19%20Ferramentas%20Nativas%20(12+7)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 19 Ferramentas Nativas"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-626%20Passando-emerald?style=for-the-badge&logo=checkmarx" alt="Suíte de testes"></a>
+  <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-23%20Ferramentas%20Nativas%20(16+7)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 23 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
   <a href="https://github.com/sinclairzx81/typebox"><img src="https://img.shields.io/badge/Valida%C3%A7%C3%A3o-TypeBox%20JIT-orange?style=for-the-badge" alt="TypeBox"></a>
@@ -109,7 +109,7 @@ A CLI gera instantaneamente:
 |---|---|
 | **⚡ Motor de Alta Vazão** | Construído diretamente sobre os módulos nativos do **Bun** (`bun:sqlite`, `Bun.serve`, `Bun.CryptoHasher`, `Bun.build`). `bun run bench:concurrency` mede um baseline de JSON estático, uma página SSR real e um braço de escrita RPC real na sua máquina — o script imprime os números e diz o que não mede. |
 | **🛡️ Isolamento AST e Gates de Vazamento** | Análise de alcançabilidade via AST particiona fatias em `shared.tsx`, `server.ts` e `client.tsx`. Gates automatizados do compilador detectam e bloqueiam SQL, segredos, módulos de servidor ou globais do Bun de chegarem ao browser. |
-| **🤖 Servidor MCP Nativo (19 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 19 ferramentas (12 arquiteturais do Synapse + 7 de triagem reflexa do Jev System One). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
+| **🤖 Servidor MCP Nativo (23 Ferramentas)** | Servidor **Model Context Protocol** nativo (`bun run mcp`) com 23 ferramentas (16 arquiteturais do Synapse + 7 de triagem reflexa do Jev System One). Agentes de IA inspecionam esqueletos de código (<3k tokens), detectam desvios de schema (drift), calculam raio de impacto, rodam testes via JSON-RPC e acionam portões semânticos (`synapse_test_gate`, `synapse_abort_check`, `synapse_verify_completion`, `synapse_reasoning_effort`). |
 | **🧠 Simbiose Sistema 1 + Sistema 2** | Integração nativa com o harness de decisão não-autoregressivo [Jev System One](https://github.com/ismaelsoilet/jev-harness). Tria falhas de teste em 70-300ms (<500µs local), aborta trajetórias condenadas em loops de refatoração e modula dinamicamente o esforço de raciocínio (Astra-Jev). |
 | **🔄 Realtime WebSockets e SSE** | Gateway Server-Sent Events (`GET /_synapse/sse/:topic*`) + WebSockets full-duplex (`defineSocket`, `useWebSocket`) com keep-alive automático a cada 15s, hook cliente `useSubscription` e pub/sub multi-instância via PostgreSQL `LISTEN/NOTIFY`. |
 | **🗄️ Migrações Declarativas e Rollback** | O DDL vive nas fatias e é rastreado declaração por declaração com hash SHA-256. Suporta demarcações reversíveis `-- up:` / `-- down:` e rollback transacional atômico (`synapse rollback`). |
@@ -355,7 +355,7 @@ O SynapseJS opera nativamente em simbiose com o **[Jev System One](https://githu
 │ • Heurísticas locais (< 500µs)     │  │ • Fatias verticais (*.slice.tsx│
 │ • Triagem de testes (test-gate)    │  │ • Oráculos PBT com fast-check  │
 │ • Aborto de loops (abort-check)    │  │ • AST Splitter (zero data-leak)│
-│ • Modulação de raciocínio Astra-Jev│  │ • MCP Server Nativo (19 tools) │
+│ • Modulação de raciocínio Astra-Jev│  │ • MCP Server Nativo (23 tools) │
 │ • Zero desperdício em erros de env │  │ • Migrações DDL por fatia & PBT│
 └────────────────────────────────────┘  └────────────────────────────────┘
 ```
@@ -397,7 +397,7 @@ Caso não haja conexão de rede ou credenciais remotas configuradas, o Jev-Harne
 
 O SynapseJS é o primeiro framework concebido desde o primeiro dia para ser operado com eficácia por **agentes de codificação de IA autônomos** (Cursor, Claude Code, Windsurf, Antigravity).
 
-Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **19 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
+Em vez de forçar o modelo a ler dezenas de arquivos aleatoriamente, o SynapseJS expõe **23 ferramentas MCP nativas** via JSON-RPC 2.0 stdio:
 
 ```bash
 bun run mcp
@@ -417,7 +417,7 @@ bun run mcp
 }
 ```
 
-### As 19 Ferramentas MCP Nativas
+### As 23 Ferramentas MCP Nativas
 
 | Ferramenta MCP | Domínio | Capacidade |
 |---|---|---|
@@ -427,15 +427,23 @@ bun run mcp
 | `synapse_split` | Sistema 2 | Executa o particionamento de fatias e valida os gates anti-vazamento (Zero-Leak). |
 | `synapse_run_pbt` | Sistema 2 | Roda testes baseados em propriedades Fast-Check e identifica invariantes violados. |
 | `synapse_scaffold_slice` | Sistema 2 | Cria novas fatias usando templates e gramática de `--fields`. |
+| `synapse_scaffold_domain` | Sistema 2 | Cria estrutura modular completa de diretórios de domínio. |
 | `synapse_migrate` | Sistema 2 | Aplica migrações declarativas de forma idempotente em SQLite ou PostgreSQL. |
 | `synapse_rollback` | Sistema 2 | Desfaz alterações de schema de forma transacional usando blocos down. |
 | `synapse_contract` | Sistema 2 | Expõe a especificação completa de contratos do framework, semântica HTTP e regras de nomenclatura. |
 | `synapse_check_db_drift` | Sistema 2 | Compara o banco de dados em tempo real com as fatias para detectar tabelas e colunas órfãs ou faltantes. |
 | `synapse_diff_impact` | Sistema 2 | Calcula o raio de impacto de alterações em schemas, chaves estrangeiras e módulos compartilhados. |
+| `synapse_inspect_routes` | Sistema 2 | Inspeciona todas as rotas descobertas, métodos HTTP, actions, loaders e slugs dinâmicos. |
+| `synapse_test_slice` | Sistema 2 | Executa testes isolados de fatias e oráculos de propriedades reportando status por caso. |
+| `synapse_generate_seed` | Sistema 2 | Gera scripts determinísticos de seed a partir dos schemas de entrada TypeBox das fatias. |
+| `synapse_scaffold_component` | Sistema 2 | Cria componentes clientes acessíveis e interativos (`modal`, `drawer`, `tabs`, `dropdown`). |
 | `synapse_test_gate` | **Sistema 1 (Jev)** | Executa oráculos PBT e tria falhas imediatamente com gating não-autoregressivo para evitar desperdício de tokens. |
 | `synapse_abort_check` | **Sistema 1 (Jev)** | Avalia planos propostos e histórico de erros para detectar loops de refatoração circulares e trajetórias condenadas. |
 | `synapse_verify_completion` | **Sistema 1 (Jev)** | Verifica adversarialmente a implementação da fatia e saídas de teste contra critérios de aceitação antes de comitar. |
 | `synapse_reasoning_effort` | **Sistema 1 (Jev)** | Modula dinamicamente o esforço de raciocínio do modelo (Astra-Jev) para economizar tokens em etapas mecânicas. |
+| `synapse_triage_error` | **Sistema 1 (Jev)** | Classifica erros arbitrários de tempo de execução/teste em ambiente, transitórios ou bugs lógicos profundos. |
+| `synapse_route_task` | **Sistema 1 (Jev)** | Roteia tarefas de desenvolvimento semanticamente para camadas de modelo ideais (rápido, pro, raciocínio). |
+| `synapse_evaluate_nudge` | **Sistema 1 (Jev)** | Avalia condições de parada prematura e fornece nudges de continuação. |
 
 ---
 
@@ -481,9 +489,9 @@ repositório e **não são comparáveis** — a redução citada é a da coluna 
 
 ### 3. Taxa de Aprovação da Suíte de Testes
 ```text
-Resultado: 600 pass / 10 skip / 0 fail
-2874 chamadas expect()
-610 testes executados em 75 arquivos.
+Resultado: 616 pass / 10 skip / 0 fail
+2947 chamadas expect()
+626 testes executados em 78 arquivos.
 ```
 
 ---
@@ -513,7 +521,7 @@ synapse new-slice <domínio> <nome>  # Cria fatia vertical (templates: create, l
 synapse new-shared <nome>           # Cria módulo de domínio compartilhado em src/shared/<nome>.ts com transação
 synapse new-domain <domínio>        # Cria layout do domínio + list slice + módulo compartilhado (--fields="...")
 synapse skeleton                    # Regenera .codebase/repo-map.d.ts e .codebase/db-schema.d.ts
-synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (19 ferramentas incl. Jev System 1)
+synapse mcp                         # Inicia o servidor Model Context Protocol via stdio (23 ferramentas incl. Jev System 1)
 synapse build [--standalone]        # Pré-compila micro-bundles de browser ou pacote standalone
 synapse worker                      # Inicia worker contínuo para filas de background jobs
 synapse contract [--markdown]       # Emite especificação técnica de contratos do framework

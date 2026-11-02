@@ -1,17 +1,14 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
-import { Type } from '@sinclair/typebox';
 import * as fs from 'fs';
 import * as path from 'path';
-import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { SliceOutlet, SliceOutletProvider } from '../src/client/outlet';
 import { SubSlice } from '../src/client/sub-slice';
 import { scaffoldShared } from '../src/compiler/scaffolder';
 import { splitSlice } from '../src/compiler/slice-splitter';
-import { defineCache, type SliceCacheConfig } from '../src/core/cache';
-import { Ok, type Result } from '../src/core/index';
+import { defineCache } from '../src/core/cache';
 import { SqliteDatabaseClient } from '../src/core/sqlite-client';
-import { defineSocket, type SliceSocketDefinition } from '../src/core/websocket';
+import { defineSocket } from '../src/core/websocket';
 import { isCache, isSocket } from '../src/runtime/discovery-rules';
 import { SynapseServer } from '../src/runtime/server';
 

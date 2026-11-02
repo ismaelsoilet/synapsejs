@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it, setDefaultTimeout } from 'bun:test';
 import * as fs from 'fs';
 import * as path from 'path';
-import React from 'react';
 import { renderToString } from 'react-dom/server';
 import { SynapseProvider } from '../src/client/context';
 import { useParams, useSearchParams } from '../src/client/hooks';

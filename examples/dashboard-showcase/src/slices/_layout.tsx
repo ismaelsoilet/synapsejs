@@ -1,14 +1,6 @@
-import React, { type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
-export default function RootLayout({
-  children,
-  url = '/',
-  session
-}: {
-  children: ReactNode;
-  url?: string;
-  session?: any;
-}) {
+export default function RootLayout({ children, url = '/' }: { children: ReactNode; url?: string; session?: unknown }) {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans antialiased">
       {/* Top Global Navigation Bar */}
@@ -23,7 +15,7 @@ export default function RootLayout({
                 Synapse<span className="text-cyan-400">Dash</span>
               </span>
               <span className="text-[10px] text-slate-400 ml-2 px-1.5 py-0.5 rounded bg-slate-800 border border-slate-700 font-mono">
-                v1.10.0
+                v1.11.0
               </span>
             </div>
           </a>
@@ -32,7 +24,9 @@ export default function RootLayout({
             <a
               href="/dashboard/overview"
               className={`px-3 py-1.5 rounded-md transition-colors ${
-                url.includes('/dashboard') ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                url.includes('/dashboard')
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               📊 Visão Geral
@@ -40,7 +34,9 @@ export default function RootLayout({
             <a
               href="/inventory/list-items"
               className={`px-3 py-1.5 rounded-md transition-colors ${
-                url.includes('/inventory/list-items') ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                url.includes('/inventory/list-items')
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               📦 Inventário
@@ -48,7 +44,9 @@ export default function RootLayout({
             <a
               href="/inventory/create-item"
               className={`px-3 py-1.5 rounded-md transition-colors ${
-                url.includes('/inventory/create-item') ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
+                url.includes('/inventory/create-item')
+                  ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20'
+                  : 'text-slate-300 hover:text-white hover:bg-slate-800/60'
               }`}
             >
               ➕ Novo Item
@@ -66,6 +64,7 @@ export default function RootLayout({
             target="_blank"
             className="hover:text-cyan-400 transition-colors hidden md:inline"
             title="Mapa de repositório gerado por AST"
+            rel="noopener"
           >
             repo-map.d.ts
           </a>
@@ -73,18 +72,12 @@ export default function RootLayout({
       </header>
 
       {/* Main Content Container */}
-      <main className="flex-1 flex flex-col w-full">
-        {children}
-      </main>
+      <main className="flex-1 flex flex-col w-full">{children}</main>
 
       {/* Global Minimalist Footer */}
       <footer className="border-t border-slate-900 bg-slate-950/80 px-6 py-4 text-center text-xs text-slate-500 flex flex-col md:flex-row justify-between items-center gap-2">
-        <div>
-          SynapseJS v1.10.0 • Machine-Centric Vertical Slices (N = 1) • Turbo Morphing SPA
-        </div>
-        <div className="font-mono text-slate-600">
-          Zero-Wiring Fullstack Engine
-        </div>
+        <div>SynapseJS v1.11.0 • Machine-Centric Vertical Slices (N = 1) • Turbo Morphing SPA</div>
+        <div className="font-mono text-slate-600">Zero-Wiring Fullstack Engine</div>
       </footer>
     </div>
   );

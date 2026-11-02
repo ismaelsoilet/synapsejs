@@ -1,5 +1,4 @@
 import { afterAll, beforeAll, describe, expect, it } from 'bun:test';
-import * as fs from 'fs';
 import * as path from 'path';
 import { expandNestedObject, getNestedProperty, setNestedProperty } from '../src/client/components';
 import { MockDatabaseClient } from '../src/core/database-client';

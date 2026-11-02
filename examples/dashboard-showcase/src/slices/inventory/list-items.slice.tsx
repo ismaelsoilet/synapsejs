@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import * as fc from 'fast-check';
+import { useState } from 'react';
 import {
   type DatabaseClient,
   Err,
@@ -9,20 +8,22 @@ import {
   Ok,
   type Result,
   type SessionContext,
-  type SliceLoaderContext,
-  createSession
+  type SliceLoaderContext
 } from 'synapsejs';
-import { DataTable, Card, Pagination, Badge, Button } from 'synapsejs/client';
+import { Badge, Button, Card, DataTable, Pagination } from 'synapsejs/client';
 
 // ============================================================================
 // 1. CONTRATO DE ENTRADA (TypeBox)
 // ============================================================================
-export const ListItemsInputSchema = Type.Object({
-  query: Type.Optional(Type.String({ maxLength: 60 })),
-  category: Type.Optional(Type.String({ maxLength: 50 })),
-  limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
-  offset: Type.Optional(Type.Integer({ minimum: 0 }))
-}, { additionalProperties: true });
+export const ListItemsInputSchema = Type.Object(
+  {
+    query: Type.Optional(Type.String({ maxLength: 60 })),
+    category: Type.Optional(Type.String({ maxLength: 50 })),
+    limit: Type.Optional(Type.Integer({ minimum: 1, maximum: 100 })),
+    offset: Type.Optional(Type.Integer({ minimum: 0 }))
+  },
+  { additionalProperties: true }
+);
 export type ListItemsInput = Static<typeof ListItemsInputSchema>;
 
 // ============================================================================
@@ -82,7 +83,7 @@ export async function listItemsAction(
     sql += ` AND category = $${params.length}`;
   }
 
-  sql += ' ORDER BY created_at DESC LIMIT $' + (params.length + 1) + ' OFFSET $' + (params.length + 2);
+  sql += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
   params.push(limit, offset);
 
   const rows = await db.query<InventoryRow>(sql, params);
@@ -145,9 +146,7 @@ export function ListItemsTrigger({
       key: 'price',
       header: 'Preço Unitário',
       render: (val: unknown) => (
-        <span className="font-mono font-semibold text-emerald-400">
-          R$ {Number(val || 0).toFixed(2)}
-        </span>
+        <span className="font-mono font-semibold text-emerald-400">R$ {Number(val || 0).toFixed(2)}</span>
       )
     },
     {
@@ -156,9 +155,7 @@ export function ListItemsTrigger({
       render: (val: unknown) => {
         const stock = Number(val || 0);
         return (
-          <span className={`font-mono font-bold ${stock <= 5 ? 'text-amber-400' : 'text-slate-200'}`}>
-            {stock} un
-          </span>
+          <span className={`font-mono font-bold ${stock <= 5 ? 'text-amber-400' : 'text-slate-200'}`}>{stock} un</span>
         );
       }
     },
@@ -174,10 +171,7 @@ export function ListItemsTrigger({
   ];
 
   return (
-    <Card
-      title="Catálogo de Produtos em Estoque"
-      subtitle={`${total} itens registrados no catálogo`}
-    >
+    <Card title="Catálogo de Produtos em Estoque" subtitle={`${total} itens registrados no catálogo`}>
       <div className="mb-4 flex flex-col sm:flex-row gap-3 justify-between items-center">
         <form method="GET" action="/inventory/list-items" className="w-full sm:w-80 flex gap-2">
           <input
@@ -188,7 +182,9 @@ export function ListItemsTrigger({
             placeholder="Buscar por nome ou SKU..."
             className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
           />
-          <Button type="submit" variant="secondary">Filtrar</Button>
+          <Button type="submit" variant="secondary">
+            Filtrar
+          </Button>
         </form>
 
         <a href="/inventory/create-item">

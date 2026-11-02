@@ -1,17 +1,16 @@
-import React, { useState } from 'react';
-import { Type, Static } from '@sinclair/typebox';
+import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
-import * as fc from 'fast-check';
+import { useState } from 'react';
 import {
   type DatabaseClient,
+  defineCache,
+  defineJob,
   Err,
   MockDatabaseClient,
   Ok,
   type Result,
   type SessionContext,
-  type SliceLoaderContext,
-  defineCache,
-  defineJob
+  type SliceLoaderContext
 } from 'synapsejs';
 import {
   Badge,
@@ -62,18 +61,19 @@ export const inventoryAuditJob = defineJob<{ initiatedBy: string }>({
     const summary = await ctx.db.queryOne<{ totalStock: number }>(
       'SELECT COALESCE(sum(stock), 0) as totalStock FROM inventory'
     );
-    ctx.logger.info(
-      `[Audit Job] Concluído por ${payload.initiatedBy}: estoque global = ${summary?.totalStock ?? 0}`
-    );
+    ctx.logger.info(`[Audit Job] Concluído por ${payload.initiatedBy}: estoque global = ${summary?.totalStock ?? 0}`);
   }
 });
 
 // ============================================================================
 // 4. CONTRATO DE ENTRADA & DOMÍNIO (Result<T, E>)
 // ============================================================================
-export const OverviewInputSchema = Type.Object({
-  refreshAudit: Type.Optional(Type.Boolean())
-}, { additionalProperties: true });
+export const OverviewInputSchema = Type.Object(
+  {
+    refreshAudit: Type.Optional(Type.Boolean())
+  },
+  { additionalProperties: true }
+);
 export type OverviewInput = Static<typeof OverviewInputSchema>;
 
 export interface DashboardMetrics {
@@ -114,9 +114,7 @@ export async function overviewAction(
   const lowStockRow = await db.queryOne<{ count: number }>(
     "SELECT count(*) as count FROM inventory WHERE stock <= 5 OR status = 'low_stock'"
   );
-  const catRow = await db.queryOne<{ count: number }>(
-    'SELECT count(DISTINCT category) as count FROM inventory'
-  );
+  const catRow = await db.queryOne<{ count: number }>('SELECT count(DISTINCT category) as count FROM inventory');
 
   const metrics: DashboardMetrics = {
     totalItems: Number(countRow?.count ?? 0),
@@ -197,16 +195,25 @@ export function OverviewTrigger({
             Gestão Integrada de Estoque & Operações
           </h1>
           <p className="text-sm text-slate-400 mt-1">
-            Arquitetura em Fatias Verticais Contíguas (<span className="text-cyan-400 font-mono">*.slice.tsx</span>) • Zero-Wiring Bun Server
+            Arquitetura em Fatias Verticais Contíguas (<span className="text-cyan-400 font-mono">*.slice.tsx</span>) •
+            Zero-Wiring Bun Server
           </p>
         </div>
 
         <div className="flex items-center gap-3">
-          <Button variant="secondary" onClick={() => setIsModalOpen(true)}>⚡ Ações Rápidas (Modal)</Button>
-          <Button variant="secondary" onClick={() => setIsDrawerOpen(true)}>📜 Auditoria (Drawer)</Button>
+          <Button variant="secondary" onClick={() => setIsModalOpen(true)}>
+            ⚡ Ações Rápidas (Modal)
+          </Button>
+          <Button variant="secondary" onClick={() => setIsDrawerOpen(true)}>
+            📜 Auditoria (Drawer)
+          </Button>
           <DropdownMenu trigger={<Button variant="secondary">Opções ▾</Button>}>
-            <DropdownItem onClick={() => toast.info('Exportando relatório CSV...', 'Relatório')}>📊 Exportar CSV</DropdownItem>
-            <DropdownItem onClick={() => toast.success('Cache SSR purgado com sucesso!', 'Cache')}>🔄 Purgar Cache</DropdownItem>
+            <DropdownItem onClick={() => toast.info('Exportando relatório CSV...', 'Relatório')}>
+              📊 Exportar CSV
+            </DropdownItem>
+            <DropdownItem onClick={() => toast.success('Cache SSR purgado com sucesso!', 'Cache')}>
+              🔄 Purgar Cache
+            </DropdownItem>
           </DropdownMenu>
           <a href="/inventory/create-item">
             <Button variant="primary">➕ Novo Produto</Button>
@@ -237,7 +244,9 @@ export function OverviewTrigger({
             {/* Card 2: Unidades em Estoque */}
             <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-xl shadow-lg hover:border-slate-700 transition-colors">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Unidades em Estoque</span>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Unidades em Estoque
+                </span>
                 <span className="p-2 rounded-lg bg-blue-500/10 text-blue-400 text-lg">📊</span>
               </div>
               <div className="mt-3 text-3xl font-extrabold text-white font-mono">{metrics.totalStock}</div>
@@ -247,7 +256,9 @@ export function OverviewTrigger({
             {/* Card 3: Valor Total de Inventário */}
             <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-xl shadow-lg hover:border-slate-700 transition-colors">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Patrimônio em Estoque</span>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Patrimônio em Estoque
+                </span>
                 <span className="p-2 rounded-lg bg-emerald-500/10 text-emerald-400 text-lg">💰</span>
               </div>
               <div className="mt-3 text-3xl font-extrabold text-emerald-400 font-mono">
@@ -259,10 +270,14 @@ export function OverviewTrigger({
             {/* Card 4: Alertas de Baixo Estoque */}
             <div className="bg-slate-900/90 border border-slate-800 p-6 rounded-xl shadow-lg hover:border-slate-700 transition-colors">
               <div className="flex justify-between items-start">
-                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Alertas de Reposição</span>
+                <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                  Alertas de Reposição
+                </span>
                 <span className="p-2 rounded-lg bg-amber-500/10 text-amber-400 text-lg">⚠️</span>
               </div>
-              <div className={`mt-3 text-3xl font-extrabold font-mono ${metrics.lowStockCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}>
+              <div
+                className={`mt-3 text-3xl font-extrabold font-mono ${metrics.lowStockCount > 0 ? 'text-amber-400' : 'text-slate-300'}`}
+              >
                 {metrics.lowStockCount}
               </div>
               <div className="mt-2 text-xs text-slate-500 font-mono">Estoque crítico (&le; 5 un)</div>
@@ -273,29 +288,38 @@ export function OverviewTrigger({
         <TabPanel value="architecture">
           {/* Seção Informativa de Arquitetura */}
           <div className="pt-4">
-            <Card title="Recursos Ativos nesta Aplicação" subtitle="Demonstração das 58 capacidades do SynapseJS v1.10.0">
+            <Card
+              title="Recursos Ativos nesta Aplicação"
+              subtitle="Demonstração das 58 capacidades do SynapseJS v1.11.0"
+            >
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs font-mono">
                 <div className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800">
                   <div className="text-cyan-400 font-bold mb-1">⚡ Locality of Behavior (N=1)</div>
                   <p className="text-slate-400 font-sans">
-                    Cada funcionalidade possui contrato TypeBox, DDL, Server Action, UI React e oráculo PBT em 1 único arquivo.
+                    Cada funcionalidade possui contrato TypeBox, DDL, Server Action, UI React e oráculo PBT em 1 único
+                    arquivo.
                   </p>
                 </div>
                 <div className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800">
                   <div className="text-emerald-400 font-bold mb-1">🛡️ Zero-Leak Splitter</div>
                   <p className="text-slate-400 font-sans">
-                    O compilador do Synapse extrai automaticamente código server-only do bundle cliente, garantindo 0 vazamento de SQL.
+                    O compilador do Synapse extrai automaticamente código server-only do bundle cliente, garantindo 0
+                    vazamento de SQL.
                   </p>
                 </div>
                 <div className="p-3.5 rounded-lg bg-slate-950/60 border border-slate-800">
                   <div className="text-purple-400 font-bold mb-1">🔄 Reversible Migrations</div>
                   <p className="text-slate-400 font-sans">
-                    Blocos <span className="text-slate-300 font-mono">-- up:</span> e <span className="text-slate-300 font-mono">-- down:</span> permitem migrações e rollbacks transacionais instantâneos via CLI.
+                    Blocos <span className="text-slate-300 font-mono">-- up:</span> e{' '}
+                    <span className="text-slate-300 font-mono">-- down:</span> permitem migrações e rollbacks
+                    transacionais instantâneos via CLI.
                   </p>
                 </div>
               </div>
               <div className="mt-4 pt-4 border-t border-slate-800 flex justify-between items-center text-xs text-slate-500">
-                <div>Cache SSR: <span className="text-slate-400 font-mono">defineCache (10s TTL, 30s SWR)</span></div>
+                <div>
+                  Cache SSR: <span className="text-slate-400 font-mono">defineCache (10s TTL, 30s SWR)</span>
+                </div>
                 <div className="font-mono">Renderizado em: {timestamp}</div>
               </div>
             </Card>
@@ -307,7 +331,8 @@ export function OverviewTrigger({
       <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title="Ações Rápidas do Sistema">
         <div className="space-y-4">
           <p className="text-sm text-slate-300">
-            Execute rotinas operacionais com um clique. Notificações flutuantes utilizam o novo <code className="text-cyan-400">useToast()</code> integrado.
+            Execute rotinas operacionais com um clique. Notificações flutuantes utilizam o novo{' '}
+            <code className="text-cyan-400">useToast()</code> integrado.
           </p>
           <div className="grid grid-cols-2 gap-3 pt-2">
             <Button variant="primary" onClick={() => handleQuickAction('Auditoria de Estoque')}>
@@ -321,7 +346,12 @@ export function OverviewTrigger({
       </Modal>
 
       {/* Interactive Drawer */}
-      <Drawer isOpen={isDrawerOpen} onClose={() => setIsDrawerOpen(false)} title="Auditoria e Métricas" position="right">
+      <Drawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        title="Auditoria e Métricas"
+        position="right"
+      >
         <div className="space-y-6 text-sm">
           <div>
             <h4 className="font-bold text-white mb-2">Estado da Conexão</h4>
@@ -339,7 +369,9 @@ export function OverviewTrigger({
               <li>{metrics.lowStockCount} alertas críticos de estoque</li>
             </ul>
           </div>
-          <Button variant="secondary" className="w-full" onClick={() => setIsDrawerOpen(false)}>Fechar Painel</Button>
+          <Button variant="secondary" className="w-full" onClick={() => setIsDrawerOpen(false)}>
+            Fechar Painel
+          </Button>
         </div>
       </Drawer>
     </div>

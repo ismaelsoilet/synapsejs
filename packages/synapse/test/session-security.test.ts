@@ -329,7 +329,7 @@ describe('Caller-supplied identity requires an explicit development opt-in', () 
 
     expect(authUrl).toContain('client_id=test-client-id');
     expect(authUrl).toContain('response_type=code');
-    expect(authUrl).toContain('code_challenge=' + encodeURIComponent(pkce.codeChallenge));
+    expect(authUrl).toContain(`code_challenge=${encodeURIComponent(pkce.codeChallenge)}`);
     expect(authUrl).toContain('code_challenge_method=S256');
     expect(authUrl).toContain('state=xyz123');
   });

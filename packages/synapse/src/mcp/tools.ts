@@ -272,7 +272,8 @@ export const MCP_TOOLS: McpToolDefinition[] = [
       properties: {
         targetSlice: {
           type: 'string',
-          description: 'Name or key of the slice to run oracles for (e.g. overview, create-item, or inventory/create-item)'
+          description:
+            'Name or key of the slice to run oracles for (e.g. overview, create-item, or inventory/create-item)'
         }
       }
     }

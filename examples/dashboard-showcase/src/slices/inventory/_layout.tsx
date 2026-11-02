@@ -1,4 +1,4 @@
-import React, { type ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 export default function InventoryDomainLayout({
   children,
@@ -6,7 +6,7 @@ export default function InventoryDomainLayout({
 }: {
   children: ReactNode;
   url?: string;
-  session?: any;
+  session?: unknown;
 }) {
   return (
     <div className="flex flex-col flex-1 w-full min-h-full">
@@ -21,7 +21,9 @@ export default function InventoryDomainLayout({
           <a
             href="/inventory/list-items"
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              url.endsWith('list-items') ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              url.endsWith('list-items')
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
             📋 Todos os Itens
@@ -29,16 +31,16 @@ export default function InventoryDomainLayout({
           <a
             href="/inventory/create-item"
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              url.endsWith('create-item') ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20' : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+              url.endsWith('create-item')
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20'
+                : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
             }`}
           >
             ➕ Cadastrar Item
           </a>
         </nav>
       </header>
-      <div className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">
-        {children}
-      </div>
+      <div className="flex-1 p-6 md:p-8 max-w-7xl w-full mx-auto">{children}</div>
     </div>
   );
 }

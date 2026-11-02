@@ -244,32 +244,29 @@ export function useSearchParams(): [
     return new URLSearchParams();
   });
 
-  const setSearchParams = useCallback(
-    (updater: Record<string, string | null | undefined> | URLSearchParams) => {
-      if (typeof window === 'undefined') return;
+  const setSearchParams = useCallback((updater: Record<string, string | null | undefined> | URLSearchParams) => {
+    if (typeof window === 'undefined') return;
 
-      const next = new URLSearchParams(window.location.search);
-      if (updater instanceof URLSearchParams) {
-        for (const [k, v] of updater.entries()) {
+    const next = new URLSearchParams(window.location.search);
+    if (updater instanceof URLSearchParams) {
+      for (const [k, v] of updater.entries()) {
+        next.set(k, v);
+      }
+    } else {
+      for (const [k, v] of Object.entries(updater)) {
+        if (v === null || v === undefined) {
+          next.delete(k);
+        } else {
           next.set(k, v);
         }
-      } else {
-        for (const [k, v] of Object.entries(updater)) {
-          if (v === null || v === undefined) {
-            next.delete(k);
-          } else {
-            next.set(k, v);
-          }
-        }
       }
+    }
 
-      const queryStr = next.toString();
-      const newUrl = queryStr ? `${window.location.pathname}?${queryStr}` : window.location.pathname;
-      window.history.pushState({}, '', newUrl);
-      setSearchParamsState(next);
-    },
-    []
-  );
+    const queryStr = next.toString();
+    const newUrl = queryStr ? `${window.location.pathname}?${queryStr}` : window.location.pathname;
+    window.history.pushState({}, '', newUrl);
+    setSearchParamsState(next);
+  }, []);
 
   return [searchParams, setSearchParams];
 }

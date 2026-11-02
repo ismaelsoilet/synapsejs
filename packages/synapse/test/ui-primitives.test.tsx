@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'bun:test';
-import React, { useState } from 'react';
 import { renderToString } from 'react-dom/server';
 import {
-  Badge,
-  Button,
-  Card,
   Drawer,
   DropdownItem,
   DropdownMenu,
