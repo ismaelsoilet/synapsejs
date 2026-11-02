@@ -53,7 +53,7 @@ export const showcaseDemoJob = defineJob<{ requestedBy: string; fail?: boolean }
   backoffSeconds: 1,
   handler: async (payload, ctx) => {
     if (payload.fail) {
-      throw new Error('Falha proposital: demonstra retry e dead-letter.');
+      throw new Error('Falha proposital: demonstra retry e failed.');
     }
     await ctx.insert('showcase_job_events', {
       id: crypto.randomUUID(),
@@ -205,7 +205,7 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
           <h2 className="text-sm font-bold text-white">Enfileirar trabalho</h2>
           <p className="mt-1 text-xs text-slate-400">
             O handler grava em <code className="text-cyan-300">showcase_job_events</code>; a falha proposital exercita
-            retry e dead-letter.
+            retry e o estado failed.
           </p>
           <label className="mt-4 flex items-center gap-2 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-xs text-slate-300">
             <input
@@ -318,7 +318,7 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
 export function sliceMeta() {
   return {
     title: 'Jobs | Synapse Showcase',
-    description: 'Fila SQLite, worker, cron, retry e dead-letter no SynapseJS.'
+    description: 'Fila SQLite, worker, cron e retry no SynapseJS; DLQ é do engine Postgres.'
   };
 }
 

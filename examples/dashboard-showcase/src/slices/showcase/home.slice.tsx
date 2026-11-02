@@ -216,7 +216,7 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
             href="/showcase/jobs"
             icon="⚙️"
             title="Fila & worker"
-            description="defineJob, enqueue, retry, cron, DLQ e painel de status lendo o SQLite da fila."
+            description="defineJob, enqueue, retry, cron e painel de status lendo o SQLite da fila."
             tag="background"
           />
           <FeatureCard
@@ -270,7 +270,7 @@ export function HomeTrigger({ metrics, platform, generatedAt }: HomeTriggerProps
               ['CRUD e validação de contrato', '✓'],
               ['Upload, download e storage', '✓'],
               ['SSE e WebSocket', '✓'],
-              ['Jobs, cron e dead-letter', '✓'],
+              ['Jobs, cron e retry', '✓'],
               ['Cache SSR e invalidação', '✓'],
               ['Auth assinada e RBAC', '✓'],
               ['Webhooks com HMAC', '✓'],
