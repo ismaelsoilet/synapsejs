@@ -1115,6 +1115,24 @@ export class SynapseServer {
    * hydrates the component and wires `onSubmitAction` to the slice endpoint.
    * Cached per mtime, so editing a slice rebuilds it on the next request.
    */
+  /**
+   * Cache-bust key for a built client bundle. The slice mtime alone is not enough:
+   * a layout or shared client change rebuilds the bundle while the slice file keeps
+   * its old mtime, so a browser would keep the stale JS under the same URL forever.
+   */
+  private clientBundleVersion(url: string): string {
+    const clean = url.split('?')[0];
+    const prefix = '/_synapse/client/';
+    if (!clean.startsWith(prefix)) return '';
+    const fileName = clean.slice(prefix.length);
+    if (!fileName || fileName.includes('/')) return '';
+    try {
+      return `?v=${Math.floor(fs.statSync(path.join(this.baseDir, '.synapse', 'client', fileName)).mtimeMs)}`;
+    } catch {
+      return '';
+    }
+  }
+
   private async ensureClientBundle(slice: DiscoveredSlice): Promise<string | null> {
     if (!slice.componentExport) {
       return null;
@@ -1124,8 +1142,7 @@ export class SynapseServer {
     const signature = stat ? String(stat.mtimeMs) : 'missing';
     const cached = this.clientBundles.get(slice.key);
     if (cached?.builtFor === signature) {
-      const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
-      return `${cached.url}${version}`;
+      return `${cached.url}${this.clientBundleVersion(cached.url)}`;
     }
 
     // `synapse build` já empacotou esta fatia e o arquivo não mudou desde então:
@@ -1137,8 +1154,7 @@ export class SynapseServer {
     const prebuilt = freshBundleFrom(this.clientManifest, slice.key, Number(signature));
     if (prebuilt) {
       this.clientBundles.set(slice.key, { url: prebuilt, builtFor: signature });
-      const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
-      return `${prebuilt}${version}`;
+      return `${prebuilt}${this.clientBundleVersion(prebuilt)}`;
     }
 
     const built = await buildClientBundle(
@@ -1160,8 +1176,7 @@ export class SynapseServer {
 
     this.clientBundles.set(slice.key, { url: built.value.url, builtFor: signature });
 
-    const version = stat ? `?v=${Math.floor(stat.mtimeMs)}` : '';
-    return `${built.value.url}${version}`;
+    return `${built.value.url}${this.clientBundleVersion(built.value.url)}`;
   }
 
   /**

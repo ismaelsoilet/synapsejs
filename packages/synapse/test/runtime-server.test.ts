@@ -197,6 +197,7 @@ describe('pre-built client bundles', () => {
 
     const html = await (await fetch(`${base}/tickets/view-tickets`)).text();
     expect(html).toContain('/_synapse/client/tickets-view-tickets.js');
+    expect(html).toMatch(/\/_synapse\/client\/tickets-view-tickets\.js\?v=\d+/);
 
     const bundle = await fetch(`${base}/_synapse/client/tickets-view-tickets.js`);
     expect(bundle.status).toBe(200);
