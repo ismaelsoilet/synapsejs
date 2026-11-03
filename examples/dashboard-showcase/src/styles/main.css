@@ -483,3 +483,8 @@ html[data-motion='off'] *::after {
     scroll-behavior: auto !important;
   }
 }
+
+html [class~='bg-cyan-400/5'] {
+  background-color: var(--accent-soft);
+}
+

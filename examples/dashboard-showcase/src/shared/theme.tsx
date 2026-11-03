@@ -63,8 +63,8 @@ export function AppearanceMenu() {
     const storedMode = readStored<ThemeMode>(THEME_STORAGE_KEY, 'system');
     const storedAccent = readStored<Accent>(ACCENT_STORAGE_KEY, 'cyan');
     const storedMotion = readStored<string>(MOTION_STORAGE_KEY, 'on') !== 'off';
-    setMode(storedMode);
-    setAccent(storedAccent);
+    setMode(['light', 'dark', 'system'].includes(storedMode) ? storedMode : 'system');
+    setAccent(ACCENTS.some((option) => option.id === storedAccent) ? storedAccent : 'cyan');
     setMotion(storedMotion);
   }, []);
 
@@ -114,7 +114,10 @@ export function AppearanceMenu() {
         <div className="space-y-6">
           <section>
             <div className="mb-2 text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500">Tema</div>
-            <div className="grid grid-cols-3 gap-2">
+            <fieldset
+              className="grid grid-cols-3 gap-1 rounded-xl border border-slate-800 bg-slate-950/40 p-1"
+              aria-label="Tema"
+            >
               {(
                 [
                   { id: 'light', label: 'Claro', icon: 'sun' },
@@ -127,17 +130,17 @@ export function AppearanceMenu() {
                   type="button"
                   onClick={() => chooseMode(option.id)}
                   aria-pressed={mode === option.id}
-                  className={`flex flex-col items-center gap-1.5 rounded-xl border px-3 py-3 text-[11px] font-semibold transition ${
+                  className={`flex items-center justify-center gap-1.5 rounded-lg px-2 py-2 text-[11px] font-semibold transition ${
                     mode === option.id
-                      ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
-                      : 'border-slate-800 bg-slate-950/40 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      ? 'bg-cyan-400/10 text-cyan-200 shadow-sm'
+                      : 'text-slate-400 hover:bg-slate-900 hover:text-slate-200'
                   }`}
                 >
-                  <Icon name={option.icon} className="h-4 w-4" />
+                  <Icon name={option.icon} className="h-3.5 w-3.5" />
                   {option.label}
                 </button>
               ))}
-            </div>
+            </fieldset>
           </section>
 
           <section>
@@ -151,11 +154,13 @@ export function AppearanceMenu() {
                   aria-label={`Usar cor ${option.label}`}
                   aria-pressed={accent === option.id}
                   title={option.label}
-                  className={`h-9 w-9 rounded-full border-2 transition hover:scale-110 ${
+                  className={`flex h-9 w-9 items-center justify-center rounded-full border-2 text-slate-950 transition hover:scale-110 ${
                     accent === option.id ? 'border-white/80 ring-2 ring-white/20' : 'border-transparent'
                   }`}
                   style={{ backgroundColor: option.color }}
-                />
+                >
+                  {accent === option.id ? <Icon name="check" className="h-4 w-4" /> : null}
+                </button>
               ))}
             </div>
             <p className="mt-2 text-[11px] text-slate-500">
@@ -163,29 +168,34 @@ export function AppearanceMenu() {
             </p>
           </section>
 
-          <section className="flex items-center justify-between gap-4 rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-3">
-            <div>
-              <div className="text-xs font-semibold text-slate-200">Animações</div>
-              <div className="mt-0.5 text-[10px] text-slate-500">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={motion}
+            onClick={toggleMotion}
+            className={`flex w-full items-center justify-between gap-4 rounded-xl border px-3 py-3 text-left transition ${
+              motion ? 'border-cyan-400/30 bg-cyan-400/5' : 'border-slate-800 bg-slate-950/40 hover:border-slate-700'
+            }`}
+          >
+            <span>
+              <span className="block text-xs font-semibold text-slate-200">Animações</span>
+              <span className="mt-0.5 block text-[10px] text-slate-500">
                 Ripple, transições, entrada de cartões e contadores.
-              </div>
-            </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={motion}
-              onClick={toggleMotion}
-              className={`relative h-6 w-11 rounded-full border transition ${
-                motion ? 'border-cyan-400/40 bg-cyan-400/20' : 'border-slate-700 bg-slate-800'
+              </span>
+            </span>
+            <span
+              aria-hidden="true"
+              className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${
+                motion ? 'border-transparent bg-cyan-400' : 'border-slate-600 bg-slate-700'
               }`}
             >
               <span
-                className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-                  motion ? 'translate-x-5' : 'translate-x-0.5'
+                className={`absolute left-0.5 top-1 h-5 w-5 rounded-full bg-white shadow-md transition-transform ${
+                  motion ? 'translate-x-5' : 'translate-x-0'
                 }`}
               />
-            </button>
-          </section>
+            </span>
+          </button>
 
           <div className="flex items-center justify-between border-t border-slate-800 pt-3">
             <button
