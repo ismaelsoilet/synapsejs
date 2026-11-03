@@ -12,7 +12,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg?style=for-the-badge" alt="Licença: MIT"></a>
   <a href="https://bun.sh"><img src="https://img.shields.io/badge/Bun-v1.2+-black?style=for-the-badge&logo=bun" alt="Bun v1.2+"></a>
-  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-643%20Passando-emerald?style=for-the-badge&logo=checkmarx" alt="Suíte de testes"></a>
+  <a href="packages/synapse/test"><img src="https://img.shields.io/badge/Testes-645%20Passando-emerald?style=for-the-badge&logo=checkmarx" alt="Suíte de testes"></a>
   <a href="src/mcp"><img src="https://img.shields.io/badge/Servidor%20MCP-23%20Ferramentas%20Nativas%20(16+7)-purple?style=for-the-badge&logo=anthropic" alt="Servidor MCP: 23 Ferramentas Nativas"></a>
   <a href="https://github.com/ismaelsoilet/jev-harness"><img src="https://img.shields.io/badge/Sistema%201-Jev%20Harness%20Ativo-brightgreen?style=for-the-badge&logo=shield" alt="Jev System One"></a>
   <a href="https://react.dev"><img src="https://img.shields.io/badge/React-19%20SSR-61DAFB?style=for-the-badge&logo=react&logoColor=black" alt="React 19"></a>
@@ -489,9 +489,9 @@ repositório e **não são comparáveis** — a redução citada é a da coluna 
 
 ### 3. Taxa de Aprovação da Suíte de Testes
 ```text
-Resultado: 633 pass / 10 skip / 0 fail
-3099 chamadas expect()
-643 testes executados em 81 arquivos.
+Resultado: 635 pass / 10 skip / 0 fail
+3108 chamadas expect()
+645 testes executados em 81 arquivos.
 ```
 
 ---

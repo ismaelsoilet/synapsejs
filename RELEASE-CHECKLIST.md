@@ -20,11 +20,11 @@ neste repositório: ler a saída em vez do código). Os resultados abaixo vieram
 
 | Gate | Comando | Resultado |
 |---|---|---|
-| Suíte do framework | `bun test packages/synapse/test` | **643 testes, 0 falhas**, 10 skipped (Postgres sem engine local) |
+| Suíte do framework | `bun test packages/synapse/test` | **645 testes, 0 falhas**, 10 skipped (Postgres sem engine local) |
 | Typecheck do monorepo | `bun run check` | 0 erros |
 | Template como consumidor | `bun run check:template` | 0 erros |
 | Lint | `bun run lint` | 0 erros, 68 warnings de fronteira aceitos |
-| Deriva de documentação | `bun run docs:check` | PASS — 643 testes / 81 arquivos / 23 tools / v1.11.1, tabela de features 66-3-1 |
+| Deriva de documentação | `bun run docs:check` | PASS — 645 testes / 81 arquivos / 23 tools / v1.11.1, tabela de features 66-3-1 |
 | Cobertura | `bun run coverage:check` | PASS — 61,81% funções / 74,4% linhas (pisos 55/70) |
 | Splitter, dois gates, três apps | `bun run split` | 0 diagnósticos, 0 vazamentos |
 | Oráculos das fatias | `bun run test:slices` · `test:crm` · `test:helpdesk` · `test:helpdesk-conventional` | 24/24 · 18/18 · 9/9 · 6/6 |
