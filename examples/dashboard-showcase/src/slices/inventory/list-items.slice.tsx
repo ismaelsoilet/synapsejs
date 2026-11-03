@@ -1,5 +1,6 @@
 import { type Static, Type } from '@sinclair/typebox';
 import { Value } from '@sinclair/typebox/value';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type DatabaseClient,
   Err,
@@ -308,7 +309,7 @@ function Highlight({ text, term }: { text: string; term: string }) {
         const key = `${cursor}:${part}`;
         cursor += part.length;
         return part.toLowerCase() === query.toLowerCase() ? (
-          <mark key={key} className="rounded bg-cyan-400/10 px-0.5 text-cyan-200">
+          <mark key={key} className="rounded-sm bg-yellow-300 px-1 font-semibold text-slate-950">
             {part}
           </mark>
         ) : (
@@ -340,18 +341,102 @@ function buildHref(filters: ListFilters, overrides: Partial<ListFilters> = {}): 
 
 export interface ListItemsViewProps extends Partial<ListItemsLoaderData> {
   rows?: InventoryRow[];
+  onSubmitAction?: (payload: unknown) => Promise<ListItemsOutput>;
 }
 
 export function ListItemsTrigger({
-  rows = [],
-  total = 0,
+  rows: initialRows = [],
+  total: initialTotal = 0,
   allTotal = 0,
   lowStockCount = 0,
   statusCounts = { active: 0, low_stock: 0, archived: 0 },
   categories = [],
-  filters = DEFAULT_FILTERS,
-  loadError
+  filters: initialFilters = DEFAULT_FILTERS,
+  loadError,
+  onSubmitAction
 }: ListItemsViewProps) {
+  const [rows, setRows] = useState<InventoryRow[]>(initialRows);
+  const [total, setTotal] = useState<number>(initialTotal);
+  const [filters, setFilters] = useState<ListFilters>(initialFilters);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
+  const requestId = useRef(0);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, []);
+
+  const fetchResults = useCallback(
+    async (next: ListFilters) => {
+      if (!onSubmitAction) {
+        setLiveError('A ação de listagem não está conectada.');
+        return;
+      }
+
+      const ticket = ++requestId.current;
+      setLoading(true);
+      setLiveError(null);
+
+      try {
+        const result = await onSubmitAction({
+          query: next.query || undefined,
+          category: next.category || undefined,
+          status: next.status || undefined,
+          minPrice: next.minPrice ?? undefined,
+          maxPrice: next.maxPrice ?? undefined,
+          minStock: next.minStock ?? undefined,
+          lowStock: next.lowStock || undefined,
+          sort: next.sort,
+          limit: next.limit,
+          offset: next.offset
+        });
+
+        if (ticket !== requestId.current) return;
+        if (!result.ok) {
+          setLiveError(result.error);
+          return;
+        }
+
+        setRows(result.value.rows);
+        setTotal(result.value.total);
+        if (typeof window !== 'undefined') {
+          window.history.replaceState({}, '', buildHref(next));
+        }
+      } catch {
+        if (ticket === requestId.current) setLiveError('Não foi possível atualizar a lista.');
+      } finally {
+        if (ticket === requestId.current) setLoading(false);
+      }
+    },
+    [onSubmitAction]
+  );
+
+  const schedule = useCallback(
+    (next: ListFilters, delay = 0) => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (delay > 0) {
+        debounceRef.current = setTimeout(() => {
+          void fetchResults(next);
+        }, delay);
+      } else {
+        void fetchResults(next);
+      }
+    },
+    [fetchResults]
+  );
+
+  const applyFilters = useCallback(
+    (partial: Partial<ListFilters>, delay = 0) => {
+      const next = { ...filters, ...partial, offset: partial.offset ?? 0 };
+      setFilters(next);
+      schedule(next, delay);
+    },
+    [filters, schedule]
+  );
+
   const exportCsv = () => {
     if (rows.length === 0) return;
     const csvEscape = (value: unknown) => `"${String(value ?? '').replace(/"/g, '""')}"`;
@@ -392,84 +477,72 @@ export function ListItemsTrigger({
 
   const page = Math.floor(filters.offset / filters.limit) + 1;
   const pages = Math.max(1, Math.ceil(total / filters.limit));
-  const activeChips: Array<{ label: string; href: string }> = [];
+  const activeChips: Array<{ label: string; partial: Partial<ListFilters> }> = [];
 
   if (filters.query) {
-    activeChips.push({
-      label: `Busca: “${filters.query}”`,
-      href: buildHref(filters, { query: '', offset: 0 })
-    });
+    activeChips.push({ label: `Busca: “${filters.query}”`, partial: { query: '', offset: 0 } });
   }
   if (filters.category) {
-    activeChips.push({
-      label: `Categoria: ${filters.category}`,
-      href: buildHref(filters, { category: '', offset: 0 })
-    });
+    activeChips.push({ label: `Categoria: ${filters.category}`, partial: { category: '', offset: 0 } });
   }
   if (filters.status) {
-    activeChips.push({
-      label: `Status: ${filters.status.replace('_', ' ')}`,
-      href: buildHref(filters, { status: '', offset: 0 })
-    });
+    activeChips.push({ label: `Status: ${filters.status.replace('_', ' ')}`, partial: { status: '', offset: 0 } });
   }
   if (filters.lowStock) {
-    activeChips.push({
-      label: 'Estoque ≤ 5',
-      href: buildHref(filters, { lowStock: false, offset: 0 })
-    });
+    activeChips.push({ label: 'Estoque ≤ 5', partial: { lowStock: false, offset: 0 } });
   }
   if (filters.minPrice !== null) {
     activeChips.push({
       label: `Preço ≥ R$ ${filters.minPrice.toFixed(2)}`,
-      href: buildHref(filters, { minPrice: null, offset: 0 })
+      partial: { minPrice: null, offset: 0 }
     });
   }
   if (filters.maxPrice !== null) {
     activeChips.push({
       label: `Preço ≤ R$ ${filters.maxPrice.toFixed(2)}`,
-      href: buildHref(filters, { maxPrice: null, offset: 0 })
+      partial: { maxPrice: null, offset: 0 }
     });
   }
   if (filters.minStock !== null) {
-    activeChips.push({
-      label: `Estoque ≥ ${filters.minStock}`,
-      href: buildHref(filters, { minStock: null, offset: 0 })
-    });
+    activeChips.push({ label: `Estoque ≥ ${filters.minStock}`, partial: { minStock: null, offset: 0 } });
   }
   if (filters.sort !== 'newest') {
-    activeChips.push({
-      label: `Ordenação: ${filters.sort}`,
-      href: buildHref(filters, { sort: 'newest', offset: 0 })
-    });
+    activeChips.push({ label: `Ordenação: ${filters.sort}`, partial: { sort: 'newest', offset: 0 } });
   }
 
-  const quickFilters = [
+  const quickFilters: Array<{
+    id: string;
+    label: string;
+    count: number;
+    partial: Partial<ListFilters>;
+    active: boolean;
+  }> = [
     {
       id: 'all',
       label: 'Todos',
       count: allTotal,
-      href: buildHref(filters, { status: '', lowStock: false, offset: 0 }),
+      partial: { status: '', lowStock: false, offset: 0 },
       active: !filters.status && !filters.lowStock
     },
     {
       id: 'active',
       label: 'Ativos',
       count: statusCounts.active,
-      href: buildHref(filters, { status: 'active', lowStock: false, offset: 0 }),
+      partial: { status: 'active', lowStock: false, offset: 0 },
       active: filters.status === 'active' && !filters.lowStock
     },
     {
       id: 'low',
       label: 'Baixo estoque',
       count: lowStockCount,
-      href: buildHref(filters, { status: '', lowStock: true, offset: 0 }),
+      partial: { status: '', lowStock: true, offset: 0 },
       active: filters.lowStock
     },
     {
       id: 'archived',
       label: 'Arquivados',
       count: statusCounts.archived,
-      href: buildHref(filters, { status: 'archived', lowStock: false, offset: 0 }),
+      partial: { status: 'archived', lowStock: false, offset: 0 },
       active: filters.status === 'archived' && !filters.lowStock
     }
   ];
@@ -546,6 +619,12 @@ export function ListItemsTrigger({
     }
   ];
 
+  const parseNumber = (raw: string): number | null => {
+    if (!raw) return null;
+    const value = Number(raw);
+    return Number.isFinite(value) && value >= 0 ? value : null;
+  };
+
   return (
     <div className="space-y-5">
       <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
@@ -553,7 +632,7 @@ export function ListItemsTrigger({
           <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Inventário</div>
           <h1 className="mt-1 text-2xl font-black tracking-tight text-white">Catálogo de produtos</h1>
           <p className="mt-1 text-xs text-slate-400">
-            {total} de {allTotal} registros · filtros, busca com highlight e paginação no servidor.
+            {total} de {allTotal} registros · busca dinâmica com debounce de 300ms.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -566,8 +645,16 @@ export function ListItemsTrigger({
         </div>
       </div>
 
-      <Card title="Filtros e busca" subtitle="A URL preserva cada filtro; o loader e a action executam no servidor.">
-        <form method="GET" action="/inventory/list-items" className="flex flex-col gap-3 sm:flex-row">
+      <Card title="Filtros e busca" subtitle="Digite e veja a lista atualizar sem reload; a URL acompanha o estado.">
+        <form
+          method="GET"
+          action="/inventory/list-items"
+          onSubmit={(event) => {
+            event.preventDefault();
+            applyFilters({ query: filters.query }, 0);
+          }}
+          className="flex flex-col gap-3 sm:flex-row"
+        >
           <div className="relative flex-1">
             <Icon
               name="search"
@@ -576,8 +663,14 @@ export function ListItemsTrigger({
             <input
               type="search"
               name="query"
-              defaultValue={filters.query}
+              value={filters.query}
+              onChange={(event) => {
+                const next = { ...filters, query: event.target.value, offset: 0 };
+                setFilters(next);
+                schedule(next, 300);
+              }}
               placeholder="Buscar por nome ou SKU…"
+              aria-label="Buscar produtos"
               className="w-full rounded-xl border border-slate-700 bg-slate-950/60 py-2.5 pl-9 pr-3 text-sm text-white outline-none transition focus:border-cyan-400"
             />
           </div>
@@ -590,23 +683,29 @@ export function ListItemsTrigger({
           <input type="hidden" name="sort" value={filters.sort} />
           <input type="hidden" name="limit" value={filters.limit} />
           <Button type="submit" variant="primary">
-            Buscar
+            {loading ? 'Buscando…' : 'Buscar'}
           </Button>
           {filters.query ? (
-            <a
-              href={buildHref(filters, { query: '', offset: 0 })}
+            <button
+              type="button"
+              onClick={() => {
+                const next = { ...filters, query: '', offset: 0 };
+                setFilters(next);
+                schedule(next, 0);
+              }}
               className="inline-flex items-center justify-center rounded-md px-3 py-2 text-xs font-semibold text-slate-400 transition hover:text-slate-200"
             >
               Limpar busca
-            </a>
+            </button>
           ) : null}
         </form>
 
         <div className="mt-4 flex flex-wrap gap-2">
           {quickFilters.map((filter) => (
-            <a
+            <button
               key={filter.id}
-              href={filter.href}
+              type="button"
+              onClick={() => applyFilters(filter.partial)}
               className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition ${
                 filter.active
                   ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-200'
@@ -619,7 +718,7 @@ export function ListItemsTrigger({
               >
                 {filter.count}
               </span>
-            </a>
+            </button>
           ))}
         </div>
 
@@ -627,18 +726,23 @@ export function ListItemsTrigger({
           <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-slate-800 pt-3">
             <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Ativos</span>
             {activeChips.map((chip) => (
-              <a
+              <button
                 key={chip.label}
-                href={chip.href}
+                type="button"
+                onClick={() => applyFilters(chip.partial)}
                 className="inline-flex items-center gap-1.5 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-2.5 py-1 text-[10px] text-cyan-200 transition hover:border-cyan-400/40"
               >
                 {chip.label}
                 <Icon name="close" className="h-3 w-3" />
-              </a>
+              </button>
             ))}
-            <a href="/inventory/list-items" className="text-[10px] font-semibold text-slate-500 hover:text-rose-300">
+            <button
+              type="button"
+              onClick={() => applyFilters({ ...DEFAULT_FILTERS })}
+              className="text-[10px] font-semibold text-slate-500 hover:text-rose-300"
+            >
               Limpar tudo
-            </a>
+            </button>
           </div>
         ) : null}
 
@@ -653,14 +757,23 @@ export function ListItemsTrigger({
             ) : null}
             <Icon name="chevronDown" className="ml-auto h-3.5 w-3.5 text-slate-500 transition group-open:rotate-180" />
           </summary>
-          <form method="GET" action="/inventory/list-items" className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <form
+            method="GET"
+            action="/inventory/list-items"
+            onSubmit={(event) => {
+              event.preventDefault();
+              applyFilters({}, 0);
+            }}
+            className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3"
+          >
             <input type="hidden" name="query" value={filters.query} />
             {filters.lowStock ? <input type="hidden" name="lowStock" value="true" /> : null}
             <label className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">
               Categoria
               <select
                 name="category"
-                defaultValue={filters.category}
+                value={filters.category}
+                onChange={(event) => applyFilters({ category: event.target.value })}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               >
                 <option value="">Todas</option>
@@ -675,7 +788,8 @@ export function ListItemsTrigger({
               Status
               <select
                 name="status"
-                defaultValue={filters.status}
+                value={filters.status}
+                onChange={(event) => applyFilters({ status: event.target.value as InventoryStatus | '' })}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               >
                 <option value="">Todos</option>
@@ -688,7 +802,8 @@ export function ListItemsTrigger({
               Ordenar por
               <select
                 name="sort"
-                defaultValue={filters.sort}
+                value={filters.sort}
+                onChange={(event) => applyFilters({ sort: event.target.value as InventorySort })}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               >
                 <option value="newest">Mais recentes</option>
@@ -708,7 +823,8 @@ export function ListItemsTrigger({
                 name="minPrice"
                 min="0"
                 step="0.01"
-                defaultValue={filters.minPrice ?? ''}
+                value={filters.minPrice ?? ''}
+                onChange={(event) => applyFilters({ minPrice: parseNumber(event.target.value) }, 300)}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               />
             </label>
@@ -719,7 +835,8 @@ export function ListItemsTrigger({
                 name="maxPrice"
                 min="0"
                 step="0.01"
-                defaultValue={filters.maxPrice ?? ''}
+                value={filters.maxPrice ?? ''}
+                onChange={(event) => applyFilters({ maxPrice: parseNumber(event.target.value) }, 300)}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               />
             </label>
@@ -730,7 +847,8 @@ export function ListItemsTrigger({
                 name="minStock"
                 min="0"
                 step="1"
-                defaultValue={filters.minStock ?? ''}
+                value={filters.minStock ?? ''}
+                onChange={(event) => applyFilters({ minStock: parseNumber(event.target.value) }, 300)}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               />
             </label>
@@ -738,7 +856,8 @@ export function ListItemsTrigger({
               Por página
               <select
                 name="limit"
-                defaultValue={String(filters.limit)}
+                value={String(filters.limit)}
+                onChange={(event) => applyFilters({ limit: Number(event.target.value) })}
                 className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950/60 px-3 py-2 text-xs text-white"
               >
                 <option value="10">10</option>
@@ -750,38 +869,56 @@ export function ListItemsTrigger({
               <Button type="submit" variant="primary">
                 Aplicar filtros
               </Button>
-              <a
-                href="/inventory/list-items"
+              <button
+                type="button"
+                onClick={() => applyFilters({ ...DEFAULT_FILTERS })}
                 className="rounded-md px-3 py-2 text-xs font-semibold text-slate-400 transition hover:text-rose-300"
               >
                 Limpar filtros
-              </a>
+              </button>
             </div>
           </form>
         </details>
       </Card>
 
-      <Card title="Resultados" subtitle={`Página ${page} de ${pages} · ${total} resultado${total === 1 ? '' : 's'}`}>
-        {rows.length === 0 ? (
-          <EmptyState
-            icon={<Icon name="filter" className="h-5 w-5" />}
-            title="Nenhum produto encontrado"
-            description="Ajuste a busca ou remova um dos filtros ativos."
-            action={<LinkButton href="/inventory/list-items">Limpar filtros</LinkButton>}
-          />
-        ) : (
-          <DataTable data={rows} columns={columns} />
-        )}
+      {liveError ? (
+        <div className="rounded-xl border border-rose-800/80 bg-rose-950/40 px-4 py-2 font-mono text-xs text-rose-200">
+          {liveError}
+        </div>
+      ) : null}
+
+      <Card
+        title="Resultados"
+        subtitle={
+          <span aria-live="polite">
+            {loading
+              ? 'Atualizando resultados…'
+              : `Página ${page} de ${pages} · ${total} resultado${total === 1 ? '' : 's'}`}
+          </span>
+        }
+      >
+        <div className={loading ? 'pointer-events-none opacity-60 transition-opacity' : 'transition-opacity'}>
+          {rows.length === 0 ? (
+            <EmptyState
+              icon={<Icon name="filter" className="h-5 w-5" />}
+              title="Nenhum produto encontrado"
+              description="Ajuste a busca ou remova um dos filtros ativos."
+              action={
+                <Button variant="secondary" onClick={() => applyFilters({ ...DEFAULT_FILTERS })}>
+                  Limpar filtros
+                </Button>
+              }
+            />
+          ) : (
+            <DataTable data={rows} columns={columns} />
+          )}
+        </div>
         {total > filters.limit ? (
           <div className="mt-5 flex justify-center border-t border-slate-800 pt-4">
             <Pagination
               currentPage={page}
               totalPages={pages}
-              onPageChange={(nextPage) => {
-                if (typeof window !== 'undefined') {
-                  window.location.assign(buildHref(filters, { offset: (nextPage - 1) * filters.limit }));
-                }
-              }}
+              onPageChange={(nextPage) => applyFilters({ offset: (nextPage - 1) * filters.limit })}
             />
           </div>
         ) : null}
@@ -790,19 +927,19 @@ export function ListItemsTrigger({
       <FeatureGuide
         title="ListView: busca, filtros e paginação"
         icon="filter"
-        what="Uma lista orientada pela URL que combina busca textual com highlight, filtros rápidos, filtros avançados, ordenação, paginação e export CSV."
+        what="Uma lista client-side dinâmica sobre uma action server-side: busca com debounce, highlight, filtros rápidos, avançados, ordenação, paginação e CSV."
         useCases={[
           'Catálogos administrativos com muitos registros',
           'CRMs e pedidos por status, período ou valor',
-          'Telas de operação que precisam compartilhar o estado do filtro por link'
+          'Telas de operação que compartilham o filtro por link'
         ]}
         steps={[
-          'Os controles fazem GET e preservam o estado na query string.',
-          'O loader normaliza os parâmetros e chama a action; a action monta WHERE/LIMIT/OFFSET com parâmetros.',
-          'A resposta inclui total filtrado, contagens por status e categorias para os controles.',
-          'O React renderiza badges, highlight e paginação; o CSV exporta a página atual.'
+          'Digitar dispara um debounce de 300ms; selects e quick filters aplicam imediatamente.',
+          'A action recebe os filtros e executa WHERE/LIMIT/OFFSET com parâmetros.',
+          'O resultado atualiza a tabela e um history.replaceState mantém a URL compartilhável.',
+          'O highlight é client-side e os filtros ativos podem ser removidos individualmente.'
         ]}
-        observe="Digite “mon” e envie; veja o highlight. Alterne os quick filters e abra “Filtros avançados”. Cada chip remove um filtro sem perder os demais; o número da página e o total vêm do servidor."
+        observe="Digite “mac”: o termo fica amarelo e a lista atualiza sozinha após 300ms. Troque quick filters, abra avançados e altere categoria/ordem sem reload; a URL muda junto."
       />
     </div>
   );
