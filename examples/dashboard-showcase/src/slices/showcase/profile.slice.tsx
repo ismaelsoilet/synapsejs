@@ -1,6 +1,6 @@
 import { type Static, Type } from '@sinclair/typebox';
 import type { SliceLoaderContext } from 'synapsejs';
-import { PageHeader } from '../../shared/ui';
+import { FeatureGuide, PageHeader } from '../../shared/ui';
 
 export const ProfileInputSchema = Type.Object(
   {
@@ -125,6 +125,24 @@ export function ProfileView({ id, name, role, location, joined, bio, stats, skil
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Rotas dinâmicas"
+        icon="profile"
+        what="O router resolve /:domain/:name/:id, entrega params ao loader no SSR e o mesmo valor chega ao browser para useParams, sem perder o contexto na hidratação."
+        useCases={[
+          'Páginas de usuário, pedido ou produto',
+          'Links compartilháveis com IDs estáveis',
+          'SEO de páginas individuais no servidor',
+          'Navegação client-side com os mesmos params'
+        ]}
+        steps={[
+          'O loader lê context.params.id no servidor.',
+          'O shell serializa __SYNAPSE_ROUTE_PARAMS__ para o browser.',
+          'useParams lê o mesmo mapa na hidratação.',
+          'O componente renderiza o perfil sem fetch adicional.'
+        ]}
+        observe="Troque o id na URL (por exemplo /showcase/profile/ana-silva) e recarregue; o SSR e o componente usam o mesmo parâmetro."
+      />
     </div>
   );
 }

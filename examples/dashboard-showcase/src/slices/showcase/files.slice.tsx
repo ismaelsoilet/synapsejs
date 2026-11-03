@@ -14,7 +14,7 @@ import {
 import { Button, useUpload } from 'synapsejs/client';
 import { Icon } from '../../shared/icons';
 import { toUploadKey } from '../../shared/showcase';
-import { EmptyState, formatBytes, formatDate, PageHeader } from '../../shared/ui';
+import { EmptyState, FeatureGuide, formatBytes, formatDate, PageHeader } from '../../shared/ui';
 
 export const FilesInputSchema = Type.Object(
   {
@@ -397,6 +397,24 @@ export function FilesTrigger({
         Fluxo: useUpload → POST /_synapse/files/showcase/files (sessão + tipo real dos bytes) → filesAction registra
         metadados → GET /_showcase/download?key=... (cookie assinado) → Content-Disposition.
       </div>
+      <FeatureGuide
+        title="Uploads e downloads"
+        icon="files"
+        what="O browser envia o arquivo para um endpoint multipart autenticado; a slice registra metadados no SQLite e o download passa por uma rota que valida sessão e caminho."
+        useCases={[
+          'Anexos de tickets, contratos e relatórios',
+          'Avatares e imagens de catálogo',
+          'Importação de CSV e documentos operacionais',
+          'Troca por S3/R2 com presigned URLs em produção'
+        ]}
+        steps={[
+          'useUpload mostra progresso, aborta e valida tipo/tamanho no cliente.',
+          'POST /_synapse/files/showcase/files valida sessão, extensão e bytes reais.',
+          'filesAction registra o caminho e os metadados; o loader lista os arquivos.',
+          'GET /_showcase/download valida o cookie e serve com Content-Disposition.'
+        ]}
+        observe="Envie um TXT, acompanhe a barra, abra o preview de uma imagem e baixe o arquivo. Tente remover; o botão exige uma sessão autenticada."
+      />
     </div>
   );
 }

@@ -48,7 +48,7 @@ O login usa `Bun.password.verify` + `signSessionToken`; o token vira cookie
 | Rota | O que demonstra |
 |---|---|
 | `/showcase/home` | hub, métricas ao vivo, animações e checklist |
-| `/inventory/list-items` | CRUD, filtros, paginação, DataTable, export CSV |
+| `/inventory/list-items` | CRUD, busca com highlight, quick filters, filtros avançados, badges, paginação e export CSV |
 | `/inventory/create-item` | DataForm + TypeBox |
 | `/showcase/files` | upload com progresso/abort, preview, download autenticado, delete |
 | `/showcase/realtime` | SSE declarado (`defineTopic`) + WebSocket (`defineSocket`) |
@@ -63,6 +63,23 @@ O login usa `Bun.password.verify` + `signSessionToken`; o token vira cookie
 O shell tem sidebar responsiva, command palette com atalho detectado pelo SO
 (**⌘ K** no macOS, **Ctrl K** no Windows/Linux), drawer mobile, sessão/login/logout
 e uma camada de microinterações.
+
+Cada demo tem um guia expansível **“O que é / Quando usar / Como funciona / Observe”**
+para explicar a ferramenta no contexto em que ela aparece — por exemplo, WebSocket
+para chats e presença, SSE para feeds e notificações, jobs para e-mail/relatórios,
+webhooks para pagamentos e o ListView para catálogos administrativos.
+
+## ListView
+
+`/inventory/list-items` é a demonstração de listagem completa:
+
+- busca textual no servidor com **highlight** do termo;
+- **quick filters** com contagem por status e estoque baixo;
+- **filtros avançados** de categoria, status, faixa de preço, estoque e ordenação;
+- **chips de filtros ativos** que removem um filtro sem perder os demais;
+- **badges** de categoria/status, barra de estoque e data;
+- paginação server-side e export CSV da página;
+- estado inteiro preservado na URL para links compartilháveis.
 
 ## Aparência e movimento
 

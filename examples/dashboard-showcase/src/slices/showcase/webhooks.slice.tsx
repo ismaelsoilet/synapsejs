@@ -12,7 +12,7 @@ import {
   type WebhookEvent
 } from 'synapsejs';
 import { showcaseBaseUrl, signWebhookPayload, verifyWebhookSignature } from '../../shared/showcase';
-import { PageHeader } from '../../shared/ui';
+import { FeatureGuide, PageHeader } from '../../shared/ui';
 
 export const WebhooksInputSchema = Type.Object(
   {
@@ -225,6 +225,24 @@ export function WebhooksTrigger({ events, endpoint, onSubmitAction }: WebhooksTr
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Webhooks assinados"
+        icon="webhooks"
+        what="Um provedor externo envia um POST; o handler preserva o rawBody, valida a assinatura HMAC e só então interpreta o JSON e persiste o evento."
+        useCases={[
+          'Eventos de pagamento (Stripe, Mercado Pago)',
+          'Push, pull request e checks (GitHub)',
+          'Mensagens de filas e provedores externos',
+          'Integrações entre SaaS com replay protection'
+        ]}
+        steps={[
+          'O handler <Name>Webhook recebe { rawBody, json, headers }.',
+          'verifyWebhookSignature compara o HMAC com timingSafeEqual.',
+          'O evento validado é gravado em showcase_webhook_events.',
+          'Assinatura inválida retorna 400 antes do parse.'
+        ]}
+        observe="Clique em “Enviar webhook assinado”; o app entrega para si mesmo e o evento aparece abaixo. Altere o segredo/assinatura e a entrega é recusada."
+      />
     </div>
   );
 }

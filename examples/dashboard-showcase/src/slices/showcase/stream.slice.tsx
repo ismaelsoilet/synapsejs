@@ -1,6 +1,6 @@
 import { type Static, Type } from '@sinclair/typebox';
 import { useEffect, useRef, useState } from 'react';
-import { PageHeader } from '../../shared/ui';
+import { FeatureGuide, PageHeader } from '../../shared/ui';
 
 export const StreamInputSchema = Type.Object(
   {
@@ -168,6 +168,24 @@ export function StreamTrigger() {
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Streaming HTTP"
+        icon="stream"
+        what="ctx.stream devolve um Response chunked; o servidor produz pedaços e o browser consome com ReadableStream, sem esperar o corpo inteiro."
+        useCases={[
+          'Tokens de LLM e respostas de IA',
+          'Logs, builds e tarefas longas',
+          'Exportações grandes e download progressivo',
+          'SSE textual para acompanhar processamento'
+        ]}
+        steps={[
+          'O plugin de aplicação intercepta GET /_showcase/stream.',
+          'Ele cria o ActionContext e chama ctx.stream(async function* () { … }).',
+          'O runtime envia headers de no-cache e cada chunk assim que é produzido.',
+          'O componente lê reader.read() e pinta o terminal incrementalmente.'
+        ]}
+        observe="Clique em “Iniciar stream” e veja o texto aparecer em pedaços. O contador de bytes/tempo e o cursor mostram o progresso; “Abortar” fecha a leitura."
+      />
     </div>
   );
 }

@@ -13,7 +13,7 @@ import {
   type SliceLoaderContext
 } from 'synapsejs';
 import { Icon } from '../../shared/icons';
-import { PageHeader, StatCard } from '../../shared/ui';
+import { FeatureGuide, PageHeader, StatCard } from '../../shared/ui';
 
 export const CacheInputSchema = Type.Object(
   {
@@ -193,6 +193,24 @@ export function CacheTrigger({
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Cache SSR e ISR"
+        icon="cache"
+        what="O loader pode ser cacheado pelo runtime com TTL, stale-while-revalidate e tags; a invalidação remove as entradas por tag sem reiniciar o processo."
+        useCases={[
+          'Páginas de catálogo e listagens públicas',
+          'Dashboards com métricas que toleram alguns segundos de atraso',
+          'Conteúdo editorial com revalidação em background',
+          'Alívio de carga em SSR de páginas caras'
+        ]}
+        steps={[
+          'defineCache declara TTL, janela SWR, tags e parâmetros.',
+          'O runtime normaliza a URL e guarda o resultado em um LRU limitado.',
+          'ctx.invalidateCache remove todas as entradas da tag.',
+          'O cache é local ao processo; reiniciar limpa o estado.'
+        ]}
+        observe="Recarregue dentro de 4s e veja o nonce repetir. Clique em “Invalidar tag”: o loader executa de novo e o nonce muda imediatamente."
+      />
     </div>
   );
 }

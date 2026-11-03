@@ -487,3 +487,56 @@ html[data-motion='off'] *::after {
 html [class~='bg-cyan-400/5'] {
   background-color: var(--accent-soft);
 }
+
+/* form controls, highlights and switch accents */
+input,
+select,
+textarea {
+  color-scheme: inherit;
+}
+input[type='checkbox'],
+input[type='radio'] {
+  accent-color: var(--accent);
+}
+input[type='file']::file-selector-button {
+  margin-right: 0.5rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 0.5rem;
+  background: var(--surface-2);
+  color: var(--ink);
+  padding: 0.35rem 0.6rem;
+  cursor: pointer;
+}
+html[data-theme='light'] input:not([type='checkbox']):not([type='radio']):not([type='range']),
+html[data-theme='light'] select,
+html[data-theme='light'] textarea {
+  background-color: var(--surface-1);
+  color: var(--ink);
+  border-color: var(--border-strong);
+}
+html[data-theme='light'] select option {
+  background-color: var(--surface-1);
+  color: var(--ink);
+}
+html[data-theme='light'] input::placeholder,
+html[data-theme='light'] textarea::placeholder {
+  color: var(--ink-muted);
+}
+html[data-theme='light'] button:not([class]) {
+  color: var(--ink);
+}
+mark {
+  background: var(--accent-soft);
+  color: var(--accent-text);
+}
+html [class~='bg-cyan-400/15'] {
+  background-color: var(--accent-soft);
+}
+html [class~='border-cyan-400/20'],
+html [class~='border-cyan-400/30'] {
+  border-color: var(--accent-border);
+}
+html [class~='text-cyan-200'],
+html [class~='text-cyan-300'] {
+  color: var(--accent-text);
+}

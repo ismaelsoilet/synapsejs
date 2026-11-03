@@ -14,7 +14,7 @@ import {
 } from 'synapsejs';
 import { Icon } from '../../shared/icons';
 import { getJobStats, type JobStats } from '../../shared/showcase';
-import { formatDate, PageHeader, StatCard } from '../../shared/ui';
+import { FeatureGuide, formatDate, PageHeader, StatCard } from '../../shared/ui';
 
 export const JobsInputSchema = Type.Object(
   {
@@ -328,6 +328,24 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Jobs em background"
+        icon="jobs"
+        what="O request apenas enfileira trabalho; um processo worker separado processa a fila SQLite com retry, cron e isolamento do request HTTP."
+        useCases={[
+          'Envio de e-mail e boas-vindas',
+          'Geração de faturas, relatórios e exports',
+          'Sincronização com APIs externas',
+          'Limpeza e rotinas periódicas com cron'
+        ]}
+        steps={[
+          'defineJob descreve nome, handler, retry e cron.',
+          'ctx.enqueue grava o job na fila; o action devolve o job id.',
+          'bun run worker registra os jobs e processa com backoff.',
+          'O painel lê o estado real da fila e os eventos gravados pelo handler.'
+        ]}
+        observe="Enfileire um job e acompanhe o status mudar de pending para completed. Marque “Simular falha” para ver retry; no SQLite o job esgotado fica failed (a DLQ é do engine Postgres)."
+      />
     </div>
   );
 }

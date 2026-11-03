@@ -16,7 +16,7 @@ import {
   type SynapseWebSocket
 } from 'synapsejs';
 import { useSubscription, useWebSocket } from 'synapsejs/client';
-import { PageHeader } from '../../shared/ui';
+import { FeatureGuide, PageHeader } from '../../shared/ui';
 
 export const RealtimeInputSchema = Type.Object(
   {
@@ -356,6 +356,25 @@ export function RealtimeTrigger({ messages = [], isAuthenticated = false, onSubm
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="SSE e WebSocket: quando usar"
+        icon="realtime"
+        defaultOpen
+        what="SSE entrega eventos do servidor para o browser em uma direção; WebSocket abre um canal bidirecional para conversas, presença e colaboração."
+        useCases={[
+          'Chat, suporte e colaboração em tempo real',
+          'Presença, “digitando…” e cursores compartilhados',
+          'Feeds e notificações unidirecionais com SSE',
+          'Painéis de métricas, filas e jobs ao vivo'
+        ]}
+        steps={[
+          'defineTopic declara nome, dono e quem pode ler o tópico.',
+          'ctx.broadcast publica no hub; o gateway SSE entrega aos inscritos.',
+          'defineSocket registra /_synapse/ws/showcase/realtime; useWebSocket conecta e envia.',
+          'O feed persiste no SQLite e reaparece no próximo SSR.'
+        ]}
+        observe="Abra esta página em duas abas, envie pelo SSE e depois pelo WS. Compare o status da conexão, o autor e o selo SSE/WebSocket de cada mensagem."
+      />
     </div>
   );
 }

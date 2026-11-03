@@ -12,6 +12,7 @@ import {
 } from 'synapsejs';
 import { storeSession } from 'synapsejs/client';
 import { DEMO_USERS, ensureDemoUsers } from '../../shared/showcase';
+import { FeatureGuide } from '../../shared/ui';
 
 export const LoginInputSchema = Type.Object(
   {
@@ -135,102 +136,122 @@ export function LoginTrigger({
   };
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl">
-        <div className="mb-5">
-          <h2 className="text-lg font-bold text-white">Entrar no showcase</h2>
-          <p className="mt-1 text-xs text-slate-400">
-            Sessão assinada com <code className="text-cyan-300">signSessionToken</code>; o cookie vira{' '}
-            <code className="text-cyan-300">Authorization: Bearer</code> nas ações e no upload.
-          </p>
-        </div>
-
-        {!configured ? (
-          <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
-            Defina <code>SYNAPSE_SESSION_SECRET</code> e reinicie com <code>bun run start</code>.
+    <div className="space-y-6">
+      <div className="grid gap-6 lg:grid-cols-[1fr_0.9fr]">
+        <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-6 shadow-xl">
+          <div className="mb-5">
+            <h2 className="text-lg font-bold text-white">Entrar no showcase</h2>
+            <p className="mt-1 text-xs text-slate-400">
+              Sessão assinada com <code className="text-cyan-300">signSessionToken</code>; o cookie vira{' '}
+              <code className="text-cyan-300">Authorization: Bearer</code> nas ações e no upload.
+            </p>
           </div>
-        ) : null}
 
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            const form = new FormData(event.currentTarget);
-            void signIn(String(form.get('email') ?? ''), String(form.get('password') ?? ''));
-          }}
-        >
-          <label className="block text-xs font-semibold text-slate-400" htmlFor="login-email">
-            E-mail
-          </label>
-          <input
-            id="login-email"
-            name="email"
-            type="email"
-            required
-            defaultValue="admin@synapse.dev"
-            autoComplete="username"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400"
-          />
-          <label className="block text-xs font-semibold text-slate-400" htmlFor="login-password">
-            Senha
-          </label>
-          <input
-            id="login-password"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            defaultValue="demo1234"
-            autoComplete="current-password"
-            className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400"
-          />
-          <button
-            type="submit"
-            disabled={busy}
-            className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 transition hover:brightness-110 disabled:opacity-50"
+          {!configured ? (
+            <div className="mb-4 rounded-xl border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-200">
+              Defina <code>SYNAPSE_SESSION_SECRET</code> e reinicie com <code>bun run start</code>.
+            </div>
+          ) : null}
+
+          <form
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const form = new FormData(event.currentTarget);
+              void signIn(String(form.get('email') ?? ''), String(form.get('password') ?? ''));
+            }}
           >
-            {busy ? 'Entrando…' : 'Entrar'}
-          </button>
-        </form>
-
-        {feedback ? (
-          <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
-            {feedback}
-          </p>
-        ) : null}
-      </div>
-
-      <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-cyan-950/30 p-6">
-        <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Contas de demonstração</div>
-        <p className="mt-2 text-xs leading-relaxed text-slate-400">
-          Use uma das contas para exercitar RBAC: <strong className="text-slate-200">admin</strong> apaga,
-          <strong className="text-slate-200"> editor</strong> atualiza e{' '}
-          <strong className="text-slate-200">viewer</strong> só lê.
-        </p>
-        <div className="mt-5 space-y-2">
-          {demoUsers.map((user) => (
+            <label className="block text-xs font-semibold text-slate-400" htmlFor="login-email">
+              E-mail
+            </label>
+            <input
+              id="login-email"
+              name="email"
+              type="email"
+              required
+              defaultValue="admin@synapse.dev"
+              autoComplete="username"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400"
+            />
+            <label className="block text-xs font-semibold text-slate-400" htmlFor="login-password">
+              Senha
+            </label>
+            <input
+              id="login-password"
+              name="password"
+              type="password"
+              required
+              minLength={8}
+              defaultValue="demo1234"
+              autoComplete="current-password"
+              className="w-full rounded-xl border border-slate-700 bg-slate-950/60 px-3 py-2.5 text-sm text-white outline-none transition focus:border-cyan-400"
+            />
             <button
-              key={user.email}
-              type="button"
-              onClick={() => void signIn(user.email, user.password)}
-              className="group flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-left transition hover:border-cyan-400/40 hover:bg-slate-900"
+              type="submit"
+              disabled={busy}
+              className="w-full rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-cyan-500/20 transition hover:brightness-110 disabled:opacity-50"
             >
-              <span>
-                <span className="block text-xs font-bold text-white group-hover:text-cyan-300">{user.label}</span>
-                <span className="block font-mono text-[10px] text-slate-500">{user.email}</span>
-              </span>
-              <span className="rounded-md bg-slate-800 px-2 py-1 font-mono text-[9px] text-slate-300">
-                {user.roles.join(' · ')}
-              </span>
+              {busy ? 'Entrando…' : 'Entrar'}
             </button>
-          ))}
+          </form>
+
+          {feedback ? (
+            <p className="mt-4 rounded-lg border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">
+              {feedback}
+            </p>
+          ) : null}
         </div>
-        <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-3 font-mono text-[10px] leading-relaxed text-slate-500">
-          senha: <span className="text-cyan-300">demo1234</span>
-          <br />
-          cookie: <span className="text-cyan-300">synapse_token</span> (assinado)
+
+        <div className="rounded-2xl border border-slate-800 bg-gradient-to-br from-slate-900 to-cyan-950/30 p-6">
+          <div className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-300">Contas de demonstração</div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">
+            Use uma das contas para exercitar RBAC: <strong className="text-slate-200">admin</strong> apaga,
+            <strong className="text-slate-200"> editor</strong> atualiza e{' '}
+            <strong className="text-slate-200">viewer</strong> só lê.
+          </p>
+          <div className="mt-5 space-y-2">
+            {demoUsers.map((user) => (
+              <button
+                key={user.email}
+                type="button"
+                onClick={() => void signIn(user.email, user.password)}
+                className="group flex w-full items-center justify-between rounded-xl border border-slate-800 bg-slate-950/40 px-3 py-2.5 text-left transition hover:border-cyan-400/40 hover:bg-slate-900"
+              >
+                <span>
+                  <span className="block text-xs font-bold text-white group-hover:text-cyan-300">{user.label}</span>
+                  <span className="block font-mono text-[10px] text-slate-500">{user.email}</span>
+                </span>
+                <span className="rounded-md bg-slate-800 px-2 py-1 font-mono text-[9px] text-slate-300">
+                  {user.roles.join(' · ')}
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-5 rounded-xl border border-slate-800 bg-slate-950/50 p-3 font-mono text-[10px] leading-relaxed text-slate-500">
+            senha: <span className="text-cyan-300">demo1234</span>
+            <br />
+            cookie: <span className="text-cyan-300">synapse_token</span> (assinado)
+          </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Sessões assinadas e RBAC"
+        icon="shield"
+        what="O login verifica a senha, assina um token com HMAC e grava o cookie. O servidor valida a assinatura em cada request e deriva os papéis do token, não de headers forjáveis."
+        useCases={[
+          'Áreas administrativas com papéis distintos',
+          'Ações que exigem admin, writer ou viewer',
+          'Uploads e downloads autenticados',
+          'Sessões que precisam expirar e ser revogadas'
+        ]}
+        steps={[
+          'O formulário chama loginAction com e-mail e senha.',
+          'A verificação de senha compara o hash; signSessionToken assina userId e roles.',
+          'storeSession grava o cookie; o SSR shell o repassa como Bearer.',
+          'requireAuth aplica os papéis na action; o upload e o download também validam a sessão.'
+        ]}
+        observe="Entre como admin, editor e viewer e tente as mesmas ações. O admin apaga; o editor atualiza; o viewer só lê; o botão de sair expira os cookies."
+      />
     </div>
   );
 }

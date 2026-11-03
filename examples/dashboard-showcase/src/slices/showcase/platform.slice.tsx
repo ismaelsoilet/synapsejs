@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { projectStatus } from 'synapsejs';
 import { Badge } from 'synapsejs/client';
+import { MCP_TOOLS } from 'synapsejs/src/mcp/tools';
 import { Icon } from '../../shared/icons';
-import { PageHeader, StatCard } from '../../shared/ui';
+import { FeatureGuide, PageHeader, StatCard } from '../../shared/ui';
 
 export type FeatureStatusRow = {
   feature: string;
@@ -16,7 +17,7 @@ export interface PlatformLoaderData {
   database: string;
   protocols: string[];
   toolCount: number;
-  tools: string[];
+  tools: Array<{ name: string; description: string }>;
   features: FeatureStatusRow[];
   commands: string[];
   adoption: string;
@@ -30,7 +31,7 @@ export function PlatformLoader(): PlatformLoaderData {
     database: status.database,
     protocols: status.protocols,
     toolCount: status.toolCount,
-    tools: status.tools,
+    tools: MCP_TOOLS.map(({ name, description }) => ({ name, description })),
     features: status.features.map(({ feature, status: featureStatus, evidence }) => ({
       feature,
       status: featureStatus,
@@ -231,11 +232,9 @@ export function PlatformTrigger({
           </div>
           <div className="mt-3 grid gap-1.5 sm:grid-cols-2">
             {tools.map((tool) => (
-              <div
-                key={tool}
-                className="rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-1.5 font-mono text-[10px] text-cyan-200/80"
-              >
-                {tool}
+              <div key={tool.name} className="rounded-lg border border-slate-800 bg-slate-950/40 px-2.5 py-2">
+                <div className="font-mono text-[10px] text-cyan-200/90">{tool.name}</div>
+                <div className="mt-0.5 text-[9px] leading-relaxed text-slate-500">{tool.description}</div>
               </div>
             ))}
           </div>
@@ -266,6 +265,24 @@ export function PlatformTrigger({
           </div>
         </div>
       </div>
+      <FeatureGuide
+        title="Catálogo, evidência e MCP"
+        icon="platform"
+        what="A mesma fonte que alimenta o comando synapse info e o health endpoint também renderiza este catálogo: versão, maturidade, evidência e ferramentas MCP."
+        useCases={[
+          'Escolher uma capacidade antes de adotar o framework',
+          'Auditar o que é stable, experimental ou roadmap',
+          'Descobrir ferramentas MCP disponíveis para agentes',
+          'Cruzar cada alegação com um comando de teste'
+        ]}
+        steps={[
+          'projectStatus() lê FEATURE_STATUS e MCP_TOOL_NAMES.',
+          'O loader serializa o inventário para o componente.',
+          'A busca e os filtros de status percorrem a lista no cliente.',
+          'A evidência de cada feature aponta para o teste/comando que a sustenta.'
+        ]}
+        observe="Filtre por “experimental” e abra qualquer item: a evidência aparece no detalhe. Use /_synapse/api/health e o comando bun run mcp para ver o runtime e as ferramentas."
+      />
     </div>
   );
 }

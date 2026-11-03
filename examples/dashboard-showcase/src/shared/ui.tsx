@@ -1,4 +1,5 @@
 import { type ReactNode, useEffect, useState } from 'react';
+import { Icon, type IconName } from './icons';
 
 export function PageHeader({
   eyebrow,
@@ -25,6 +26,77 @@ export function PageHeader({
       </div>
       {actions ? <div className="flex flex-wrap items-center gap-2">{actions}</div> : null}
     </div>
+  );
+}
+
+export function FeatureGuide({
+  title,
+  icon = 'code',
+  what,
+  useCases,
+  steps,
+  observe,
+  defaultOpen = false
+}: {
+  title: string;
+  icon?: IconName;
+  what: string;
+  useCases: string[];
+  steps: string[];
+  observe?: ReactNode;
+  defaultOpen?: boolean;
+}) {
+  return (
+    <details open={defaultOpen} className="group rounded-2xl border border-slate-800 bg-slate-900/60">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-4">
+        <span className="flex items-center gap-3">
+          <span className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-400/20 bg-cyan-400/10 text-cyan-300">
+            <Icon name={icon} className="h-4 w-4" />
+          </span>
+          <span>
+            <span className="block text-sm font-bold text-white">{title}</span>
+            <span className="mt-0.5 block text-[10px] text-slate-500">Quando usar, como funciona e o que observar</span>
+          </span>
+        </span>
+        <Icon
+          name="chevronDown"
+          className="h-4 w-4 shrink-0 text-slate-500 transition-transform group-open:rotate-180"
+        />
+      </summary>
+      <div className="grid gap-5 border-t border-slate-800 px-5 py-4 md:grid-cols-3">
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">O que é</div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-400">{what}</p>
+        </div>
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">Quando usar</div>
+          <ul className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-400">
+            {useCases.map((item) => (
+              <li key={item} className="flex gap-2">
+                <span className="mt-1 h-1 w-1 shrink-0 rounded-full bg-cyan-400" />
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <div>
+          <div className="text-[9px] font-bold uppercase tracking-[0.18em] text-slate-500">Como funciona</div>
+          <ol className="mt-2 space-y-1.5 text-xs leading-relaxed text-slate-400">
+            {steps.map((item, index) => (
+              <li key={item} className="flex gap-2">
+                <span className="font-mono text-[10px] text-cyan-300">{index + 1}.</span>
+                {item}
+              </li>
+            ))}
+          </ol>
+        </div>
+      </div>
+      {observe ? (
+        <div className="border-t border-slate-800 px-5 py-3 text-[11px] leading-relaxed text-slate-500">
+          <span className="font-semibold text-slate-400">Observe:</span> {observe}
+        </div>
+      ) : null}
+    </details>
   );
 }
 
