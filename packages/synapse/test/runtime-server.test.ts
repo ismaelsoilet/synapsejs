@@ -4,7 +4,7 @@ import * as path from 'path';
 import { buildAllClientBundles } from '../src/compiler/client-bundler';
 import { signSessionToken } from '../src/core/session-token';
 import { CLIENT_ROOT_ID } from '../src/runtime/client-entry';
-import { formatLogLine, httpStatusForError, SynapseServer } from '../src/runtime/server';
+import { formatLogLine, httpStatusForError, SynapseServer, TURBO_ROUTER_SCRIPT } from '../src/runtime/server';
 
 const appDir = path.resolve(import.meta.dir, 'fixtures', 'runtime-app');
 
@@ -187,6 +187,14 @@ describe('uploads over HTTP', () => {
     const response = await fetch(`${base}/_synapse/files/tickets/view-tickets?name=a.txt`);
 
     expect(response.status).toBe(405);
+  });
+});
+
+describe('SPA navigation contract', () => {
+  it('unmounts the previous React root before morphing and guards rehydration', () => {
+    expect(TURBO_ROUTER_SCRIPT).toContain('__SYNAPSE_UNMOUNT__');
+    expect(TURBO_ROUTER_SCRIPT).toContain('__SYNAPSE_ROUTER_NAVIGATION__');
+    expect(TURBO_ROUTER_SCRIPT.indexOf('unmount()')).toBeLessThan(TURBO_ROUTER_SCRIPT.indexOf('curRoot.innerHTML'));
   });
 });
 

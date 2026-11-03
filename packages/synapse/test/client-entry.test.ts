@@ -62,6 +62,14 @@ describe('client entry', () => {
     expect(source.indexOf('...props')).toBeLessThan(source.indexOf('onSubmitAction'));
   });
 
+  it('exposes an unmount hook and skips auto-hydration during router navigation', () => {
+    const source = clientEntrySource(options);
+
+    expect(source).toContain('__SYNAPSE_UNMOUNT__');
+    expect(source).toContain('__SYNAPSE_ROUTER_NAVIGATION__');
+    expect(source).toContain('activeRoot = hydrateRoot(');
+  });
+
   it('passes the current URL to the root and domain layouts', () => {
     const source = clientEntrySource({
       ...options,

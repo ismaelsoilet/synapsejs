@@ -42,6 +42,10 @@ describe('Turbo morphing router', () => {
     });
     const historyMock = { pushState: () => {} };
     const locationMock = { origin: 'http://localhost', href: 'http://localhost/start' };
+    let unmounted = 0;
+    (window as unknown as { __SYNAPSE_UNMOUNT__?: () => void }).__SYNAPSE_UNMOUNT__ = () => {
+      unmounted += 1;
+    };
 
     const run = new Function(
       'window',
@@ -68,5 +72,7 @@ describe('Turbo morphing router', () => {
     expect(nextEmail.value).toBe('typed@example.com');
     expect(nextAgree.checked).toBe(true);
     expect(document.activeElement).toBe(nextEmail as unknown as typeof document.activeElement);
+    expect(unmounted).toBe(1);
+    expect((window as unknown as { __SYNAPSE_UNMOUNT__?: unknown }).__SYNAPSE_UNMOUNT__).toBeNull();
   });
 });

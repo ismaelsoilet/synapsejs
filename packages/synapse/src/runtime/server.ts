@@ -175,6 +175,11 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
             });
           });
 
+          var unmount = window.__SYNAPSE_UNMOUNT__;
+          if (typeof unmount === 'function') {
+            try { unmount(); } catch (_) {}
+          }
+          window.__SYNAPSE_UNMOUNT__ = null;
           curRoot.innerHTML = newRoot.innerHTML;
           document.title = doc.title;
 
@@ -221,13 +226,21 @@ export const TURBO_ROUTER_SCRIPT = `(function() {
         window.__SYNAPSE_URL__ = href;
         var newClientScript = doc.querySelector('script[data-synapse-client]');
         if (newClientScript && newClientScript.src) {
+          window.__SYNAPSE_ROUTER_NAVIGATION__ = true;
           import(newClientScript.src).then(function(mod) {
-            if (mod && typeof mod.hydrate === 'function') {
-              mod.hydrate();
+            try {
+              if (mod && typeof mod.hydrate === 'function') {
+                mod.hydrate();
+              }
+            } finally {
+              window.__SYNAPSE_ROUTER_NAVIGATION__ = false;
             }
           }).catch(function(err) {
+            window.__SYNAPSE_ROUTER_NAVIGATION__ = false;
             console.error('[Synapse Router] Hydration error:', err);
           });
+        } else {
+          window.__SYNAPSE_ROUTER_NAVIGATION__ = false;
         }
       } else {
         window.location.href = href;

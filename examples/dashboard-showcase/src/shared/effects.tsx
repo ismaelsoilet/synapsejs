@@ -1,8 +1,13 @@
 import { useEffect, useState } from 'react';
 
-/** A small click ripple that never becomes part of the React tree. */
+/** A small click ripple rendered by React, never by direct DOM mutation. */
 export function ClickRipple() {
+  const [ripples, setRipples] = useState<Array<{ id: number; x: number; y: number; size: number }>>([]);
+
   useEffect(() => {
+    let nextId = 0;
+    const timers = new Set<number>();
+
     const handler = (event: PointerEvent) => {
       if (event.button !== 0) return;
       if (document.documentElement.dataset.motion === 'off') return;
@@ -12,22 +17,44 @@ export function ClickRipple() {
       if (!target || target.hasAttribute('data-no-ripple')) return;
 
       const rect = target.getBoundingClientRect();
-      const size = Math.max(rect.width, rect.height) * 0.9;
-      const ripple = document.createElement('span');
-      ripple.className = 'synapse-click-ripple';
-      ripple.style.width = `${size}px`;
-      ripple.style.height = `${size}px`;
-      ripple.style.left = `${event.clientX - size / 2}px`;
-      ripple.style.top = `${event.clientY - size / 2}px`;
-      document.body.appendChild(ripple);
-      window.setTimeout(() => ripple.remove(), 620);
+      const size = Math.min(96, Math.max(rect.width, rect.height) * 0.7);
+      const id = ++nextId;
+      setRipples((current) => [
+        ...current.slice(-5),
+        { id, x: event.clientX - size / 2, y: event.clientY - size / 2, size }
+      ]);
+
+      const timer = window.setTimeout(() => {
+        setRipples((current) => current.filter((ripple) => ripple.id !== id));
+        timers.delete(timer);
+      }, 460);
+      timers.add(timer);
     };
 
     document.addEventListener('pointerdown', handler, { passive: true });
-    return () => document.removeEventListener('pointerdown', handler);
+    return () => {
+      document.removeEventListener('pointerdown', handler);
+      for (const timer of timers) window.clearTimeout(timer);
+    };
   }, []);
 
-  return null;
+  return (
+    <>
+      {ripples.map((ripple) => (
+        <span
+          key={ripple.id}
+          aria-hidden="true"
+          className="synapse-click-ripple"
+          style={{
+            width: ripple.size,
+            height: ripple.size,
+            left: ripple.x,
+            top: ripple.y
+          }}
+        />
+      ))}
+    </>
+  );
 }
 
 /** Thin top bar that acknowledges SPA navigation without blocking it. */

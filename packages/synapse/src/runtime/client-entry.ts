@@ -49,12 +49,15 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     ...layoutImports,
     `import { ${options.componentName} } from ${JSON.stringify(options.clientModulePath)};`,
     ``,
+    `let activeRoot: ReturnType<typeof hydrateRoot> | null = null;`,
+    ``,
     `export function hydrate() {`,
     `  const scope = globalThis as unknown as Record<string, unknown>;`,
     `  const props = (scope[${JSON.stringify(CLIENT_PROPS_GLOBAL)}] ?? {}) as Record<string, unknown>;`,
     `  const currentUrl = (scope.__SYNAPSE_URL__ as string) || (typeof window !== 'undefined' ? window.location.href : '/');`,
     `  const root = document.getElementById(${JSON.stringify(rootId)});`,
     `  if (root) {`,
+    `    if (activeRoot) { activeRoot.unmount(); activeRoot = null; }`,
     `    const sliceElement = React.createElement(${options.componentName}, {`,
     `      ...props,`,
     `${actionWires}`,
@@ -81,14 +84,14 @@ export function clientEntrySource(options: ClientEntryOptions): string {
       treeExpr = `(typeof RootLayout === 'function' ? React.createElement(RootLayout, layoutProps, ${treeExpr}) : ${treeExpr})`;
     }
     lines.push(`    const treeWithLayout = ${treeExpr};`);
-    lines.push(`    hydrateRoot(`);
+    lines.push(`    activeRoot = hydrateRoot(`);
     lines.push(`      root,`);
     lines.push(
       `      React.createElement(SynapseProvider, { props, session: props.session as any, url: currentUrl }, React.createElement(ToastProvider, null, treeWithLayout))`
     );
     lines.push(`    );`);
   } else {
-    lines.push(`    hydrateRoot(`);
+    lines.push(`    activeRoot = hydrateRoot(`);
     lines.push(`      root,`);
     lines.push(
       `      React.createElement(SynapseProvider, { props, session: props.session as any, url: currentUrl }, React.createElement(ToastProvider, null, sliceElement))`
@@ -96,10 +99,13 @@ export function clientEntrySource(options: ClientEntryOptions): string {
     lines.push(`    );`);
   }
 
+  lines.push(`    (globalThis as unknown as Record<string, unknown>).__SYNAPSE_UNMOUNT__ = () => {`);
+  lines.push(`      if (activeRoot) { activeRoot.unmount(); activeRoot = null; }`);
+  lines.push(`    };`);
   lines.push(`  }`);
   lines.push(`}`);
   lines.push(``);
-  lines.push(`hydrate();`);
+  lines.push(`if (!(globalThis as unknown as Record<string, unknown>).__SYNAPSE_ROUTER_NAVIGATION__) hydrate();`);
   lines.push(``);
 
   return lines.join('\n');

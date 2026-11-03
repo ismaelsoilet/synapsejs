@@ -149,8 +149,9 @@ describe('synapse build', () => {
       expect(first.ok).toBe(true);
 
       const before = fs.statSync(vendorPath).mtimeMs;
-      await Bun.sleep(20);
-
+      // Move the existing vendor into the past so a successful rewrite is observable
+      // even on filesystems with coarse mtime granularity or a cached content build.
+      fs.utimesSync(vendorPath, new Date(0), new Date(0));
       const future = new Date(Date.now() + 5000);
       fs.utimesSync(manifestPath, future, future);
 

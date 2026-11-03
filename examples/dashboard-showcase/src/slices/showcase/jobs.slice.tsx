@@ -153,7 +153,7 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
     if (!onSubmitAction) return;
     const timer = setInterval(() => {
       void refresh();
-    }, 2500);
+    }, 4000);
     return () => clearInterval(timer);
   }, [onSubmitAction, refresh]);
 
@@ -261,7 +261,7 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
         <div className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-bold text-white">Eventos dos handlers</h2>
-            <span className="font-mono text-[10px] text-slate-500">poll 2,5s</span>
+            <span className="font-mono text-[10px] text-slate-500">atualização 4s</span>
           </div>
           <div className="mt-3 space-y-2">
             {events.length === 0 ? (
@@ -302,37 +302,30 @@ export function JobsTrigger({ stats: initialStats, events: initialEvents = [], o
       <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5">
         <h2 className="text-sm font-bold text-white">Últimos jobs na fila</h2>
         <div className="mt-3 overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-800 font-mono text-[9px] uppercase tracking-wider text-slate-500">
-              <tr>
-                <th className="px-2 py-2">Job</th>
-                <th className="px-2 py-2">Status</th>
-                <th className="px-2 py-2">Tentativas</th>
-                <th className="px-2 py-2">Erro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {stats.recent.map((job) => (
-                <tr key={job.id} className="border-b border-slate-900/80 text-slate-300">
-                  <td className="px-2 py-2 font-mono text-[10px]">{job.name}</td>
-                  <td className="px-2 py-2">
-                    <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[9px]">{job.status}</span>
-                  </td>
-                  <td className="px-2 py-2 font-mono text-[10px]">{job.attempts}</td>
-                  <td className="max-w-xs truncate px-2 py-2 font-mono text-[9px] text-rose-300">
-                    {job.last_error ?? '—'}
-                  </td>
-                </tr>
-              ))}
-              {stats.recent.length === 0 ? (
-                <tr>
-                  <td colSpan={4} className="px-2 py-4 text-center text-[11px] text-slate-500">
-                    A fila está vazia.
-                  </td>
-                </tr>
-              ) : null}
-            </tbody>
-          </table>
+          <div className="min-w-[620px]">
+            <div className="grid grid-cols-[1.3fr_0.7fr_0.5fr_1.5fr] border-b border-slate-800 px-2 py-2 font-mono text-[9px] uppercase tracking-wider text-slate-500">
+              <span>Job</span>
+              <span>Status</span>
+              <span>Tentativas</span>
+              <span>Erro</span>
+            </div>
+            {stats.recent.map((job) => (
+              <div
+                key={job.id}
+                className="grid grid-cols-[1.3fr_0.7fr_0.5fr_1.5fr] items-center border-b border-slate-900/80 px-2 py-2.5 text-slate-300"
+              >
+                <span className="truncate font-mono text-[10px]">{job.name}</span>
+                <span>
+                  <span className="rounded bg-slate-800 px-1.5 py-0.5 font-mono text-[9px]">{job.status}</span>
+                </span>
+                <span className="font-mono text-[10px]">{job.attempts}</span>
+                <span className="truncate font-mono text-[9px] text-rose-300">{job.last_error ?? '—'}</span>
+              </div>
+            ))}
+            {stats.recent.length === 0 ? (
+              <div className="px-2 py-4 text-center text-[11px] text-slate-500">A fila está vazia.</div>
+            ) : null}
+          </div>
         </div>
       </div>
     </div>
