@@ -149,11 +149,11 @@ describe('Static CSS & CDN Air-Gap Hardening (Fase 4)', () => {
     try {
       const hubRes = await fetch(`${base}/`);
       const hubHtml = await hubRes.text();
-      expect(hubHtml).toContain('<link rel="stylesheet" href="/synapse.css">');
+      expect(hubHtml).toMatch(/<link rel="stylesheet" href="\/synapse\.css\?v=\d+">/);
 
       const sliceRes = await fetch(`${base}/tickets/view-tickets`);
       const sliceHtml = await sliceRes.text();
-      expect(sliceHtml).toContain('<link rel="stylesheet" href="/synapse.css">');
+      expect(sliceHtml).toMatch(/<link rel="stylesheet" href="\/synapse\.css\?v=\d+">/);
     } finally {
       if (fs.existsSync(cssPath)) {
         fs.unlinkSync(cssPath);

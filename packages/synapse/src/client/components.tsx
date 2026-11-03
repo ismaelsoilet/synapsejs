@@ -8,6 +8,7 @@ import React, {
   useRef,
   useState
 } from 'react';
+import { createPortal } from 'react-dom';
 
 // ============================================================================
 // 1. BADGE COMPONENT
@@ -591,7 +592,7 @@ export function Modal({
     full: 'max-w-[95vw] h-[90vh]'
   };
 
-  return (
+  const dialog = (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200"
       style={{ position: 'fixed', top: 0, right: 0, bottom: 0, left: 0, zIndex: 50 }}
@@ -635,6 +636,9 @@ export function Modal({
       </div>
     </div>
   );
+
+  if (typeof document === 'undefined') return dialog;
+  return createPortal(dialog, document.body);
 }
 
 // ============================================================================

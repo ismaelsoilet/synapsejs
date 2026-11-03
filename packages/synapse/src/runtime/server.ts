@@ -1421,12 +1421,14 @@ export class SynapseServer {
     const localCssPath = path.join(this.baseDir, 'public', 'synapse.css');
 
     if (fs.existsSync(localCssPath)) {
-      return '  <link rel="stylesheet" href="/synapse.css">';
+      const version = Math.floor(fs.statSync(localCssPath).mtimeMs);
+      return `  <link rel="stylesheet" href="/synapse.css?v=${version}">`;
     }
 
     const compiledCssPath = path.join(this.baseDir, '.synapse', 'client', 'synapse.css');
     if (fs.existsSync(compiledCssPath)) {
-      return '  <link rel="stylesheet" href="/_synapse/client/synapse.css">';
+      const version = Math.floor(fs.statSync(compiledCssPath).mtimeMs);
+      return `  <link rel="stylesheet" href="/_synapse/client/synapse.css?v=${version}">`;
     }
 
     const thirdParty = this.thirdPartyOrigins();
@@ -2825,8 +2827,11 @@ ${this.renderStylesheets()}
             const contentType = bundleFilename.endsWith('.css')
               ? 'text/css; charset=utf-8'
               : 'application/javascript; charset=utf-8';
+            const cacheHeaders: Record<string, string> = bundleFilename === VENDOR_BUNDLE_NAME
+              ? { 'Content-Type': contentType, 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+              : { 'Content-Type': contentType };
             return new Response(Bun.file(bundleFile), {
-              headers: { 'Content-Type': contentType }
+              headers: cacheHeaders
             });
           }
 

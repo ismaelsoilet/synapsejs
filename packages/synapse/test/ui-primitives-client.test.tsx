@@ -62,7 +62,8 @@ describe('interactive client primitives', () => {
       )
     );
 
-    const dialog = container.querySelector('[role="dialog"]') as unknown as HTMLElement;
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+    const dialog = happyWindow.document.querySelector('[role="dialog"]') as unknown as HTMLElement;
     expect(dialog).not.toBeNull();
     expect(dialog.style.position).toBe('fixed');
     expect(dialog.style.zIndex).toBe('50');
