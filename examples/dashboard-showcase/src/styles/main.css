@@ -487,4 +487,3 @@ html[data-motion='off'] *::after {
 html [class~='bg-cyan-400/5'] {
   background-color: var(--accent-soft);
 }
-
