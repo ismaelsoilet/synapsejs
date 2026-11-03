@@ -2801,7 +2801,10 @@ ${this.renderStylesheets()}
           if (pathname === '/_synapse/turbo-router.js') {
             this.logRequest(req, pathname, 200, startedAt, undefined, 'static');
             return new Response(TURBO_ROUTER_SCRIPT, {
-              headers: { 'Content-Type': 'application/javascript; charset=utf-8' }
+              headers: {
+                'Content-Type': 'application/javascript; charset=utf-8',
+                'Cache-Control': 'no-store, no-cache, must-revalidate'
+              }
             });
           }
 
