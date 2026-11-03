@@ -2827,9 +2827,10 @@ ${this.renderStylesheets()}
             const contentType = bundleFilename.endsWith('.css')
               ? 'text/css; charset=utf-8'
               : 'application/javascript; charset=utf-8';
-            const cacheHeaders: Record<string, string> = bundleFilename === VENDOR_BUNDLE_NAME
-              ? { 'Content-Type': contentType, 'Cache-Control': 'no-store, no-cache, must-revalidate' }
-              : { 'Content-Type': contentType };
+            const cacheHeaders: Record<string, string> =
+              bundleFilename === VENDOR_BUNDLE_NAME
+                ? { 'Content-Type': contentType, 'Cache-Control': 'no-store, no-cache, must-revalidate' }
+                : { 'Content-Type': contentType };
             return new Response(Bun.file(bundleFile), {
               headers: cacheHeaders
             });
